@@ -19,6 +19,9 @@ dist/
 build/
 *.whl
 
+tests/*.xml
+/*.xml
+
 # Flask specific
 instance/
 .webassets-cache
