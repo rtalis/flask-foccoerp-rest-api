@@ -58,7 +58,7 @@ def get_purchases():
                 'cod_pedc': order.cod_pedc,
                 'dt_emis': order.dt_emis,
                 'fornecedor_id': order.fornecedor_id,
-                'items': [{'item_id': item.id, 'descricao': item.descricao, 'quantidade': item.quantidade, 'preco_unitario': item.preco_unitario, 'total': item.total} for item in items]
+               # 'items': [{'item_id': item.id, 'descricao': item.descricao, 'quantidade': item.quantidade, 'preco_unitario': item.preco_unitario} for item in items]
             }
             result.append(order_data)
         return jsonify(result), 200

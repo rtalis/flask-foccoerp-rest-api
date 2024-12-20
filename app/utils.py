@@ -5,8 +5,9 @@ def parse_xml(xml_data):
     purchase_orders = []
 
     for order in root.findall('.//TPED_COMPRA'):
+        cod_pedc = order.find('COD_PEDC').text if order.find('COD_PEDC') is not None else None,
         order_data = {
-            'cod_pedc': order.find('COD_PEDC').text if order.find('COD_PEDC') is not None else None,
+            'cod_pedc': cod_pedc,
             'dt_emis': order.find('DT_EMIS').text if order.find('DT_EMIS') is not None else None,
             'fornecedor_id': int(order.find('FOR_COD').text) if order.find('FOR_COD') is not None else None,
             'items': []
@@ -14,6 +15,8 @@ def parse_xml(xml_data):
 
         for item in order.findall('.//TPEDC_ITEM'):
             item_data = {
+                'cod_pedc': cod_pedc,
+                'linha': int(item.find('LINHA1').text) if item.find('LINHA1') is not None else None,
                 'item_id': int(item.find('ITEM_ID').text) if item.find('ITEM_ID') is not None else None,
                 'descricao': item.find('ITEM_DESC_TECNICA').text if item.find('ITEM_DESC_TECNICA') is not None else None,
                 'quantidade': float(item.find('QTDE').text.replace(',', '.')) if item.find('QTDE') is not None else None,
