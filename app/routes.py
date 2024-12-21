@@ -106,13 +106,18 @@ def get_purchases():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     
-@bp.route('/search_item', methods=['GET'])
-def search_item():
+@bp.route('/search_items', methods=['GET'])
+def search_items():
     descricao = request.args.get('descricao')
-    if not descricao:
-        return jsonify({'error': 'Descricao is required'}), 400
+    item_id = request.args.get('item_id')
 
-    items = PurchaseItem.query.filter(PurchaseItem.descricao.ilike(f'%{descricao}%')).all()
+    query = PurchaseItem.query
+    if descricao:
+        query = query.filter(PurchaseItem.descricao.ilike(f'%{descricao}%'))
+    if item_id:
+        query = query.filter(PurchaseItem.item_id == item_id)
+
+    items = query.all()
     result = [{'item_id': item.id, 'purchase_order_id': item.purchase_order_id, 'item_id': item.item_id, 'linha': item.linha, 'cod_pedc': item.cod_pedc, 'descricao': item.descricao, 'quantidade': item.quantidade, 'preco_unitario': item.preco_unitario, 'total': item.total, 'unidade_medida': item.unidade_medida, 'dt_entrega': item.dt_entrega, 'perc_ipi': item.perc_ipi, 'tot_liquido_ipi': item.tot_liquido_ipi, 'tot_descontos': item.tot_descontos, 'tot_acrescimos': item.tot_acrescimos, 'qtde_canc': item.qtde_canc, 'qtde_canc_toler': item.qtde_canc_toler, 'perc_toler': item.perc_toler} for item in items]
     return jsonify(result), 200
 
@@ -149,6 +154,44 @@ def search_cod_pedc():
         return jsonify({'error': 'COD_PEDC is required'}), 400
 
     orders = PurchaseOrder.query.filter_by(cod_pedc=cod_pedc).all()
+    result = []
+    for order in orders:
+        items = PurchaseItem.query.filter_by(purchase_order_id=order.id).all()
+        order_data = {
+            'order_id': order.id,
+            'cod_pedc': order.cod_pedc,
+            'dt_emis': order.dt_emis,
+            'fornecedor_id': order.fornecedor_id,
+            'fornecedor_descricao': order.fornecedor_descricao,
+            'total_bruto': order.total_bruto,
+            'total_liquido': order.total_liquido,
+            'total_liquido_ipi': order.total_liquido_ipi,
+            'posicao': order.posicao,
+            'posicao_hist': order.posicao_hist,
+            'observacao': order.observacao,
+            'items': [{'item_id': item.id, 'descricao': item.descricao, 'quantidade': item.quantidade, 'preco_unitario': item.preco_unitario, 'total': item.total, 'unidade_medida': item.unidade_medida, 'dt_entrega': item.dt_entrega, 'perc_ipi': item.perc_ipi, 'tot_liquido_ipi': item.tot_liquido_ipi, 'tot_descontos': item.tot_descontos, 'tot_acrescimos': item.tot_acrescimos, 'qtde_canc': item.qtde_canc, 'qtde_canc_toler': item.qtde_canc_toler, 'perc_toler': item.perc_toler} for item in items]
+        }
+        result.append(order_data)
+    return jsonify(result), 200
+
+
+
+
+@bp.route('/search_purchases', methods=['GET'])
+def search_purchases():
+    cod_pedc = request.args.get('cod_pedc')
+    fornecedor_descricao = request.args.get('fornecedor_descricao')
+    observacao = request.args.get('observacao')
+
+    query = PurchaseOrder.query
+    if cod_pedc:
+        query = query.filter(PurchaseOrder.cod_pedc.ilike(f'%{cod_pedc}%'))
+    if fornecedor_descricao:
+        query = query.filter(PurchaseOrder.fornecedor_descricao.ilike(f'%{fornecedor_descricao}%'))
+    if observacao:
+        query = query.filter(PurchaseOrder.observacao.ilike(f'%{observacao}%'))
+
+    orders = query.all()
     result = []
     for order in orders:
         items = PurchaseItem.query.filter_by(purchase_order_id=order.id).all()
