@@ -31,7 +31,7 @@ def test_import_xml(client: FlaskClient):
     assert b'Data imported successfully' in response.data
 
 def test_get_purchases(client: FlaskClient):
-    response = client.get('/api/purchases')
+    response = client.get('/api/search_purchases')
     assert response.status_code == 200
     assert isinstance(response.json, list)
 

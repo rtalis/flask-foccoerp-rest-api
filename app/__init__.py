@@ -13,7 +13,7 @@ def create_app():
 
     db.init_app(app)
     migrate.init_app(app, db)
-    CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}})  # Adicione esta linha para habilitar CORS para uma origem específica
+    CORS(app)
 
 
     with app.app_context():
