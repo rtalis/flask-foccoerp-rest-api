@@ -40,3 +40,5 @@ class PurchaseItem(db.Model):
     qtde_canc = db.Column(db.Float, nullable=True)
     qtde_canc_toler = db.Column(db.Float, nullable=True)
     perc_toler = db.Column(db.Float, nullable=True)
+    qtde_atendida = db.Column(db.Float, nullable=True)
+    qtde_saldo = db.Column(db.Float, nullable=True)

@@ -47,6 +47,8 @@ def parse_xml(xml_data):
                 'qtde_canc': float(item.find('QTDE_CANC').text.replace(',', '.')) if item.find('QTDE_CANC') is not None and item.find('QTDE_CANC').text else None,
                 'qtde_canc_toler': float(item.find('QTDE_CANC_TOLER').text.replace(',', '.')) if item.find('QTDE_CANC_TOLER') is not None and item.find('QTDE_CANC_TOLER').text else None,
                 'perc_toler': float(item.find('PERC_TOLER').text.replace(',', '.')) if item.find('PERC_TOLER') is not None and item.find('PERC_TOLER').text else None,
+                'qtde_atendida': float(item.find('QTDE_ATENDIDA').text.replace(',', '.')) if item.find('QTDE_ATENDIDA') is not None and item.find('QTDE_ATENDIDA').text else None,
+                'qtde_saldo': float(item.find('QTDE_SALDO').text.replace(',', '.')) if item.find('QTDE_SALDO') is not None and item.find('QTDE_SALDO').text else None,
             }
             order_data['items'].append(item_data)
 
@@ -95,6 +97,8 @@ def format_for_db(data):
                 'qtde_canc': item['qtde_canc'],
                 'qtde_canc_toler': item['qtde_canc_toler'],
                 'perc_toler': item['perc_toler'],
+                'qtde_atendida': item['qtde_atendida'],
+                'qtde_saldo': item['qtde_saldo'],
                 'purchase_order_id': order['cod_pedc']  # Associando item ao pedido
             })
 

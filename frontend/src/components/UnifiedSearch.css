@@ -1,0 +1,121 @@
+.unified-search {
+    max-width: 95%;
+    margin: 0 auto;
+    padding: 20px;
+    background-color: #f9f9f9;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  }
+  
+  .search-container {
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  
+  .search-input {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px 0 0 4px;
+  }
+  
+  .search-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 0 4px 4px 0;
+    cursor: pointer;
+  }
+  
+  .search-button:hover {
+    background-color: #0056b3;
+  }
+  
+  .search-button .icon {
+    margin-right: 5px;
+  }
+  
+  @media (max-width: 600px) {
+    .search-button .text {
+      display: none;
+    }
+  }
+  
+  .checkbox-section {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  
+  .checkbox-group {
+    flex: 1;
+    min-width: 200px; /* Ajuste conforme necessário */
+    margin-right: 20px;
+  }
+  
+  .checkbox-group h3 {
+    margin-bottom: 10px;
+  }
+  
+  .checkbox-group label {
+    display: block;
+    margin-bottom: 5px;
+  }
+  
+  .results-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+  }
+  
+  .results-table th, .results-table td {
+    border: 1px solid #ccc;
+    padding: 10px;
+    text-align: left;
+  }
+  
+  .results-table th {
+    background-color: #f2f2f2;
+  }
+
+
+  .order-header {
+    text-align: center;
+    background-color: #f0f0f0;
+    font-weight: bold;
+    color: #333;
+  }
+  
+  .item-row {
+    background-color: #ffffff;
+  }
+  
+  .item-row.atendida {
+    background-color: #d4edda; /* Verde claro para quantidade atendida */
+  }
+  
+  .item-row.nao-atendida {
+    background-color: #f8d7da; /* Vermelho claro para quantidade não atendida */
+  }
+
+  .order-header {
+    text-align: center;
+    background-color: #007bff; /* Fundo azul */
+    font-weight: bold;
+    color: white;
+    padding: 10px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+  }
+  
+  .order-header span {
+    display: block;
+    margin-top: 5px;
+    font-size: 0.9em;
+  }

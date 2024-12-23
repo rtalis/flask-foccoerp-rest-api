@@ -20,6 +20,8 @@ class PurchaseItemSchema(Schema):
     qtde_canc = fields.Float(required=False)
     qtde_canc_toler = fields.Float(required=False)
     perc_toler = fields.Float(required=False)
+    qtde_atendida = fields.Float(required=False)
+    qtde_saldo = fields.Float(required=False)
 
     @post_load
     def create_purchase_item(self, data, **kwargs):
