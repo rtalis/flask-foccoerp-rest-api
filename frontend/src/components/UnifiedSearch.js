@@ -39,7 +39,21 @@ const UnifiedSearch = () => {
           }
         });
       }
-      setResults(response.data);
+      const data = response.data;
+      const detailedResults = await Promise.all(
+        data.map(async (item) => {
+          if (item.purchase_order_id) {
+            const orderResponse = await axios.get('http://localhost:5000/api/get_purchase', {
+              params: { cod_pedc: item.cod_pedc }
+            });
+            return { ...item, order: orderResponse.data[0] };
+          } else if (item.items) {
+            return item;
+          }
+          return item;
+        })
+      );
+      setResults(detailedResults);
     } catch (error) {
       console.error('Error fetching data', error);
     }
@@ -106,14 +120,16 @@ const UnifiedSearch = () => {
       <table>
         <thead>
           <tr>
-            <th>Data</th>
-            <th>Cod. Item</th>
-            <th>Descrição do Item</th>
-            <th>Cod. For</th>
-            <th>Fornecedor</th>
-            <th>Qnd.</th>
+            <th>Cod. PEDC</th>
+            <th>Descrição</th>
+            <th>Quantidade</th>
             <th>Preço Unitário</th>
-            <th>Total Bruto</th>
+            <th>Total</th>
+            <th>Unidade Medida</th>
+            <th>Data Emissão</th>
+            <th>Cod. Fornecedor</th>
+            <th>Fornecedor</th>
+            <th>Observação</th>
           </tr>
         </thead>
         <tbody>
@@ -121,26 +137,30 @@ const UnifiedSearch = () => {
             result.items ? (
               result.items.map((item) => (
                 <tr key={item.item_id}>
-                  <td>{result.dt_emis}</td>
-                  <td>{item.item_id}</td>
+                  <td>{result.cod_pedc}</td>
                   <td>{item.descricao}</td>
-                  <td>{result.fornecedor_id}</td>
-                  <td>{result.fornecedor_descricao}</td>
                   <td>{item.quantidade}</td>
                   <td>{item.preco_unitario}</td>
                   <td>{item.total}</td>
+                  <td>{item.unidade_medida}</td>
+                  <td>{result.dt_emis}</td>
+                  <td>{result.fornecedor_id}</td>
+                  <td>{result.fornecedor_descricao}</td>
+                  <td>{result.observacao}</td>
                 </tr>
               ))
             ) : (
               <tr key={result.item_id}>
-                <td>{result.dt_entrega}</td>
-                <td>{result.item_id}</td>
-                <td>{result.descricao}</td>
                 <td>{result.cod_pedc}</td>
-                <td>{result.fornecedor_descricao}</td>
+                <td>{result.descricao}</td>
                 <td>{result.quantidade}</td>
                 <td>{result.preco_unitario}</td>
                 <td>{result.total}</td>
+                <td>{result.unidade_medida}</td>
+                <td>{result.order ? result.order.dt_emis : ''}</td>
+                <td>{result.order ? result.order.fornecedor_id : ''}</td>
+                <td>{result.order ? result.order.fornecedor_descricao : ''}</td>
+                <td>{result.order ? result.order.observacao : ''}</td>
               </tr>
             )
           ))}

@@ -121,7 +121,47 @@ def search_items():
         query = query.filter(PurchaseItem.item_id == item_id)
 
     items = query.all()
-    result = [{'item_id': item.id, 'purchase_order_id': item.purchase_order_id, 'item_id': item.item_id, 'linha': item.linha, 'cod_pedc': item.cod_pedc, 'descricao': item.descricao, 'quantidade': item.quantidade, 'preco_unitario': item.preco_unitario, 'total': item.total, 'unidade_medida': item.unidade_medida, 'dt_entrega': item.dt_entrega, 'perc_ipi': item.perc_ipi, 'tot_liquido_ipi': item.tot_liquido_ipi, 'tot_descontos': item.tot_descontos, 'tot_acrescimos': item.tot_acrescimos, 'qtde_canc': item.qtde_canc, 'qtde_canc_toler': item.qtde_canc_toler, 'perc_toler': item.perc_toler} for item in items]
+    result = []
+    for item in items:
+        item_data = {
+            'item_id': item.id,
+            'purchase_order_id': item.purchase_order_id,
+            'item_id': item.item_id,
+            'linha': item.linha,
+            'cod_pedc': item.cod_pedc,
+            'descricao': item.descricao,
+            'quantidade': item.quantidade,
+            'preco_unitario': item.preco_unitario,
+            'total': item.total,
+            'unidade_medida': item.unidade_medida,
+            'dt_entrega': item.dt_entrega,
+            'perc_ipi': item.perc_ipi,
+            'tot_liquido_ipi': item.tot_liquido_ipi,
+            'tot_descontos': item.tot_descontos,
+            'tot_acrescimos': item.tot_acrescimos,
+            'qtde_canc': item.qtde_canc,
+            'qtde_canc_toler': item.qtde_canc_toler,
+            'perc_toler': item.perc_toler
+        }
+        order = PurchaseOrder.query.get(item.purchase_order_id)
+        if order:
+            item_data['order'] = {
+                'order_id': order.id,
+                'cod_pedc': order.cod_pedc,
+                'dt_emis': order.dt_emis,
+                'fornecedor_id': order.fornecedor_id,
+                'fornecedor_descricao': order.fornecedor_descricao,
+                'total_bruto': order.total_bruto,
+                'total_liquido': order.total_liquido,
+                'total_liquido_ipi': order.total_liquido_ipi,
+                'posicao': order.posicao,
+                'posicao_hist': order.posicao_hist,
+                'observacao': order.observacao,
+                'contato': order.contato,
+                'func_nome': order.func_nome,
+                'cf_pgto': order.cf_pgto,
+            }
+        result.append(item_data)
     return jsonify(result), 200
 
 @bp.route('/search_item_fuzzy', methods=['GET'])

@@ -30,7 +30,8 @@ def parse_xml(xml_data):
         for item in order.findall('.//TPEDC_ITEM'):
          
             item_data = {
-                'item_id': int(item.find('ITEM_ID').text) if item.find('ITEM_ID') is not None else None,
+                'item_id': int(item.find('ITEM_COD').text) if item.find('ITEM_COD') is not None else None,
+                
                 'cod_pedc': cod_pedc,
                 'linha': item.find('LINHA1').text if item.find('LINHA1') is not None else None,
                 'descricao': item.find('ITEM_DESC_TECNICA').text if item.find('ITEM_DESC_TECNICA') is not None else None,
