@@ -14,11 +14,9 @@ class PurchaseOrder(db.Model):
     posicao = db.Column(db.String, nullable=True)
     posicao_hist = db.Column(db.String, nullable=True)
     observacao = db.Column(db.String, nullable=True)
-    func_nome = db.Column(db.String, nullable=True)
     contato = db.Column(db.String, nullable=True)
-    tp_frete_tra = db.Column(db.String, nullable=True)
-    empr_id = db.Column(db.Integer, nullable=True)
-    list_tpedc_pgto = db.Column(db.String, nullable=True)
+    func_nome = db.Column(db.String, nullable=True)
+    cf_pgto = db.Column(db.String, nullable=True)
     items = db.relationship('PurchaseItem', backref='purchase_order', lazy=True)
 
 class PurchaseItem(db.Model):

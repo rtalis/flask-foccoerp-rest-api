@@ -37,11 +37,9 @@ class PurchaseOrderSchema(Schema):
     posicao = fields.Str(required=False)
     posicao_hist = fields.Str(required=False)
     observacao = fields.Str(required=False)
-    func_nome = fields.Str(required=False)
     contato = fields.Str(required=False)
-    tp_frete_tra = fields.Str(required=False)
-    empr_id = fields.Int(required=False)
-    list_tpedc_pgto = fields.Str(required=False)
+    func_nome = fields.Str(required=False)
+    cf_pgto = fields.Str(required=False)
     items = fields.List(fields.Nested(PurchaseItemSchema), required=False)
 
     @post_load

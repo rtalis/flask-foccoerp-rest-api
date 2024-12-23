@@ -44,14 +44,10 @@ def import_xml():
                 posicao=order_data['posicao'],
                 posicao_hist=order_data['posicao_hist'],
                 observacao=order_data['observacao'],
-                func_nome=order_data['func_nome'],
                 contato=order_data['contato'],
-                tp_frete_tra=order_data['tp_frete_tra'],
-                empr_id=order_data['empr_id'],
-                list_tpedc_pgto=order_data['list_tpedc_pgto']
+                func_nome=order_data['func_nome'],
+                cf_pgto=order_data['cf_pgto']
             )
-            if order_data['cod_pedc'] == None:
-                return jsonify({'error': 'COD_PEDC is required'}), 400
             purchasecount += 1
             db.session.add(order)
             db.session.flush()  # To get the order ID for items
@@ -77,8 +73,6 @@ def import_xml():
                         qtde_canc_toler=item_data['qtde_canc_toler'],
                         perc_toler=item_data['perc_toler']
                     )
-                    if item_data['cod_pedc'] == None:
-                        return jsonify({'error': 'COD_PEDC is required'}), 400
                     itemcount += 1
                     db.session.add(item)
 
@@ -108,23 +102,17 @@ def get_purchases():
                 'posicao': order.posicao,
                 'posicao_hist': order.posicao_hist,
                 'observacao': order.observacao,
-                'func_nome': order.func_nome,
-                'contato': order.contato,
-                'tp_frete_tra': order.tp_frete_tra,
-                'empr_id': order.empr_id,
-                'list_tpedc_pgto': order.list_tpedc_pgto,
                 'items': [{'item_id': item.id, 'descricao': item.descricao, 'quantidade': item.quantidade, 'preco_unitario': item.preco_unitario, 'total': item.total, 'unidade_medida': item.unidade_medida, 'dt_entrega': item.dt_entrega, 'perc_ipi': item.perc_ipi, 'tot_liquido_ipi': item.tot_liquido_ipi, 'tot_descontos': item.tot_descontos, 'tot_acrescimos': item.tot_acrescimos, 'qtde_canc': item.qtde_canc, 'qtde_canc_toler': item.qtde_canc_toler, 'perc_toler': item.perc_toler} for item in items]
             }
             result.append(order_data)
         return jsonify(result), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
+    
 @bp.route('/search_items', methods=['GET'])
 def search_items():
     descricao = request.args.get('descricao')
     item_id = request.args.get('item_id')
-    include_order = request.args.get('include_order', 'false').lower() == 'true'
 
     query = PurchaseItem.query
     if descricao:
@@ -133,50 +121,7 @@ def search_items():
         query = query.filter(PurchaseItem.item_id == item_id)
 
     items = query.all()
-    result = []
-    for item in items:
-        item_data = {
-            'item_id': item.id,
-            'purchase_order_id': item.purchase_order_id,
-            'item_id': item.item_id,
-            'linha': item.linha,
-            'cod_pedc': item.cod_pedc,
-            'descricao': item.descricao,
-            'quantidade': item.quantidade,
-            'preco_unitario': item.preco_unitario,
-            'total': item.total,
-            'unidade_medida': item.unidade_medida,
-            'dt_entrega': item.dt_entrega,
-            'perc_ipi': item.perc_ipi,
-            'tot_liquido_ipi': item.tot_liquido_ipi,
-            'tot_descontos': item.tot_descontos,
-            'tot_acrescimos': item.tot_acrescimos,
-            'qtde_canc': item.qtde_canc,
-            'qtde_canc_toler': item.qtde_canc_toler,
-            'perc_toler': item.perc_toler
-        }
-        if include_order:
-            order = PurchaseOrder.query.get(item.purchase_order_id)
-            if order:
-                item_data['order'] = {
-                    'order_id': order.id,
-                    'cod_pedc': order.cod_pedc,
-                    'dt_emis': order.dt_emis,
-                    'fornecedor_id': order.fornecedor_id,
-                    'fornecedor_descricao': order.fornecedor_descricao,
-                    'total_bruto': order.total_bruto,
-                    'total_liquido': order.total_liquido,
-                    'total_liquido_ipi': order.total_liquido_ipi,
-                    'posicao': order.posicao,
-                    'posicao_hist': order.posicao_hist,
-                    'observacao': order.observacao,
-                    'func_nome': order.func_nome,
-                    'contato': order.contato,
-                    'tp_frete_tra': order.tp_frete_tra,
-                    'empr_id': order.empr_id,
-                    'list_tpedc_pgto': order.list_tpedc_pgto
-                }
-        result.append(item_data)
+    result = [{'item_id': item.id, 'purchase_order_id': item.purchase_order_id, 'item_id': item.item_id, 'linha': item.linha, 'cod_pedc': item.cod_pedc, 'descricao': item.descricao, 'quantidade': item.quantidade, 'preco_unitario': item.preco_unitario, 'total': item.total, 'unidade_medida': item.unidade_medida, 'dt_entrega': item.dt_entrega, 'perc_ipi': item.perc_ipi, 'tot_liquido_ipi': item.tot_liquido_ipi, 'tot_descontos': item.tot_descontos, 'tot_acrescimos': item.tot_acrescimos, 'qtde_canc': item.qtde_canc, 'qtde_canc_toler': item.qtde_canc_toler, 'perc_toler': item.perc_toler} for item in items]
     return jsonify(result), 200
 
 @bp.route('/search_item_fuzzy', methods=['GET'])
@@ -194,6 +139,7 @@ def search_item_fuzzy():
     result = [{'item_id': item.id, 'purchase_order_id': item.purchase_order_id, 'item_id': item.item_id, 'linha': item.linha, 'cod_pedc': item.cod_pedc, 'descricao': item.descricao, 'quantidade': item.quantidade, 'preco_unitario': item.preco_unitario, 'total': item.total, 'unidade_medida': item.unidade_medida, 'dt_entrega': item.dt_entrega, 'perc_ipi': item.perc_ipi, 'tot_liquido_ipi': item.tot_liquido_ipi, 'tot_descontos': item.tot_descontos, 'tot_acrescimos': item.tot_acrescimos, 'qtde_canc': item.qtde_canc, 'qtde_canc_toler': item.qtde_canc_toler, 'perc_toler': item.perc_toler} for item in matched_items]
     return jsonify(result), 200
 
+
 @bp.route('/search_item_id', methods=['GET'])
 def search_item_id():
     item_id = request.args.get('item_id')
@@ -204,13 +150,51 @@ def search_item_id():
     result = [{'item_id': item.id, 'purchase_order_id': item.purchase_order_id, 'item_id': item.item_id, 'linha': item.linha, 'cod_pedc': item.cod_pedc, 'descricao': item.descricao, 'quantidade': item.quantidade, 'preco_unitario': item.preco_unitario, 'total': item.total, 'unidade_medida': item.unidade_medida, 'dt_entrega': item.dt_entrega, 'perc_ipi': item.perc_ipi, 'tot_liquido_ipi': item.tot_liquido_ipi, 'tot_descontos': item.tot_descontos, 'tot_acrescimos': item.tot_acrescimos, 'qtde_canc': item.qtde_canc, 'qtde_canc_toler': item.qtde_canc_toler, 'perc_toler': item.perc_toler} for item in items]
     return jsonify(result), 200
 
-@bp.route('/search_cod_pedc', methods=['GET'])
+@bp.route('/get_purchase', methods=['GET'])
 def search_cod_pedc():
     cod_pedc = request.args.get('cod_pedc')
     if not cod_pedc:
         return jsonify({'error': 'COD_PEDC is required'}), 400
 
     orders = PurchaseOrder.query.filter_by(cod_pedc=cod_pedc).all()
+    result = []
+    for order in orders:
+        #items = PurchaseItem.query.filter_by(purchase_order_id=order.id).all()
+        order_data = {
+            'order_id': order.id,
+            'cod_pedc': order.cod_pedc,
+            'dt_emis': order.dt_emis,
+            'fornecedor_id': order.fornecedor_id,
+            'fornecedor_descricao': order.fornecedor_descricao,
+            'total_bruto': order.total_bruto,
+            'total_liquido': order.total_liquido,
+            'total_liquido_ipi': order.total_liquido_ipi,
+            'posicao': order.posicao,
+            'posicao_hist': order.posicao_hist,
+            'observacao': order.observacao,
+          #  'items': [{'item_id': item.id, 'descricao': item.descricao, 'quantidade': item.quantidade, 'preco_unitario': item.preco_unitario, 'total': item.total, 'unidade_medida': item.unidade_medida, 'dt_entrega': item.dt_entrega, 'perc_ipi': item.perc_ipi, 'tot_liquido_ipi': item.tot_liquido_ipi, 'tot_descontos': item.tot_descontos, 'tot_acrescimos': item.tot_acrescimos, 'qtde_canc': item.qtde_canc, 'qtde_canc_toler': item.qtde_canc_toler, 'perc_toler': item.perc_toler} for item in items]
+        }
+        result.append(order_data)
+    return jsonify(result), 200
+
+
+
+
+@bp.route('/search_purchases', methods=['GET'])
+def search_purchases():
+    cod_pedc = request.args.get('cod_pedc')
+    fornecedor_descricao = request.args.get('fornecedor_descricao')
+    observacao = request.args.get('observacao')
+
+    query = PurchaseOrder.query
+    if cod_pedc:
+        query = query.filter(PurchaseOrder.cod_pedc.ilike(f'%{cod_pedc}%'))
+    if fornecedor_descricao:
+        query = query.filter(PurchaseOrder.fornecedor_descricao.ilike(f'%{fornecedor_descricao}%'))
+    if observacao:
+        query = query.filter(PurchaseOrder.observacao.ilike(f'%{observacao}%'))
+
+    orders = query.all()
     result = []
     for order in orders:
         items = PurchaseItem.query.filter_by(purchase_order_id=order.id).all()
@@ -226,56 +210,10 @@ def search_cod_pedc():
             'posicao': order.posicao,
             'posicao_hist': order.posicao_hist,
             'observacao': order.observacao,
-            'func_nome': order.func_nome,
             'contato': order.contato,
-            'tp_frete_tra': order.tp_frete_tra,
-            'empr_id': order.empr_id,
-            'list_tpedc_pgto': order.list_tpedc_pgto,
+            'func_nome': order.func_nome,
+            'cf_pgto': order.cf_pgto,
             'items': [{'item_id': item.id, 'descricao': item.descricao, 'quantidade': item.quantidade, 'preco_unitario': item.preco_unitario, 'total': item.total, 'unidade_medida': item.unidade_medida, 'dt_entrega': item.dt_entrega, 'perc_ipi': item.perc_ipi, 'tot_liquido_ipi': item.tot_liquido_ipi, 'tot_descontos': item.tot_descontos, 'tot_acrescimos': item.tot_acrescimos, 'qtde_canc': item.qtde_canc, 'qtde_canc_toler': item.qtde_canc_toler, 'perc_toler': item.perc_toler} for item in items]
         }
-        result.append(order_data)
-    return jsonify(result), 200
-
-
-
-@bp.route('/search_purchases', methods=['GET'])
-def search_purchases():
-    cod_pedc = request.args.get('cod_pedc')
-    fornecedor_descricao = request.args.get('fornecedor_descricao')
-    observacao = request.args.get('observacao')
-    include_items = request.args.get('include_items', 'false').lower() == 'true'
-
-    query = PurchaseOrder.query
-    if cod_pedc:
-        query = query.filter(PurchaseOrder.cod_pedc.ilike(f'%{cod_pedc}%'))
-    if fornecedor_descricao:
-        query = query.filter(PurchaseOrder.fornecedor_descricao.ilike(f'%{fornecedor_descricao}%'))
-    if observacao:
-        query = query.filter(PurchaseOrder.observacao.ilike(f'%{observacao}%'))
-
-    orders = query.all()
-    result = []
-    for order in orders:
-        order_data = {
-            'order_id': order.id,
-            'cod_pedc': order.cod_pedc,
-            'dt_emis': order.dt_emis,
-            'fornecedor_id': order.fornecedor_id,
-            'fornecedor_descricao': order.fornecedor_descricao,
-            'total_bruto': order.total_bruto,
-            'total_liquido': order.total_liquido,
-            'total_liquido_ipi': order.total_liquido_ipi,
-            'posicao': order.posicao,
-            'posicao_hist': order.posicao_hist,
-            'observacao': order.observacao,
-            'func_nome': order.func_nome,
-            'contato': order.contato,
-            'tp_frete_tra': order.tp_frete_tra,
-            'empr_id': order.empr_id,
-            'list_tpedc_pgto': order.list_tpedc_pgto
-        }
-        if include_items:
-            items = PurchaseItem.query.filter_by(purchase_order_id=order.id).all()
-            order_data['items'] = [{'item_id': item.id, 'descricao': item.descricao, 'quantidade': item.quantidade, 'preco_unitario': item.preco_unitario, 'total': item.total, 'unidade_medida': item.unidade_medida, 'dt_entrega': item.dt_entrega, 'perc_ipi': item.perc_ipi, 'tot_liquido_ipi': item.tot_liquido_ipi, 'tot_descontos': item.tot_descontos, 'tot_acrescimos': item.tot_acrescimos, 'qtde_canc': item.qtde_canc, 'qtde_canc_toler': item.qtde_canc_toler, 'perc_toler': item.perc_toler} for item in items]
         result.append(order_data)
     return jsonify(result), 200
