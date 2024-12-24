@@ -24,7 +24,7 @@ class PurchaseItem(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     purchase_order_id = db.Column(db.Integer, db.ForeignKey('purchase_orders.id'), nullable=False)
-    item_id = db.Column(db.Integer, nullable=False)
+    item_id = db.Column(db.String, nullable=False)
     cod_pedc = db.Column(db.String, nullable=False)
     linha = db.Column(db.Integer, nullable=True)
     descricao = db.Column(db.String, nullable=False)
