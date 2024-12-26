@@ -303,7 +303,7 @@ const UnifiedSearch = () => {
                   <tr key={item.id} className={`item-row ${item.quantidade === item.qtde_atendida ? 'atendida' : 'nao-atendida'}`}>
                     <td>{formatDate(result.dt_emis)}</td>
                     <td>{result.cod_pedc}</td>
-                    <td className="clickable" onClick={() => handleItemClick(item.item_id)}>{item.item_id}</td>
+                    <td className="clickable" onClick={() => handleItemClick(item.id)}>{item.item_id}</td>
                     <td>{item.descricao}</td>
                     <td>{formatNumber(item.quantidade)} {item.unidade_medida}</td>
                     <td>R$ {formatNumber(item.preco_unitario)}</td>
@@ -317,7 +317,7 @@ const UnifiedSearch = () => {
                 <tr key={result.id} className={`item-row ${result.quantidade === result.qtde_atendida ? 'atendida' : 'nao-atendida'}`}>
                   <td>{formatDate(result.order ? result.order.dt_emis : '')}</td>
                   <td>{result.cod_pedc}</td>
-                  <td className="clickable" onClick={() => handleItemClick(result.item_id)}>{result.item_id}</td>
+                  <td className="clickable" onClick={() => handleItemClick(result.id)}>{result.item_id}</td>
                   <td>{result.descricao}</td>
                   <td>{formatNumber(result.quantidade)} {result.unidade_medida}</td>
                   <td>R$ {formatNumber(result.preco_unitario)}</td>

@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { Chart, LineController, LineElement, PointElement, LinearScale, Title, CategoryScale } from 'chart.js';
+import { Chart, LineController, LineElement, PointElement, LinearScale, Title, CategoryScale, Tooltip } from 'chart.js';
 import './ItemScreen.css';
 
-Chart.register(LineController, LineElement, PointElement, LinearScale, Title, CategoryScale);
+Chart.register(LineController, LineElement, PointElement, LinearScale, Title, CategoryScale, Tooltip);
 
 const ItemScreen = ({ itemId, onClose }) => {
   const [itemDetails, setItemDetails] = useState(null);
@@ -43,6 +43,16 @@ const ItemScreen = ({ itemId, onClose }) => {
         },
         options: {
           responsive: true,
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const entry = priceHistory[context.dataIndex];
+                  return `Data: ${entry.date}, Preço: R$ ${entry.price}, Cod. Pedido: ${entry.cod_pedc}, Fornecedor: ${entry.fornecedor_descricao}`;
+                }
+              }
+            }
+          },
           scales: {
             x: {
               type: 'category',
@@ -65,7 +75,7 @@ const ItemScreen = ({ itemId, onClose }) => {
 
   return (
     <div className="item-screen">
-      <button className="close-button" onClick={onClose}>X</button>
+      <button className="close-button" onClick={onClose}>Fechar</button>
       {itemDetails && (
         <div>
           <h2>Detalhes do Item</h2>
