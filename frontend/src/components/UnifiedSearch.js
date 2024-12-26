@@ -276,6 +276,8 @@ const UnifiedSearch = () => {
             <th>Preço Unitário</th>
             <th>Total</th>
             <th>Observação do ped.</th>
+            <th>Qtde Atendida</th>
+            <th>Num NF</th>
           </tr>
         </thead>
         <tbody>
@@ -297,6 +299,8 @@ const UnifiedSearch = () => {
                     <td>R$ {formatNumber(item.preco_unitario)}</td>
                     <td>R$ {formatNumber(item.total)}</td>
                     <td>{result.observacao}</td>
+                    <td>{formatNumber(item.qtde_atendida)} {item.unidade_medida}</td>
+                    <td>{item.nfes.map(nf => nf.num_nf).join(', ')}</td>
                   </tr>
                 ))
               ) : (
@@ -309,6 +313,8 @@ const UnifiedSearch = () => {
                   <td>R$ {formatNumber(result.preco_unitario)}</td>
                   <td>R$ {formatNumber(result.total)}</td>
                   <td>{result.order ? result.order.observacao : ''}</td>
+                  <td>{formatNumber(result.qtde_atendida)} {result.unidade_medida}</td>
+                  <td>{result.nfes.map(nf => nf.num_nf).join(', ')}</td>
                 </tr>
               )}
             </React.Fragment>

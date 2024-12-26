@@ -17,6 +17,7 @@ class PurchaseOrder(db.Model):
     contato = db.Column(db.String, nullable=True)
     func_nome = db.Column(db.String, nullable=True)
     cf_pgto = db.Column(db.String, nullable=True)
+    cod_emp1 = db.Column(db.String, nullable=True)
     items = db.relationship('PurchaseItem', backref='purchase_order', lazy=True)
 
 class PurchaseItem(db.Model):
@@ -42,3 +43,15 @@ class PurchaseItem(db.Model):
     perc_toler = db.Column(db.Float, nullable=True)
     qtde_atendida = db.Column(db.Float, nullable=True)
     qtde_saldo = db.Column(db.Float, nullable=True)
+    cod_emp1 = db.Column(db.String, nullable=True)
+    
+class NFEntry(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    cod_emp1 = db.Column(db.String(50), nullable=False)
+    cod_pedc = db.Column(db.String(50), nullable=False)
+    linha = db.Column(db.Integer, nullable=True)
+    num_nf = db.Column(db.String(50), nullable=False)
+    text_field = db.Column(db.Text, nullable=True)
+    #purchase_item_id = db.Column(db.Integer, db.ForeignKey('purchase_item.id'), nullable=False)
+
+    #purchase_item = db.relationship('PurchaseItem', backref=db.backref('nf_entries', lazy=True))

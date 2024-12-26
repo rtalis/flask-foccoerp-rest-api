@@ -1,6 +1,6 @@
 from marshmallow import Schema, fields, post_load
 
-from app.models import PurchaseItem, PurchaseOrder
+from app.models import NFEntry, PurchaseItem, PurchaseOrder
 
 class PurchaseItemSchema(Schema):
     id = fields.Int(dump_only=True)
@@ -22,6 +22,7 @@ class PurchaseItemSchema(Schema):
     perc_toler = fields.Float(required=False)
     qtde_atendida = fields.Float(required=False)
     qtde_saldo = fields.Float(required=False)
+    cod_emp1 = fields.Str(required=False)
 
     @post_load
     def create_purchase_item(self, data, **kwargs):
@@ -42,8 +43,21 @@ class PurchaseOrderSchema(Schema):
     contato = fields.Str(required=False)
     func_nome = fields.Str(required=False)
     cf_pgto = fields.Str(required=False)
+    cod_emp1 = fields.Str(required=False)
     items = fields.List(fields.Nested(PurchaseItemSchema), required=False)
 
     @post_load
     def create_purchase_order(self, data, **kwargs):
         return PurchaseOrder(**data)
+    
+class NFEntrySchema(Schema):
+    id = fields.Int(dump_only=True)
+    cod_emp1 = fields.Str(required=True)
+    cod_pedc = fields.Str(required=True)
+    linha = fields.Int(required=False)
+    num_nf = fields.Str(required=True)
+    text_field = fields.Str(required=False)
+
+    @post_load
+    def create_nf_entry(self, data, **kwargs):
+        return NFEntry(**data)

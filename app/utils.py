@@ -21,7 +21,7 @@ def parse_xml(xml_data):
             'contato': order.find('CONTATO').text if order.find('CONTATO') is not None else None,
             'func_nome': order.find('FUNC_NOME').text if order.find('FUNC_NOME') is not None else None,
             'cf_pgto': order.find('CF_PGTO').text if order.find('CF_PGTO') is not None else None,
-
+            'cod_emp1': order.find('EMPR_ID').text if order.find('EMPR_ID') is not None else None,
 
 
             'items': []
@@ -49,6 +49,7 @@ def parse_xml(xml_data):
                 'perc_toler': float(item.find('PERC_TOLER').text.replace(',', '.')) if item.find('PERC_TOLER') is not None and item.find('PERC_TOLER').text else None,
                 'qtde_atendida': float(item.find('QTDE_ATENDIDA').text.replace(',', '.')) if item.find('QTDE_ATENDIDA') is not None and item.find('QTDE_ATENDIDA').text else None,
                 'qtde_saldo': float(item.find('QTDE_SALDO').text.replace(',', '.')) if item.find('QTDE_SALDO') is not None and item.find('QTDE_SALDO').text else None,
+                'cod_emp1': item.find('COD_EMP1').text if item.find('COD_EMP1') is not None else None
             }
             order_data['items'].append(item_data)
 
@@ -57,6 +58,8 @@ def parse_xml(xml_data):
     return {'purchase_orders': purchase_orders}
 
 def format_for_db(data):
+
+
     purchase_orders = data['purchase_orders']
     formatted_orders = []
     formatted_items = []
@@ -75,7 +78,8 @@ def format_for_db(data):
             'observacao': order['observacao'],
             'contato': order['contato'],
             'func_nome': order['func_nome'],
-            'cf_pgto': order['cf_pgto']
+            'cf_pgto': order['cf_pgto'],
+            'cod_emp1': order['cod_emp1']
             
         })
 
@@ -99,7 +103,30 @@ def format_for_db(data):
                 'perc_toler': item['perc_toler'],
                 'qtde_atendida': item['qtde_atendida'],
                 'qtde_saldo': item['qtde_saldo'],
-                'purchase_order_id': order['cod_pedc']  # Associando item ao pedido
+                'purchase_order_id': order['cod_pedc'], 
+                'cod_emp1': item['cod_emp1']
             })
 
     return formatted_orders, formatted_items
+
+def format_for_db_rpdc0250c(xml_data):
+    formatted_items = []
+    import xml.etree.ElementTree as ET
+
+    data = ET.fromstring(xml_data)
+    for g_cod_emp1 in data.findall('.//G_COD_EMP1'):
+        cod_emp1 = g_cod_emp1.find('COD_EMP').text
+        for cgg_tpedc_item in g_cod_emp1.findall('.//CGG_TPEDC_ITEM'):
+            cod_pedc = cgg_tpedc_item.find('CODIGO_PEDIDO').text
+            linha = cgg_tpedc_item.find('LINHA1').text
+            for g_nfe in cgg_tpedc_item.findall('.//G_NFE'):
+                num_nf = g_nfe.find('NUM_NF').text if g_nfe.find('NUM_NF') is not None else None
+                if num_nf:                
+                    formatted_items.append({
+                        'cod_emp1': cod_emp1,
+                        'cod_pedc': cod_pedc,
+                        'linha': linha,
+                        'num_nf': num_nf,
+                        'text_field': ''  # Campo de texto para uso futuro
+                    })
+    return formatted_items
