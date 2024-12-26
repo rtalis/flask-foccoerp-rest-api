@@ -24,6 +24,7 @@ class PurchaseItem(db.Model):
     __tablename__ = 'purchase_items'
 
     id = db.Column(db.Integer, primary_key=True)
+    dt_emis = db.Column(db.Date, nullable=False)
     purchase_order_id = db.Column(db.Integer, db.ForeignKey('purchase_orders.id'), nullable=False)
     item_id = db.Column(db.String, nullable=False)
     cod_pedc = db.Column(db.String, nullable=False)

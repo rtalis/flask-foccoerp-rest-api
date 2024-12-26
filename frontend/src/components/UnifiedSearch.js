@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import ItemScreen from './ItemScreen';
 import './UnifiedSearch.css'; // Adicione um arquivo CSS para estilos personalizados
 
 const UnifiedSearch = () => {
@@ -11,12 +12,10 @@ const UnifiedSearch = () => {
     searchByDescricao: true,
     searchByItemId: true,
     searchPrecision: 'precisa', // Adiciona o parâmetro de precisão de busca
-    score_cutoff: 100, // Valor padrão para precisão precisa
-    page: 1,
-    per_page: 100
+    score_cutoff: 100 // Valor padrão para precisão precisa
   });
   const [results, setResults] = useState([]);
-  const [totalPages, setTotalPages] = useState(1);
+  const [selectedItemId, setSelectedItemId] = useState(null);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -80,9 +79,7 @@ const UnifiedSearch = () => {
             params: {
               cod_pedc: searchParams.searchByCodPedc ? searchParams.query : '',
               fornecedor_descricao: searchParams.searchByFornecedor ? searchParams.query : '',
-              observacao: searchParams.searchByObservacao ? searchParams.query : '',
-              page: searchParams.page,
-              per_page: searchParams.per_page
+              observacao: searchParams.searchByObservacao ? searchParams.query : ''
             }
           });
           purchaseResponse = response.data;
@@ -92,9 +89,7 @@ const UnifiedSearch = () => {
           const response = await axios.get('http://localhost:5000/api/search_items', {
             params: {
               descricao: searchParams.searchByDescricao ? searchParams.query : '',
-              item_id: searchParams.searchByItemId ? searchParams.query : '',
-              page: searchParams.page,
-              per_page: searchParams.per_page
+              item_id: searchParams.searchByItemId ? searchParams.query : ''
             }
           });
           itemResponse = response.data;
@@ -109,9 +104,7 @@ const UnifiedSearch = () => {
             fornecedor_descricao: searchParams.searchByFornecedor ? searchParams.query : '',
             observacao: searchParams.searchByObservacao ? searchParams.query : '',
             descricao: searchParams.searchByDescricao ? searchParams.query : '',
-            item_id: searchParams.searchByItemId ? searchParams.query : '',
-            page: searchParams.page,
-            per_page: searchParams.per_page
+            item_id: searchParams.searchByItemId ? searchParams.query : ''
           }
         });
         const fuzzyResponse = response.data;
@@ -144,18 +137,17 @@ const UnifiedSearch = () => {
       });
 
       setResults(uniqueResults);
-      setTotalPages(Math.ceil(uniqueResults.length / searchParams.per_page));
     } catch (error) {
       console.error('Error fetching data', error);
     }
   };
 
-  const handlePageChange = (newPage) => {
-    setSearchParams({
-      ...searchParams,
-      page: newPage
-    });
-    handleSearch();
+  const handleItemClick = (itemId) => {
+    setSelectedItemId(itemId);
+  };
+
+  const handleCloseItemScreen = () => {
+    setSelectedItemId(null);
   };
 
   const formatDate = (dateString) => {
@@ -311,7 +303,7 @@ const UnifiedSearch = () => {
                   <tr key={item.id} className={`item-row ${item.quantidade === item.qtde_atendida ? 'atendida' : 'nao-atendida'}`}>
                     <td>{formatDate(result.dt_emis)}</td>
                     <td>{result.cod_pedc}</td>
-                    <td>{item.item_id}</td>
+                    <td className="clickable" onClick={() => handleItemClick(item.item_id)}>{item.item_id}</td>
                     <td>{item.descricao}</td>
                     <td>{formatNumber(item.quantidade)} {item.unidade_medida}</td>
                     <td>R$ {formatNumber(item.preco_unitario)}</td>
@@ -325,7 +317,7 @@ const UnifiedSearch = () => {
                 <tr key={result.id} className={`item-row ${result.quantidade === result.qtde_atendida ? 'atendida' : 'nao-atendida'}`}>
                   <td>{formatDate(result.order ? result.order.dt_emis : '')}</td>
                   <td>{result.cod_pedc}</td>
-                  <td>{result.item_id}</td>
+                  <td className="clickable" onClick={() => handleItemClick(result.item_id)}>{result.item_id}</td>
                   <td>{result.descricao}</td>
                   <td>{formatNumber(result.quantidade)} {result.unidade_medida}</td>
                   <td>R$ {formatNumber(result.preco_unitario)}</td>
@@ -339,21 +331,7 @@ const UnifiedSearch = () => {
           ))}
         </tbody>
       </table>
-      <div className="pagination">
-        <button
-          onClick={() => handlePageChange(searchParams.page - 1)}
-          disabled={searchParams.page === 1}
-        >
-          Anterior
-        </button>
-        <span>Página {searchParams.page} de {totalPages}</span>
-        <button
-          onClick={() => handlePageChange(searchParams.page + 1)}
-          disabled={searchParams.page === totalPages}
-        >
-          Próxima
-        </button>
-      </div>
+      {selectedItemId && <ItemScreen itemId={selectedItemId} onClose={handleCloseItemScreen} />}
     </div>
   );
 };

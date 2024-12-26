@@ -1,0 +1,31 @@
+.item-screen {
+    position: fixed;
+    align-items: center;
+    justify-content: center;
+    top: 2%;
+    left: 10%;
+    width: 80%;
+    height: 90%;
+    background-color: rgb(233, 233, 233);
+    z-index: 1000;
+    padding: 20px;
+    overflow-y: auto;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1), 0 6px 20px rgba(0, 0, 0, 0.1); /* Adiciona sombra */
+}
+
+.close-button {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background-color: red;
+    color: white;
+    border: none;
+    padding: 10px;
+    cursor: auto;
+}
+
+.clickable {
+    cursor: pointer;
+    color: blue;
+    text-decoration: underline;
+}

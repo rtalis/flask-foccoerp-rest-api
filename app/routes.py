@@ -71,6 +71,7 @@ def import_ruah(file_content):
                 item = PurchaseItem(
                     purchase_order_id=order.id,
                     item_id=item_data['item_id'],
+                    dt_emis=item_data['dt_emis'],
                     linha=item_data['linha'],
                     cod_pedc=item_data['cod_pedc'],
                     descricao=item_data['descricao'],
@@ -509,3 +510,27 @@ def get_nfentry():
         })
 
     return jsonify(result), 200
+
+
+
+@bp.route('/item_details/<item_id>', methods=['GET'])
+def get_item_details(item_id):
+    
+    item = PurchaseItem.query.filter_by(item_id=item_id).first()
+    if not item:
+        return jsonify({'error': 'Item not found'}), 404
+    purchase_data = PurchaseOrder.query.filter_by(cod_pedc=item.cod_pedc).first()
+
+    price_history = PurchaseItem.query.filter_by(item_id=item_id).all()
+    price_history_data = [{'date': entry.dt_emis, 'price': entry.preco_unitario} for entry in price_history]
+
+    item_data = {
+        'item_id': item.item_id,
+        'descricao': item.descricao,
+        'fornecedor_descricao': purchase_data.fornecedor_descricao,
+        'quantidade': item.quantidade,
+        'preco_unitario': item.preco_unitario,
+        'total': item.total,
+    }
+
+    return jsonify({'item': item_data, 'priceHistory': price_history_data}), 200

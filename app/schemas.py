@@ -5,6 +5,7 @@ from app.models import NFEntry, PurchaseItem, PurchaseOrder
 class PurchaseItemSchema(Schema):
     id = fields.Int(dump_only=True)
     item_id = fields.Int(required=True)
+    dt_emis = fields.Date(required=True)
     cod_pedc = fields.Str(required=True)
     linha = fields.Int(required=False)
     descricao = fields.Str(required=True)

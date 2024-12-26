@@ -86,6 +86,7 @@ def format_for_db(data):
         for item in order['items']:
             formatted_items.append({
                 'item_id': item['item_id'],
+                'dt_emis': order['dt_emis'],
                 'descricao': item['descricao'],
                 'cod_pedc': order['cod_pedc'],
                 'linha': item['linha'],
