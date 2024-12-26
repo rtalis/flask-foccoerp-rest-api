@@ -11,9 +11,12 @@ const UnifiedSearch = () => {
     searchByDescricao: true,
     searchByItemId: true,
     searchPrecision: 'precisa', // Adiciona o parâmetro de precisão de busca
-    score_cutoff: 100 // Valor padrão para precisão precisa
+    score_cutoff: 100, // Valor padrão para precisão precisa
+    page: 1,
+    per_page: 100
   });
   const [results, setResults] = useState([]);
+  const [totalPages, setTotalPages] = useState(1);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -77,7 +80,9 @@ const UnifiedSearch = () => {
             params: {
               cod_pedc: searchParams.searchByCodPedc ? searchParams.query : '',
               fornecedor_descricao: searchParams.searchByFornecedor ? searchParams.query : '',
-              observacao: searchParams.searchByObservacao ? searchParams.query : ''
+              observacao: searchParams.searchByObservacao ? searchParams.query : '',
+              page: searchParams.page,
+              per_page: searchParams.per_page
             }
           });
           purchaseResponse = response.data;
@@ -87,7 +92,9 @@ const UnifiedSearch = () => {
           const response = await axios.get('http://localhost:5000/api/search_items', {
             params: {
               descricao: searchParams.searchByDescricao ? searchParams.query : '',
-              item_id: searchParams.searchByItemId ? searchParams.query : ''
+              item_id: searchParams.searchByItemId ? searchParams.query : '',
+              page: searchParams.page,
+              per_page: searchParams.per_page
             }
           });
           itemResponse = response.data;
@@ -102,7 +109,9 @@ const UnifiedSearch = () => {
             fornecedor_descricao: searchParams.searchByFornecedor ? searchParams.query : '',
             observacao: searchParams.searchByObservacao ? searchParams.query : '',
             descricao: searchParams.searchByDescricao ? searchParams.query : '',
-            item_id: searchParams.searchByItemId ? searchParams.query : ''
+            item_id: searchParams.searchByItemId ? searchParams.query : '',
+            page: searchParams.page,
+            per_page: searchParams.per_page
           }
         });
         const fuzzyResponse = response.data;
@@ -135,9 +144,18 @@ const UnifiedSearch = () => {
       });
 
       setResults(uniqueResults);
+      setTotalPages(Math.ceil(uniqueResults.length / searchParams.per_page));
     } catch (error) {
       console.error('Error fetching data', error);
     }
+  };
+
+  const handlePageChange = (newPage) => {
+    setSearchParams({
+      ...searchParams,
+      page: newPage
+    });
+    handleSearch();
   };
 
   const formatDate = (dateString) => {
@@ -321,6 +339,21 @@ const UnifiedSearch = () => {
           ))}
         </tbody>
       </table>
+      <div className="pagination">
+        <button
+          onClick={() => handlePageChange(searchParams.page - 1)}
+          disabled={searchParams.page === 1}
+        >
+          Anterior
+        </button>
+        <span>Página {searchParams.page} de {totalPages}</span>
+        <button
+          onClick={() => handlePageChange(searchParams.page + 1)}
+          disabled={searchParams.page === totalPages}
+        >
+          Próxima
+        </button>
+      </div>
     </div>
   );
 };
