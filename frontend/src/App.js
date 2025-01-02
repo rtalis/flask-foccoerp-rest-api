@@ -1,3 +1,4 @@
+// filepath: /home/talison/dev/flask-rest-api/frontend/src/App.js
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
@@ -10,7 +11,7 @@ const App = () => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const response = await axios.get('http://localhost:5000/auth/protected');
+        const response = await axios.get('http://localhost:5000/auth/protected', { withCredentials: true });
         if (response.status === 200) {
           setIsAuthenticated(true);
           setTimeout(() => {
@@ -34,7 +35,7 @@ const App = () => {
 
   const handleLogout = async () => {
     try {
-      await axios.post('http://localhost:5000/auth/logout');
+      await axios.post('http://localhost:5000/auth/logout', {}, { withCredentials: true });
       setIsAuthenticated(false);
     } catch (error) {
       console.error('Error logging out', error);

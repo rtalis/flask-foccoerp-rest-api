@@ -80,7 +80,7 @@ const UnifiedSearch = ({ onLogout }) => {
               cod_pedc: searchParams.searchByCodPedc ? searchParams.query : '',
               fornecedor_descricao: searchParams.searchByFornecedor ? searchParams.query : '',
               observacao: searchParams.searchByObservacao ? searchParams.query : ''
-            }
+            }, withCredentials: true
           });
           purchaseResponse = response.data;
         }
@@ -90,7 +90,7 @@ const UnifiedSearch = ({ onLogout }) => {
             params: {
               descricao: searchParams.searchByDescricao ? searchParams.query : '',
               item_id: searchParams.searchByItemId ? searchParams.query : ''
-            }
+            }, withCredentials: true
           });
           itemResponse = response.data;
         }
@@ -105,7 +105,7 @@ const UnifiedSearch = ({ onLogout }) => {
             observacao: searchParams.searchByObservacao ? searchParams.query : '',
             descricao: searchParams.searchByDescricao ? searchParams.query : '',
             item_id: searchParams.searchByItemId ? searchParams.query : ''
-          }
+          }, withCredentials: true
         });
         const fuzzyResponse = response.data;
         purchaseResponse = fuzzyResponse.purchases;

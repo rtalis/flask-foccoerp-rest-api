@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, make_response
 from flask_login import login_user, logout_user, login_required
 from werkzeug.security import generate_password_hash, check_password_hash
 from app.models import User
@@ -9,25 +9,29 @@ auth_bp = Blueprint('auth', __name__)
 @auth_bp.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
-    email = data.get('email')
+    email = data.get('email').lower()
     password = data.get('password')
     user = User.query.filter_by(email=email).first()
     if user and check_password_hash(user.password, password):
-        login_user(user, remember=True)
-        return jsonify({'message': 'Logged in successfully'}), 200
+        login_user(user)
+        response = make_response(jsonify({'message': 'Logged in successfully'}), 200)
+        response.set_cookie('session', request.cookies.get('session'), httponly=True, samesite='Lax')
+        return response
     return jsonify({'error': 'Invalid credentials'}), 401
 
+
 @auth_bp.route('/logout', methods=['POST'])
-@login_required
 def logout():
     logout_user()
-    return jsonify({'message': 'Logged out successfully'}), 200
+    response = make_response(jsonify({'message': 'Logged out successfully'}), 200)
+    response.delete_cookie('session')
+    return response
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
-    username = data.get('username')
-    email = data.get('email')
+    username = data.get('username').lower()
+    email = data.get('email').lower()
     password = data.get('password')
     if User.query.filter_by(email=email).first():
         return jsonify({'error': 'Email already exists'}), 400

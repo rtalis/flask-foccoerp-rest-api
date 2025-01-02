@@ -13,7 +13,7 @@ const ItemScreen = ({ itemId, onClose }) => {
   useEffect(() => {
     const fetchItemDetails = async () => {
       try {
-        const response = await axios.get(`http://localhost:5000/api/item_details/${itemId}`);
+        const response = await axios.get(`http://localhost:5000/api/item_details/${itemId}`, { withCredentials: true });
         setItemDetails(response.data.item);
         setPriceHistory(response.data.priceHistory);
       } catch (error) {

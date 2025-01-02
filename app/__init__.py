@@ -3,6 +3,7 @@ from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager
+from config import Config
 import os
 
 
@@ -12,7 +13,7 @@ login_manager = LoginManager()
 
 def create_app():
     app = Flask(__name__)
-    app.config.from_object('config.Config')
+    app.config.from_object(Config)
 
     db.init_app(app)
     migrate.init_app(app, db)
@@ -26,7 +27,7 @@ def create_app():
         app.register_blueprint(routes.bp, url_prefix='/api')
         app.register_blueprint(auth.auth_bp, url_prefix='/auth')
         db.create_all()
-    CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}})
+    CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}}, supports_credentials=True)
 
     return app
 
