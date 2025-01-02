@@ -3,7 +3,7 @@ import axios from 'axios';
 import ItemScreen from './ItemScreen';
 import './UnifiedSearch.css'; // Adicione um arquivo CSS para estilos personalizados
 
-const UnifiedSearch = () => {
+const UnifiedSearch = ({ onLogout }) => {
   const [searchParams, setSearchParams] = useState({
     query: '',
     searchByCodPedc: true,
@@ -173,6 +173,8 @@ const UnifiedSearch = () => {
     <div className="unified-search">
       <h2>Pedidos de compras Ruah</h2>
       <div className="search-container">
+      <button onClick={onLogout} className="logout-button">Logout</button>
+
         <input
           type="text"
           name="query"
