@@ -32,6 +32,17 @@ def import_xml():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+
+@bp.route('/purchasers', methods=['GET'])
+@login_required
+def get_purchasers():
+    try:
+        purchasers = db.session.query(PurchaseOrder.func_nome).distinct().all()
+        purchaser_names = [purchaser[0] for purchaser in purchasers]
+        return jsonify(purchaser_names), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @bp.route('/purchases', methods=['GET'])
 @login_required
 def get_purchases():

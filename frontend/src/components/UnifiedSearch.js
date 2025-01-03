@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import ItemScreen from './ItemScreen';
 import './UnifiedSearch.css'; // Adicione um arquivo CSS para estilos personalizados
@@ -11,11 +11,35 @@ const UnifiedSearch = ({ onLogout }) => {
     searchByObservacao: true,
     searchByDescricao: true,
     searchByItemId: true,
+    searchByAtendido: true, // Adiciona o filtro por itens atendidos
+    searchByNaoAtendido: true, // Adiciona o filtro por itens não atendidos
     searchPrecision: 'precisa', // Adiciona o parâmetro de precisão de busca
-    score_cutoff: 100 // Valor padrão para precisão precisa
+    score_cutoff: 100, // Valor padrão para precisão precisa
+    selectedFuncName: 'todos' // Adiciona o filtro para o comprador selecionado
   });
   const [results, setResults] = useState([]);
   const [selectedItemId, setSelectedItemId] = useState(null);
+  const [funcNames, setFuncNames] = useState([]); // Estado para armazenar os nomes dos compradores
+  const [showAllItems, setShowAllItems] = useState({}); // Estado para controlar a exibição de todos os itens
+  const [showFuncName, setShowFuncName] = useState({});
+  
+  useEffect(() => {
+    // Buscar os nomes dos compradores do backend
+    const fetchFuncNames = async () => {
+      try {
+        const response = await axios.get('http://localhost:5000/api/purchasers', { withCredentials: true });
+        const sortedFuncNames = response.data
+          .map(name => name || 'Sem nome') // Substituir nomes nulos por "Sem nome"
+          .sort((a, b) => a.localeCompare(b));
+
+        setFuncNames(sortedFuncNames);
+      } catch (error) {
+        console.error('Error fetching purchasers', error);
+      }
+    };
+
+    fetchFuncNames();
+  }, []);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -74,13 +98,15 @@ const UnifiedSearch = ({ onLogout }) => {
       const seenIds = new Set();
 
       if (searchParams.searchPrecision === 'precisa') {
-        if (searchParams.searchByCodPedc || searchParams.searchByFornecedor || searchParams.searchByObservacao) {
+        if (searchParams.searchByCodPedc || searchParams.searchByFornecedor || searchParams.searchByObservacao || searchParams.searchByFuncName) {
           const response = await axios.get('http://localhost:5000/api/search_purchases', {
             params: {
               cod_pedc: searchParams.searchByCodPedc ? searchParams.query : '',
               fornecedor_descricao: searchParams.searchByFornecedor ? searchParams.query : '',
-              observacao: searchParams.searchByObservacao ? searchParams.query : ''
-            }, withCredentials: true
+              observacao: searchParams.searchByObservacao ? searchParams.query : '',
+              func_name: searchParams.searchByFuncName ? searchParams.selectedFuncName : ''
+            },
+            withCredentials: true
           });
           purchaseResponse = response.data;
         }
@@ -90,7 +116,8 @@ const UnifiedSearch = ({ onLogout }) => {
             params: {
               descricao: searchParams.searchByDescricao ? searchParams.query : '',
               item_id: searchParams.searchByItemId ? searchParams.query : ''
-            }, withCredentials: true
+            },
+            withCredentials: true
           });
           itemResponse = response.data;
         }
@@ -104,8 +131,10 @@ const UnifiedSearch = ({ onLogout }) => {
             fornecedor_descricao: searchParams.searchByFornecedor ? searchParams.query : '',
             observacao: searchParams.searchByObservacao ? searchParams.query : '',
             descricao: searchParams.searchByDescricao ? searchParams.query : '',
-            item_id: searchParams.searchByItemId ? searchParams.query : ''
-          }, withCredentials: true
+            item_id: searchParams.searchByItemId ? searchParams.query : '',
+            func_name: searchParams.searchByFuncName ? searchParams.selectedFuncName : ''
+          },
+          withCredentials: true
         });
         const fuzzyResponse = response.data;
         purchaseResponse = fuzzyResponse.purchases;
@@ -135,6 +164,9 @@ const UnifiedSearch = ({ onLogout }) => {
 
         return codPedcB - codPedcA; // Ordenar por código do pedido (mais alto primeiro)
       });
+
+      // Filtrar por itens atendidos e não atendidos
+
 
       setResults(uniqueResults);
     } catch (error) {
@@ -169,12 +201,25 @@ const UnifiedSearch = ({ onLogout }) => {
     return text.split(' ').slice(0, numWords).join(' ');
   };
 
+  const toggleShowAllItems = (orderId) => {
+    setShowAllItems(prevState => ({
+      ...prevState,
+      [orderId]: !prevState[orderId]
+    }));
+  };
+
+  const toggleShowFuncName = (funcName) => {
+    setShowFuncName(prevState => ({
+      ...prevState,
+      [funcName]: !prevState[funcName]
+    }));
+  };
+
   return (
     <div className="unified-search">
       <h2>Pedidos de compras Ruah</h2>
       <div className="search-container">
-      <button onClick={onLogout} className="logout-button">Logout</button>
-
+        <button onClick={onLogout} className="logout-button">Logout</button>
         <input
           type="text"
           name="query"
@@ -276,6 +321,64 @@ const UnifiedSearch = ({ onLogout }) => {
             Estou sem sorte
           </label>
         </div>
+        <div className="checkbox-group">
+          <h3>Mostrar compradores</h3>
+          <label>
+            <input
+              type="radio"
+              name="selectedFuncName"
+              value="todos"
+              checked={searchParams.selectedFuncName === 'todos'}
+              onChange={handleChange}
+            />
+            Todos os compradores
+          </label>
+          {funcNames.map((funcName) => (
+            <label key={funcName}>
+              <input
+                type="radio"
+                name="selectedFuncName"
+                value={funcName}
+                checked={searchParams.selectedFuncName === funcName}
+                onChange={handleChange}
+              />
+              {funcName}
+            </label>
+          ))}
+        </div>
+        <div className="checkbox-group">
+          <h3>Mostrar itens</h3>
+          <label>
+            <input
+              type="radio"
+              name="searchByAtendido"
+              value="todos"
+              checked={searchParams.searchByAtendido && searchParams.searchByNaoAtendido}
+              onChange={() => setSearchParams({ ...searchParams, searchByAtendido: true, searchByNaoAtendido: true })}
+            />
+            Todos os itens
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="searchByAtendido"
+              value="itens-concluidos"
+              checked={searchParams.searchByAtendido && !searchParams.searchByNaoAtendido}
+              onChange={() => setSearchParams({ ...searchParams, searchByAtendido: true, searchByNaoAtendido: false })}
+            />
+            Somente itens concluidos
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="searchByNaoAtendido"
+              value="itens-pendentes"
+              checked={!searchParams.searchByAtendido && searchParams.searchByNaoAtendido}
+              onChange={() => setSearchParams({ ...searchParams, searchByAtendido: false, searchByNaoAtendido: true })}
+            />
+            Somente itens pendentes
+          </label>
+        </div>
       </div>
       <table className="results-table">
         <thead>
@@ -293,44 +396,51 @@ const UnifiedSearch = ({ onLogout }) => {
           </tr>
         </thead>
         <tbody>
-          {results.map((result) => (
-            <React.Fragment key={result.cod_pedc}>
-              <tr>
-                <td colSpan="10" className="order-header">
-                  Pedido de Compra: {result.cod_pedc} ~ {result.order ? result.order.fornecedor_id : result.fornecedor_id} {getFirstWords(result.order ? result.order.fornecedor_descricao : result.fornecedor_descricao, 3)} - {formatCurrency(result.order ? result.order.total_bruto : result.total_bruto)} ~ Comprador: {result.order ? result.order.func_nome : result.func_nome}
-                </td>
-              </tr>
-              {result.items ? (
-                result.items.map((item) => (
-                  <tr key={item.id} className={`item-row ${item.quantidade === item.qtde_atendida ? 'atendida' : 'nao-atendida'}`}>
-                    <td>{formatDate(result.dt_emis)}</td>
-                    <td>{result.cod_pedc}</td>
-                    <td className="clickable" onClick={() => handleItemClick(item.id)}>{item.item_id}</td>
-                    <td>{item.descricao}</td>
-                    <td>{formatNumber(item.quantidade)} {item.unidade_medida}</td>
-                    <td>R$ {formatNumber(item.preco_unitario)}</td>
-                    <td>R$ {formatNumber(item.total)}</td>
-                    <td>{result.observacao}</td>
-                    <td>{formatNumber(item.qtde_atendida)} {item.unidade_medida}</td>
-                    <td>{item.nfes.map(nf => nf.num_nf).join(', ')}</td>
-                  </tr>
-                ))
-              ) : (
-                <tr key={result.id} className={`item-row ${result.quantidade === result.qtde_atendida ? 'atendida' : 'nao-atendida'}`}>
-                  <td>{formatDate(result.order ? result.order.dt_emis : '')}</td>
-                  <td>{result.cod_pedc}</td>
-                  <td className="clickable" onClick={() => handleItemClick(result.id)}>{result.item_id}</td>
-                  <td>{result.descricao}</td>
-                  <td>{formatNumber(result.quantidade)} {result.unidade_medida}</td>
-                  <td>R$ {formatNumber(result.preco_unitario)}</td>
-                  <td>R$ {formatNumber(result.total)}</td>
-                  <td>{result.order ? result.order.observacao : ''}</td>
-                  <td>{formatNumber(result.qtde_atendida)} {result.unidade_medida}</td>
-                  <td>{result.nfes.map(nf => nf.num_nf).join(', ')}</td>
+          {results.filter(item => showAllItems[item.cod_pedc] || (searchParams.searchByAtendido && item.quantidade === item.qtde_atendida) || (searchParams.searchByNaoAtendido && item.quantidade !== item.qtde_atendida))
+            .filter(result => showFuncName[result.func_nome] || searchParams.selectedFuncName === 'todos' || result.func_nome === searchParams.selectedFuncName)
+            .map((result) => (
+              <React.Fragment key={result.cod_pedc}>
+                <tr>
+                  <td colSpan="10" className="order-header">
+                    Pedido de Compra: {result.cod_pedc} ~ {result.order ? result.order.fornecedor_id : result.fornecedor_id} {getFirstWords(result.order ? result.order.fornecedor_descricao : result.fornecedor_descricao, 3)} - {formatCurrency(result.order ? result.order.total_bruto : result.total_bruto)} ~ Comprador: {result.order ? result.order.func_nome : result.func_nome}
+                    <button className={`botao-mostrar ${(searchParams.searchByAtendido !== searchParams.searchByNaoAtendido) ? 'visible' : ''}`} onClick={() => toggleShowAllItems(result.cod_pedc)}>
+                      {showAllItems[result.cod_pedc] ? 'Ocultar' : 'Mostrar todos'}
+                    </button>
+                  </td>
                 </tr>
-              )}
-            </React.Fragment>
-          ))}
+                {result.items ? (
+                  result.items
+                    .filter(item => showAllItems[result.cod_pedc] || (searchParams.searchByAtendido && item.quantidade === item.qtde_atendida) || (searchParams.searchByNaoAtendido && item.quantidade !== item.qtde_atendida))
+                    .map((item) => (
+                      <tr key={item.id} className={`item-row ${item.quantidade === item.qtde_atendida ? 'atendida' : 'nao-atendida'}`}>
+                        <td>{formatDate(result.dt_emis)}</td>
+                        <td>{result.cod_pedc}</td>
+                        <td className="clickable" onClick={() => handleItemClick(item.id)}>{item.item_id}</td>
+                        <td>{item.descricao}</td>
+                        <td>{formatNumber(item.quantidade)} {item.unidade_medida}</td>
+                        <td>R$ {formatNumber(item.preco_unitario)}</td>
+                        <td>R$ {formatNumber(item.total)}</td>
+                        <td>{result.observacao}</td>
+                        <td>{formatNumber(item.qtde_atendida)} {item.unidade_medida}</td>
+                        <td>{item.nfes.map(nf => nf.num_nf).join(', ')}</td>
+                      </tr>
+                    ))
+                ) : (
+                  <tr key={result.id} className={`item-row ${result.quantidade === result.qtde_atendida ? 'atendida' : 'nao-atendida'}`}>
+                    <td>{formatDate(result.order ? result.order.dt_emis : '')}</td>
+                    <td>{result.cod_pedc}</td>
+                    <td className="clickable" onClick={() => handleItemClick(result.id)}>{result.item_id}</td>
+                    <td>{result.descricao}</td>
+                    <td>{formatNumber(result.quantidade)} {result.unidade_medida}</td>
+                    <td>R$ {formatNumber(result.preco_unitario)}</td>
+                    <td>R$ {formatNumber(result.total)}</td>
+                    <td>{result.order ? result.order.observacao : ''}</td>
+                    <td>{formatNumber(result.qtde_atendida)} {result.unidade_medida}</td>
+                    <td>{result.nfes.map(nf => nf.num_nf).join(', ')}</td>
+                  </tr>
+                )}
+              </React.Fragment>
+            ))}
         </tbody>
       </table>
       {selectedItemId && <ItemScreen itemId={selectedItemId} onClose={handleCloseItemScreen} />}

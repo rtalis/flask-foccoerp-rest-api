@@ -13,6 +13,24 @@
   margin-bottom: 20px;
 }
 
+.botao-mostrar {
+  position: absolute;
+  right: 3%;
+  text-align: right;
+  align-items: center;
+  justify-content: center;
+  visibility: hidden;
+
+}
+
+.botao-mostrar:hover {
+  cursor: pointer;
+}
+
+.botao-mostrar.visible {
+  visibility: visible;
+}
+
 .logout-button {
   position: absolute;
   top: 10px;
@@ -58,7 +76,7 @@
 
 @media (max-width: 600px) {
   .search-button .text {
-      display: none;
+    display: none;
   }
 }
 
@@ -69,14 +87,12 @@
 
 .checkbox-group {
   float: left;
-  width: 45%; /* Ajuste conforme necessário */
+  width: 20%;
+  /* Ajuste conforme necessário */
   margin-right: 5%;
   margin-bottom: 10px;
 }
 
-.checkbox-group:nth-child(odd) {
-  clear: left;
-}
 
 .checkbox-group label {
   display: block;
@@ -93,7 +109,8 @@
   margin-top: 20px;
 }
 
-.results-table th, .results-table td {
+.results-table th,
+.results-table td {
   border: 1px solid #ccc;
   padding: 10px;
   text-align: left;
@@ -115,16 +132,19 @@
 }
 
 .item-row.atendida {
-  background-color: #d4edda; /* Verde claro para quantidade atendida */
+  background-color: #d4edda;
+  /* Verde claro para quantidade atendida */
 }
 
 .item-row.nao-atendida {
-  background-color: #f8edee; /* Vermelho claro para quantidade não atendida */
+  background-color: #f8edee;
+  /* Vermelho claro para quantidade não atendida */
 }
 
 .order-header {
   text-align: center;
-  background-color: #007bff; /* Fundo azul */
+  background-color: #007bff;
+  /* Fundo azul */
   font-weight: bold;
   color: white;
   padding: 10px;
