@@ -11,7 +11,7 @@ const Register = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await axios.post('http://localhost:5000/auth/register', { username, email, password });
+      const response = await axios.post(`${process.env.REACT_APP_API_URL}/auth/register`, { username, email, password });
       if (response.status === 201) {
         window.location.href = '/login';
       }

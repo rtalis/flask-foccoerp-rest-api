@@ -19,7 +19,9 @@ def login():
     if user and check_password_hash(user.password, password):
         login_user(user)
         response = make_response(jsonify({'message': 'Logged in successfully'}), 200)
-        response.set_cookie('session', request.cookies.get('session'), httponly=True, samesite='Lax')
+        session_cookie = request.cookies.get('session')
+        if session_cookie:
+            response.set_cookie('session', session_cookie, httponly=True, samesite='Lax')
         return response
     return jsonify({'error': 'Invalid credentials'}), 401
 

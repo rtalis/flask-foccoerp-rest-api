@@ -34,7 +34,7 @@ def create_app():
         app.register_blueprint(routes.bp, url_prefix='/api')
         app.register_blueprint(auth.auth_bp, url_prefix='/auth')
         db.create_all()
-    CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}}, supports_credentials=True)
+    CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
     return app
 

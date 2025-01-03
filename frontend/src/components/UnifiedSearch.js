@@ -22,12 +22,12 @@ const UnifiedSearch = ({ onLogout }) => {
   const [funcNames, setFuncNames] = useState([]); // Estado para armazenar os nomes dos compradores
   const [showAllItems, setShowAllItems] = useState({}); // Estado para controlar a exibição de todos os itens
   const [showFuncName, setShowFuncName] = useState({});
-  
+
   useEffect(() => {
     // Buscar os nomes dos compradores do backend
     const fetchFuncNames = async () => {
       try {
-        const response = await axios.get('http://localhost:5000/api/purchasers', { withCredentials: true });
+        const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/purchasers`, { withCredentials: true });
         const sortedFuncNames = response.data
           .map(name => name || 'Sem nome') // Substituir nomes nulos por "Sem nome"
           .sort((a, b) => a.localeCompare(b));
@@ -99,7 +99,7 @@ const UnifiedSearch = ({ onLogout }) => {
 
       if (searchParams.searchPrecision === 'precisa') {
         if (searchParams.searchByCodPedc || searchParams.searchByFornecedor || searchParams.searchByObservacao || searchParams.searchByFuncName) {
-          const response = await axios.get('http://localhost:5000/api/search_purchases', {
+          const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/search_purchases`, {
             params: {
               cod_pedc: searchParams.searchByCodPedc ? searchParams.query : '',
               fornecedor_descricao: searchParams.searchByFornecedor ? searchParams.query : '',
@@ -112,7 +112,7 @@ const UnifiedSearch = ({ onLogout }) => {
         }
 
         if (searchParams.searchByDescricao || searchParams.searchByItemId) {
-          const response = await axios.get('http://localhost:5000/api/search_items', {
+          const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/search_items`, {
             params: {
               descricao: searchParams.searchByDescricao ? searchParams.query : '',
               item_id: searchParams.searchByItemId ? searchParams.query : ''
@@ -122,7 +122,7 @@ const UnifiedSearch = ({ onLogout }) => {
           itemResponse = response.data;
         }
       } else {
-        const response = await axios.get('http://localhost:5000/api/search_fuzzy', {
+        const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/search_fuzzy`, {
           params: {
             query: searchParams.query,
             precision: searchParams.searchPrecision,
