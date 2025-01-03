@@ -4,6 +4,9 @@ import axios from 'axios';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import UnifiedSearch from './components/UnifiedSearch';
 import Login from './components/Login';
+import Register from './components/Register';
+import ImportFile from './components/ImportFile';
+
 
 const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -47,8 +50,9 @@ const App = () => {
       <div className="App">
         <Routes>
           <Route path="/login" element={isAuthenticated ? <Navigate to="/search" /> : <Login onLogin={handleLogin} />} />
-          <Route path="/register" element={isAuthenticated ? <Navigate to="/register" /> : <Login />} />
+          <Route path="/register" element={isAuthenticated ? <Register/> : <Login />} />
           <Route path="/search" element={isAuthenticated ? <UnifiedSearch onLogout={handleLogout} /> : <Navigate to="/login" />} />
+          <Route path="/import" element={isAuthenticated ? <ImportFile /> :  <Login /> } />
           <Route path="/" element={<Navigate to="/login" />} />
         </Routes>
       </div>
