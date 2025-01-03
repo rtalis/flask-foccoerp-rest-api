@@ -27,6 +27,7 @@ def login():
 
 
 @auth_bp.route('/logout', methods=['POST'])
+@login_required
 @limiter.limit("5 per 5 seconds")
 def logout():
     logout_user()
@@ -35,6 +36,7 @@ def logout():
     return response
 
 @auth_bp.route('/register', methods=['POST'])
+@login_required
 @limiter.limit("5 per 5 seconds")
 def register():
     data = request.get_json()
