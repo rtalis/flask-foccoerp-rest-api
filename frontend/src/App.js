@@ -47,7 +47,7 @@ const App = () => {
       <div className="App">
         <Routes>
           <Route path="/login" element={isAuthenticated ? <Navigate to="/search" /> : <Login onLogin={handleLogin} />} />
-          <Route path="/register" element={isAuthenticated ? <Navigate to="/search" /> : <Login />} />
+          <Route path="/register" element={isAuthenticated ? <Navigate to="/register" /> : <Login />} />
           <Route path="/search" element={isAuthenticated ? <UnifiedSearch onLogout={handleLogout} /> : <Navigate to="/login" />} />
           <Route path="/" element={<Navigate to="/login" />} />
         </Routes>
