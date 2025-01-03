@@ -3,10 +3,14 @@ from flask_login import login_user, logout_user, login_required
 from werkzeug.security import generate_password_hash, check_password_hash
 from app.models import User
 from app import db
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 auth_bp = Blueprint('auth', __name__)
+limiter = Limiter(key_func=get_remote_address)
 
 @auth_bp.route('/login', methods=['POST'])
+@limiter.limit("5 per 5 seconds")
 def login():
     data = request.get_json()
     email = data.get('email').lower()
@@ -21,6 +25,7 @@ def login():
 
 
 @auth_bp.route('/logout', methods=['POST'])
+@limiter.limit("5 per 5 seconds")
 def logout():
     logout_user()
     response = make_response(jsonify({'message': 'Logged out successfully'}), 200)
@@ -28,6 +33,7 @@ def logout():
     return response
 
 @auth_bp.route('/register', methods=['POST'])
+@limiter.limit("5 per 5 seconds")
 def register():
     data = request.get_json()
     username = data.get('username').lower()
@@ -42,6 +48,7 @@ def register():
     return jsonify({'message': 'User created successfully'}), 201
 
 @auth_bp.route('/protected', methods=['GET'])
+@limiter.limit("5 per 5 seconds")
 @login_required
 def protected():
     return jsonify({'message': 'This is a protected route'}), 200

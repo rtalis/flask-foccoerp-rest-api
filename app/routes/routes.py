@@ -4,9 +4,11 @@ from sqlalchemy import or_
 from flask_login import login_user, logout_user, login_required, current_user
 from app.models import NFEntry, PurchaseOrder, PurchaseItem, User
 from app.utils import  import_rpdc0250c, import_ruah
+
 from app import db
 
 bp = Blueprint('api', __name__)
+
 
 @bp.route('/import', methods=['POST'])
 @login_required
@@ -85,7 +87,11 @@ def search_items():
 
     if filters:
         query = query.filter(or_(*filters))
-    items = query.all()
+        items = query.all()
+    else:
+        items = PurchaseItem.query.limit(200).all()
+        
+    
     result = []
     for item in items:
         item_data = {
@@ -159,8 +165,11 @@ def search_purchases():
 
     if filters:
         query = query.filter(or_(*filters))
+        orders = query.all()
+    else:
+        orders = PurchaseOrder.query.limit(200).all()
 
-    orders = query.all()
+    
     result = []
     for order in orders:
         items = PurchaseItem.query.filter_by(purchase_order_id=order.id).all()
