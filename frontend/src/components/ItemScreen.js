@@ -1,3 +1,4 @@
+// filepath: /home/talison/dev/flask-rest-api/frontend/src/components/ItemScreen.js
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { Chart, LineController, LineElement, PointElement, LinearScale, Title, CategoryScale, Tooltip } from 'chart.js';
@@ -10,28 +11,61 @@ const ItemScreen = ({ itemId, onClose }) => {
   const [priceHistory, setPriceHistory] = useState([]);
   const [quotations, setQuotations] = useState([]);
   const [showQuotations, setShowQuotations] = useState(false);
+  const [searchType, setSearchType] = useState('item_id');
   const chartRef = useRef(null);
+  const chartInstanceRef = useRef(null);
+
 
   useEffect(() => {
-    const fetchItemDetails = async () => {
-      try {
-        const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/item_details/${itemId}`, { withCredentials: true });
-        setItemDetails(response.data.item);
-        setPriceHistory(response.data.priceHistory);
-      } catch (error) {
-        console.error('Error fetching item details', error);
-      }
-    };
-
     fetchItemDetails();
-  }, [itemId]);
+  }, [itemId, searchType]);
+
+  const fetchItemDetails = async () => {
+    try {
+      let response;
+      if (searchType === 'item_id') {
+        response = await axios.get(`${process.env.REACT_APP_API_URL}/api/item_details/${itemId}`, { withCredentials: true });
+      } else if (searchType === 'fuzzy_95') {
+        response = await axios.get(`${process.env.REACT_APP_API_URL}/api/search_item_fuzzy`, {
+          params: { descricao: itemDetails.descricao, score_cutoff: 95 },
+          withCredentials: true
+        });
+      } else if (searchType === 'fuzzy_70') {
+        response = await axios.get(`${process.env.REACT_APP_API_URL}/api/search_item_fuzzy`, {
+          params: { descricao: itemDetails.descricao, score_cutoff: 70 },
+          withCredentials: true
+        });
+      }
+      setItemDetails(response.data.item);
+      setPriceHistory(response.data.priceHistory);
+      setShowQuotations(false);
+
+    } catch (error) {
+      console.error('Error fetching item details', error);
+    }
+  };
+
   const fetchQuotations = async () => {
     try {
-      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/quotations`, {
-        params: { item_id: itemDetails.item_id },
-        withCredentials: true
+      let response;
+      if (searchType === 'item_id') {
+        response = await axios.get(`${process.env.REACT_APP_API_URL}/api/quotations`, {
+          params: { item_id: itemDetails.item_id },
+          withCredentials: true
+        });
+      } else {
+        response = await axios.get(`${process.env.REACT_APP_API_URL}/api/quotations_fuzzy`, {
+          params: { descricao: itemDetails.descricao, score_cutoff: searchType === 'fuzzy_95' ? 95 : 70 },
+          withCredentials: true
+        });
+      }
+      const uniqueQuotations = {};
+      response.data.forEach(quotation => {
+        if (!uniqueQuotations[quotation.fornecedor_descricao]) {
+          uniqueQuotations[quotation.fornecedor_descricao] = quotation;
+        }
       });
-      setQuotations(response.data);
+      setQuotations(Object.values(uniqueQuotations));
       setShowQuotations(true);
     } catch (error) {
       console.error('Error fetching quotations', error);
@@ -40,8 +74,11 @@ const ItemScreen = ({ itemId, onClose }) => {
 
   useEffect(() => {
     if (priceHistory.length > 0 && chartRef.current) {
+      if (chartInstanceRef.current) {
+        chartInstanceRef.current.destroy();
+      }
       const ctx = chartRef.current.getContext('2d');
-      new Chart(ctx, {
+      chartInstanceRef.current = new Chart(ctx, {
         type: 'line',
         data: {
           labels: priceHistory.map(entry => entry.date),
@@ -60,7 +97,7 @@ const ItemScreen = ({ itemId, onClose }) => {
           plugins: {
             tooltip: {
               callbacks: {
-                label: function(context) {
+                label: function (context) {
                   const entry = priceHistory[context.dataIndex];
                   return `Data: ${entry.date}, Preço: R$ ${entry.price}, Cod. Pedido: ${entry.cod_pedc}, Fornecedor: ${entry.fornecedor_descricao}`;
                 }
@@ -90,6 +127,35 @@ const ItemScreen = ({ itemId, onClose }) => {
   return (
     <div className="item-screen">
       <button className="close-button" onClick={onClose}>Fechar</button>
+      <div>
+        <label>
+          <input
+            type="radio"
+            value="item_id"
+            checked={searchType === 'item_id'}
+            onChange={() => setSearchType('item_id')}
+          />
+          ID do Item
+        </label>
+        <label>
+          <input
+            type="radio"
+            value="fuzzy_95"
+            checked={searchType === 'fuzzy_95'}
+            onChange={() => setSearchType('fuzzy_95')}
+          />
+          Nome do Item (95% similaridade)
+        </label>
+        <label>
+          <input
+            type="radio"
+            value="fuzzy_70"
+            checked={searchType === 'fuzzy_70'}
+            onChange={() => setSearchType('fuzzy_70')}
+          />
+          Nome do Item (70% similaridade)
+        </label>
+      </div>
       {itemDetails && (
         <div>
           <h2>Detalhes do Item</h2>
@@ -103,18 +169,16 @@ const ItemScreen = ({ itemId, onClose }) => {
           <h3>Histórico de Preços</h3>
           <canvas ref={chartRef}></canvas>
           <button onClick={fetchQuotations}>Show Older Quotations</button>
-
         </div>
-      )}      {showQuotations && (
+      )}
+      {showQuotations && (
         <div>
-          
           <h2>Older Quotations</h2>
           {quotations.length > 0 ? (
             <ul>
               {quotations.map((quotation) => (
                 <li key={quotation.cod_cot}>
-                  <p>Cotação: {quotation.cod_cot} - {quotation.fornecedor_descricao}</p>
-
+                  <p>{quotation.fornecedor_descricao}</p>
                 </li>
               ))}
             </ul>

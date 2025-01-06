@@ -225,25 +225,6 @@ def search_purchases():
         result.append(order_data)
     return jsonify(result), 200
 
-
-
-@bp.route('/search_item_fuzzy', methods=['GET'])
-@login_required
-def search_item_fuzzy():
-    descricao = request.args.get('descricao')
-    if not descricao:
-        return jsonify({'error': 'Descricao is required'}), 400
-
-    score_cutoff = int(request.args.get('score_cutoff', 80))  # Padrão para 80% de similaridade
-    all_items = PurchaseItem.query.all()
-    descriptions = [item.descricao for item in all_items]
-    matches = process.extractBests(descricao, descriptions, limit=10, score_cutoff=score_cutoff)
-    matched_items = [item for item in all_items if item.descricao in [match[0] for match in matches]]
-
-    result = [{'id':item.id, 'purchase_order_id': item.purchase_order_id, 'item_id': item.item_id, 'linha': item.linha, 'cod_pedc': item.cod_pedc, 'descricao': item.descricao, 'quantidade': item.quantidade, 'preco_unitario': item.preco_unitario, 'total': item.total, 'unidade_medida': item.unidade_medida, 'dt_entrega': item.dt_entrega, 'perc_ipi': item.perc_ipi, 'tot_liquido_ipi': item.tot_liquido_ipi, 'tot_descontos': item.tot_descontos, 'tot_acrescimos': item.tot_acrescimos, 'qtde_canc': item.qtde_canc, 'qtde_canc_toler': item.qtde_canc_toler, 'perc_toler': item.perc_toler} for item in matched_items]
-    return jsonify(result), 200
-
-
 @bp.route('/search_item_id', methods=['GET'])
 @login_required
 def search_item_id():
@@ -444,7 +425,8 @@ def get_nfentry():
 @bp.route('/item_details/<id>', methods=['GET'])
 @login_required
 def get_item_details(id):
-    
+    desc_for = ''
+    comprador = ''
     item = PurchaseItem.query.filter_by(id=id).first()
     if not item:
         return jsonify({'error': 'Item not found'}), 404
@@ -453,6 +435,9 @@ def get_item_details(id):
     price_history_data = []
     for entry in price_history:
         purchase_data = PurchaseOrder.query.filter_by(cod_pedc=entry.cod_pedc).first()
+        if item.cod_pedc == purchase_data.cod_pedc:
+            desc_for = purchase_data.fornecedor_descricao
+            comprador = purchase_data.func_nome
         entry.fornecedor_descricao = purchase_data.fornecedor_descricao
         price_history_data.append({'date': entry.dt_emis,
                                'price': entry.preco_unitario,
@@ -462,9 +447,9 @@ def get_item_details(id):
     item_data = {
         'item_id': item.item_id,
         'descricao': item.descricao,
-        'fornecedor_descricao': purchase_data.fornecedor_descricao,
+        'fornecedor_descricao': desc_for,
         'cod_pedc': item.cod_pedc,
-        'comprador': purchase_data.func_nome,
+        'comprador': comprador,
         'quantidade': item.quantidade,
         'preco_unitario': item.preco_unitario,
         'total': item.total,
@@ -482,6 +467,80 @@ def get_quotations():
     quotations = Quotation.query.filter_by(item_id=item_id).all()
     result = []
     for quotation in quotations:
+        result.append({
+            'cod_cot': quotation.cod_cot,
+            'dt_emissao': quotation.dt_emissao,
+            'fornecedor_id': quotation.fornecedor_id,
+            'fornecedor_descricao': quotation.fornecedor_descricao,
+            'item_id': quotation.item_id,
+            'descricao': quotation.descricao,
+            'quantidade': quotation.quantidade,
+            'preco_unitario': quotation.preco_unitario,
+            'dt_entrega': quotation.dt_entrega,
+            'cod_emp1': quotation.cod_emp1
+        })
+
+    return jsonify(result), 200
+
+@bp.route('/search_item_fuzzy', methods=['GET'])
+@login_required
+def search_item_fuzzy():
+    descricao = request.args.get('descricao')
+    score_cutoff = int(request.args.get('score_cutoff', 80))  # Padrão para 80% de similaridade
+    if not descricao:
+        return jsonify({'error': 'Descricao is required'}), 400
+
+    all_items = PurchaseItem.query.all()
+    descriptions = [item.descricao for item in all_items]
+    matches = process.extractBests(descricao, descriptions, limit=10, score_cutoff=score_cutoff)
+    matched_items = [item for item in all_items if item.descricao in [match[0] for match in matches]]
+
+    if not matched_items:
+        return jsonify({'error': 'No items found with the given description'}), 404
+
+    item = matched_items[0]
+        #price_history = PurchaseItem.query.filter_by(item_id=item.item_id).all()
+    price_history_data = []
+    for entry in matched_items:
+        purchase_data = PurchaseOrder.query.filter_by(cod_pedc=entry.cod_pedc).first()
+        entry.fornecedor_descricao = purchase_data.fornecedor_descricao
+        price_history_data.append({'date': entry.dt_emis,
+                                'price': entry.preco_unitario,
+                                'cod_pedc': entry.cod_pedc,
+                                'fornecedor_descricao': purchase_data.fornecedor_descricao})
+
+    item_data = {
+        'item_id': item.item_id,
+        'descricao': item.descricao,
+        'fornecedor_descricao': purchase_data.fornecedor_descricao,
+        'cod_pedc': item.cod_pedc,
+        'comprador': purchase_data.func_nome,
+        'quantidade': item.quantidade,
+        'preco_unitario': item.preco_unitario,
+        'total': item.total,
+    }
+
+    return jsonify({'item': item_data, 'priceHistory': price_history_data}), 200
+
+@bp.route('/quotations_fuzzy', methods=['GET'])
+@login_required
+def get_quotations_fuzzy():
+    descricao = request.args.get('descricao')
+    score_cutoff = int(request.args.get('score_cutoff', 80))  # Padrão para 80% de similaridade
+    if not descricao:
+        return jsonify({'error': 'Descricao is required'}), 400
+
+    all_quotations = Quotation.query.all()
+    descriptions = [quotation.descricao for quotation in all_quotations]
+    matches = process.extractBests(descricao, descriptions, limit=10, score_cutoff=score_cutoff)
+    matched_quotations = [quotation for quotation in all_quotations if quotation.descricao in [match[0] for match in matches]]
+
+    if not matched_quotations:
+        return jsonify({'error': 'No quotations found with the given description'}), 404
+
+
+    result = []
+    for quotation in matched_quotations:
         result.append({
             'cod_cot': quotation.cod_cot,
             'dt_emissao': quotation.dt_emissao,
