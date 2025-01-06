@@ -72,3 +72,17 @@ class LoginHistory(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     login_time = db.Column(db.DateTime, default=datetime.now)
     logout_time = db.Column(db.DateTime, nullable=True)
+    
+class Quotation(db.Model):
+    __tablename__ = 'quotations'
+    id = db.Column(db.Integer, primary_key=True)
+    cod_cot = db.Column(db.String, nullable=False)
+    dt_emissao = db.Column(db.Date, nullable=False)
+    fornecedor_id = db.Column(db.Integer, nullable=False)
+    fornecedor_descricao = db.Column(db.String, nullable=False)
+    item_id = db.Column(db.String, nullable=False)
+    descricao = db.Column(db.String, nullable=False)
+    quantidade = db.Column(db.Float, nullable=False)
+    preco_unitario = db.Column(db.Float, nullable=True)
+    dt_entrega = db.Column(db.Date, nullable=True)
+    cod_emp1 = db.Column(db.String, nullable=True)

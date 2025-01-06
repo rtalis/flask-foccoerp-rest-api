@@ -2,8 +2,8 @@ from fuzzywuzzy import process
 from flask import Blueprint, request, jsonify
 from sqlalchemy import or_
 from flask_login import login_user, logout_user, login_required, current_user
-from app.models import NFEntry, PurchaseOrder, PurchaseItem, User
-from app.utils import  import_rpdc0250c, import_ruah
+from app.models import NFEntry, PurchaseOrder, PurchaseItem, Quotation, User
+from app.utils import  import_rcot0300, import_rpdc0250c, import_ruah
 
 from app import db
 
@@ -27,6 +27,8 @@ def import_xml():
             return import_ruah(file_content)
         elif b'<RPDC0250C>' in file_content:
             return import_rpdc0250c(file_content)
+        elif b'<RCOT0300>' in file_content:
+            return import_rcot0300(file_content)
         else:
             return jsonify({'error': 'Invalid XML header'}), 400
 
@@ -469,3 +471,28 @@ def get_item_details(id):
     }
 
     return jsonify({'item': item_data, 'priceHistory': price_history_data}), 200
+
+@bp.route('/quotations', methods=['GET'])
+@login_required
+def get_quotations():
+    item_id = request.args.get('item_id')
+    if not item_id:
+        return jsonify({'error': 'item_id is required'}), 400
+
+    quotations = Quotation.query.filter_by(item_id=item_id).all()
+    result = []
+    for quotation in quotations:
+        result.append({
+            'cod_cot': quotation.cod_cot,
+            'dt_emissao': quotation.dt_emissao,
+            'fornecedor_id': quotation.fornecedor_id,
+            'fornecedor_descricao': quotation.fornecedor_descricao,
+            'item_id': quotation.item_id,
+            'descricao': quotation.descricao,
+            'quantidade': quotation.quantidade,
+            'preco_unitario': quotation.preco_unitario,
+            'dt_entrega': quotation.dt_entrega,
+            'cod_emp1': quotation.cod_emp1
+        })
+
+    return jsonify(result), 200

@@ -1,6 +1,6 @@
 from marshmallow import Schema, fields, post_load
 
-from app.models import NFEntry, PurchaseItem, PurchaseOrder
+from app.models import NFEntry, PurchaseItem, PurchaseOrder, Quotation
 
 class PurchaseItemSchema(Schema):
     id = fields.Int(dump_only=True)
@@ -62,3 +62,20 @@ class NFEntrySchema(Schema):
     @post_load
     def create_nf_entry(self, data, **kwargs):
         return NFEntry(**data)
+    
+class QuotationSchema(Schema):
+    id = fields.Int(dump_only=True)
+    cod_cot = fields.Str(required=True)
+    dt_emissao = fields.Date(required=True)
+    fornecedor_id = fields.Int(required=True)
+    fornecedor_descricao = fields.Str(required=True)
+    item_id = fields.Str(required=True)
+    descricao = fields.Str(required=True)
+    quantidade = fields.Float(required=True)
+    preco_unitario = fields.Float(required=False)
+    dt_entrega = fields.Date(required=False)
+    cod_emp1 = fields.Str(required=False)
+
+    @post_load
+    def create_quotation(self, data, **kwargs):
+        return Quotation(**data)

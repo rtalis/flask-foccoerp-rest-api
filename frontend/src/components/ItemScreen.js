@@ -8,6 +8,8 @@ Chart.register(LineController, LineElement, PointElement, LinearScale, Title, Ca
 const ItemScreen = ({ itemId, onClose }) => {
   const [itemDetails, setItemDetails] = useState(null);
   const [priceHistory, setPriceHistory] = useState([]);
+  const [quotations, setQuotations] = useState([]);
+  const [showQuotations, setShowQuotations] = useState(false);
   const chartRef = useRef(null);
 
   useEffect(() => {
@@ -23,6 +25,18 @@ const ItemScreen = ({ itemId, onClose }) => {
 
     fetchItemDetails();
   }, [itemId]);
+  const fetchQuotations = async () => {
+    try {
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/quotations`, {
+        params: { item_id: itemDetails.item_id },
+        withCredentials: true
+      });
+      setQuotations(response.data);
+      setShowQuotations(true);
+    } catch (error) {
+      console.error('Error fetching quotations', error);
+    }
+  };
 
   useEffect(() => {
     if (priceHistory.length > 0 && chartRef.current) {
@@ -85,8 +99,28 @@ const ItemScreen = ({ itemId, onClose }) => {
           <p><strong>Quantidade:</strong> {itemDetails.quantidade}</p>
           <p><strong>Preço Unitário:</strong> R$ {itemDetails.preco_unitario}</p>
           <p><strong>Total:</strong> R$ {itemDetails.total}</p>
+
           <h3>Histórico de Preços</h3>
           <canvas ref={chartRef}></canvas>
+          <button onClick={fetchQuotations}>Show Older Quotations</button>
+
+        </div>
+      )}      {showQuotations && (
+        <div>
+          
+          <h2>Older Quotations</h2>
+          {quotations.length > 0 ? (
+            <ul>
+              {quotations.map((quotation) => (
+                <li key={quotation.cod_cot}>
+                  <p>Cotação: {quotation.cod_cot} - {quotation.fornecedor_descricao}</p>
+
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>No quotations found for this item.</p>
+          )}
         </div>
       )}
     </div>

@@ -1,5 +1,6 @@
+from datetime import datetime
 from flask import jsonify
-from app.models import NFEntry, PurchaseItem, PurchaseOrder
+from app.models import NFEntry, PurchaseItem, PurchaseOrder, Quotation
 from app import db
 
 def parse_xml(xml_data):
@@ -233,3 +234,71 @@ def import_rpdc0250c(file_content):
 
     db.session.commit()
     return jsonify({'message': 'Data imported successfully items {}, updated {}'.format(itemcount, updated)}), 201
+
+def parse_rcot0300(xml_data):
+    import xml.etree.ElementTree as ET
+
+    root = ET.fromstring(xml_data)
+    quotations = []
+
+    for g1 in root.findall('.//G_1'):
+        cod_cot = g1.find('COD_COT').text if g1.find('COD_COT') is not None else None
+        dt_emissao = g1.find('DT_EMISSAO').text if g1.find('DT_EMISSAO') is not None else None
+        dt_emissao = datetime.strptime(dt_emissao, '%d/%m/%y').strftime('%Y-%m-%d') if dt_emissao else None
+
+        for g2 in g1.findall('.//G_2'):
+            for g3 in g2.findall('.//G_3'):
+                fornecedor_id = g3.find('ID_FORN').text if g3.find('ID_FORN') is not None else None
+                fornecedor_descricao = g3.find('FORNECEDOR').text if g3.find('FORNECEDOR') is not None else None
+
+                for g4 in g3.findall('.//G_4'):
+                    item_id = g4.find('COD_ITEM').text if g4.find('COD_ITEM') is not None else None
+                    descricao = g4.find('DESC_ITEM').text if g4.find('DESC_ITEM') is not None else None
+                    quantidade = g4.find('QTDE').text if g4.find('QTDE') is not None else None
+                    quantidade = float(quantidade.replace(',', '.')) if quantidade else None
+                    preco_unitario = g4.find('PRECO_UNITARIO').text if g4.find('PRECO_UNITARIO') is not None else None
+                    preco_unitario = float(preco_unitario.replace(',', '.')) if preco_unitario else None
+                    dt_entrega = g4.find('DT_ENTREGA').text if g4.find('DT_ENTREGA') is not None else None
+                    dt_entrega = datetime.strptime(dt_entrega, '%d/%m/%y').strftime('%Y-%m-%d') if dt_entrega else None
+                    cod_emp1 = g4.find('COD_EMP').text if g4.find('COD_EMP') is not None else None
+
+                    quotation_data = {
+                        'cod_cot': cod_cot,
+                        'dt_emissao': dt_emissao,
+                        'fornecedor_id': fornecedor_id,
+                        'fornecedor_descricao': fornecedor_descricao,
+                        'item_id': item_id,
+                        'descricao': descricao,
+                        'quantidade': quantidade,
+                        'preco_unitario': preco_unitario,
+                        'dt_entrega': dt_entrega,
+                        'cod_emp1': cod_emp1
+                    }
+                    quotations.append(quotation_data)
+
+    return {'quotations': quotations}
+
+
+def import_rcot0300(file_content):
+    data = parse_rcot0300(file_content)
+    quotations = data['quotations']
+    quotation_count = 0
+
+    for quotation_data in quotations:
+        quotation = Quotation(
+            cod_cot=quotation_data['cod_cot'],
+            dt_emissao=quotation_data['dt_emissao'],
+            fornecedor_id=quotation_data['fornecedor_id'],
+            fornecedor_descricao=quotation_data['fornecedor_descricao'],
+            item_id=quotation_data['item_id'],
+            descricao=quotation_data['descricao'],
+            quantidade=quotation_data['quantidade'],
+            preco_unitario=quotation_data['preco_unitario'],
+            dt_entrega=quotation_data['dt_entrega'],
+            cod_emp1=quotation_data['cod_emp1']
+        )
+        quotation_count += 1
+        db.session.add(quotation)
+
+    db.session.commit()
+    return jsonify({'message': 'Data imported successfully, quotations {}'.format(quotation_count)}), 201
