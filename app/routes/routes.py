@@ -435,7 +435,7 @@ def get_item_details(id):
     price_history = PurchaseItem.query.filter_by(item_id=item.item_id).all()
     price_history_data = []
     for entry in price_history:
-        purchase_data = PurchaseOrder.query.filter_by(cod_pedc=entry.cod_pedc).first()
+        purchase_data = PurchaseOrder.query.order_by(PurchaseOrder.dt_emis).filter_by(cod_pedc=entry.cod_pedc).first()
         if item.cod_pedc == purchase_data.cod_pedc:
             desc_for = purchase_data.fornecedor_descricao
             comprador = purchase_data.func_nome

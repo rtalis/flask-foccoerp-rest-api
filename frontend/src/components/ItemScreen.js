@@ -129,7 +129,12 @@ const ItemScreen = ({ itemId, onClose }) => {
   return (
     <div className="item-screen">
       <button className="close-button" onClick={onClose}>Fechar</button>
-      <div>
+      
+      {itemDetails && (
+        <div>
+          <h2>Detalhes do Item</h2>
+            <div>
+            <h3>Gráfico por:</h3>
         <label>
           <input
             type="radio"
@@ -157,10 +162,9 @@ const ItemScreen = ({ itemId, onClose }) => {
           />
           Nome do Item (70% similaridade)
         </label>
+        <br/>
       </div>
-      {itemDetails && (
-        <div>
-          <h2>Detalhes do Item</h2>
+
           <p><strong>ID do Item:</strong> {itemDetails.item_id}</p>
           <p><strong>Descrição:</strong> {itemDetails.descricao}</p>
           <p><strong>Fornecedor:</strong> {itemDetails.fornecedor_descricao}</p>
