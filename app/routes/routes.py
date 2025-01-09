@@ -1,4 +1,4 @@
-from fuzzywuzzy import process
+from fuzzywuzzy import process, fuzz
 from flask import Blueprint, request, jsonify
 from sqlalchemy import or_
 from flask_login import login_user, logout_user, login_required, current_user
@@ -89,9 +89,9 @@ def search_items():
 
     if filters:
         query = query.filter(or_(*filters))
-        items = query.all()
+        items = query.order_by(PurchaseItem.dt_emis.desc()).all()
     else:
-        items = PurchaseItem.query.limit(200).all()
+        items = PurchaseItem.query.order_by(PurchaseItem.dt_emis.desc()).limit(200).all()
         
     
     result = []
@@ -167,9 +167,9 @@ def search_purchases():
 
     if filters:
         query = query.filter(or_(*filters))
-        orders = query.all()
+        orders = query.order_by(PurchaseOrder.dt_emis.desc()).all()
     else:
-        orders = PurchaseOrder.query.limit(200).all()
+        orders = PurchaseOrder.query.order_by(PurchaseOrder.dt_emis.desc()).limit(200).all()
 
     
     result = []
@@ -274,15 +274,16 @@ def search_fuzzy():
     if not query or not score_cutoff:
         return jsonify({'error': 'Query required'}), 400
 
-    all_items = PurchaseItem.query.all()
-    all_orders = PurchaseOrder.query.all()
+    all_items = PurchaseItem.query.order_by(PurchaseItem.dt_emis.desc()).all()
+    all_orders = PurchaseOrder.query.order_by(PurchaseOrder.dt_emis.desc()).all()
    
-    item_descriptions = [item.descricao for item in all_items]
-    order_observations = [order.observacao for order in all_orders]
+    item_descriptions = {item.descricao: item for item in all_items if item.descricao is not None}
+    order_observations = {order.observacao: order for order in all_orders if order.observacao is not None}
 
-    item_matches = process.extractBests(query, item_descriptions, score_cutoff=score_cutoff)
-    order_matches = process.extractBests(query, order_observations, score_cutoff=score_cutoff)
 
+
+    item_matches = process.extractBests(str(query), item_descriptions.keys(), score_cutoff=score_cutoff, scorer=fuzz.partial_ratio)
+    order_matches = process.extractBests(str(query), order_observations.keys(), score_cutoff=score_cutoff,scorer=fuzz.partial_ratio)
     matched_items = [item for item in all_items if item.descricao in [match[0] for match in item_matches]]
     matched_orders = [order for order in all_orders if order.observacao in [match[0] for match in order_matches]]
 
@@ -464,7 +465,7 @@ def get_quotations():
     if not item_id:
         return jsonify({'error': 'item_id is required'}), 400
 
-    quotations = Quotation.query.filter_by(item_id=item_id).all()
+    quotations = Quotation.query.order_by(Quotation.fornecedor_descricao).filter_by(item_id=item_id).all()
     result = []
     for quotation in quotations:
         result.append({

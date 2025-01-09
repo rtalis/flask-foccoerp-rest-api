@@ -120,6 +120,7 @@ const UnifiedSearch = ({ onLogout }) => {
             withCredentials: true
           });
           itemResponse = response.data;
+          
         }
       } else {
         const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/search_fuzzy`, {
@@ -396,7 +397,7 @@ const UnifiedSearch = ({ onLogout }) => {
           </tr>
         </thead>
         <tbody>
-          {results.filter(item => showAllItems[item.cod_pedc] || (searchParams.searchByAtendido && item.quantidade === item.qtde_atendida) || (searchParams.searchByNaoAtendido && item.quantidade !== item.qtde_atendida))
+          {results.filter(item => showAllItems[item.cod_pedc] || (searchParams.searchByAtendido && item.quantidade === item.qtde_atendida) || (searchParams.searchByNaoAtendido && item.quantidade === item.qtde_atendida))
             .filter(result => showFuncName[result.func_nome] || searchParams.selectedFuncName === 'todos' || result.func_nome === searchParams.selectedFuncName)
             .map((result) => (
               <React.Fragment key={result.cod_pedc}>

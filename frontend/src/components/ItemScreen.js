@@ -65,7 +65,9 @@ const ItemScreen = ({ itemId, onClose }) => {
           uniqueQuotations[quotation.fornecedor_descricao] = quotation;
         }
       });
-      setQuotations(Object.values(uniqueQuotations));
+
+      const sortedQuotations = Object.values(uniqueQuotations).sort((a, b) => a.fornecedor_descricao.localeCompare(b.fornecedor_descricao));
+      setQuotations(sortedQuotations);
       setShowQuotations(true);
     } catch (error) {
       console.error('Error fetching quotations', error);
@@ -177,8 +179,8 @@ const ItemScreen = ({ itemId, onClose }) => {
           {quotations.length > 0 ? (
             <ul>
               {quotations.map((quotation) => (
-                <li key={quotation.cod_cot}>
-                  <p>{quotation.fornecedor_descricao}</p>
+                <li key={quotation.fornecedor_descricao}>
+                  <p>{quotation.fornecedor_id.toString().padStart(6, ' ')} - {quotation.fornecedor_descricao}</p>
                 </li>
               ))}
             </ul>

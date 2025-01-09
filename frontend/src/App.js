@@ -1,7 +1,7 @@
 // filepath: /home/talison/dev/flask-rest-api/frontend/src/App.js
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, Navigate, useNavigate } from 'react-router-dom';
 import UnifiedSearch from './components/UnifiedSearch';
 import Login from './components/Login';
 import Register from './components/Register';
@@ -10,6 +10,7 @@ import ImportFile from './components/ImportFile';
 
 const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -40,24 +41,29 @@ const App = () => {
     try {
       await axios.post(`${process.env.REACT_APP_API_URL}/auth/logout`, {}, { withCredentials: true });
       setIsAuthenticated(false);
+      navigate('/login');
     } catch (error) {
       console.error('Error logging out', error);
     }
   };
 
   return (
-    <Router>
-      <div className="App">
-        <Routes>
-          <Route path="/login" element={isAuthenticated ? <Navigate to="/search" /> : <Login onLogin={handleLogin} />} />
-          <Route path="/register" element={isAuthenticated ? <Register/> : <Login />} />
-          <Route path="/search" element={isAuthenticated ? <UnifiedSearch onLogout={handleLogout} /> : <Navigate to="/login" />} />
-          <Route path="/import" element={isAuthenticated ? <ImportFile /> :  <Login /> } />
-          <Route path="/" element={<Navigate to="/login" />} />
-        </Routes>
-      </div>
-    </Router>
+    <div className="App">
+      <Routes>
+        <Route path="/login" element={isAuthenticated ? <Navigate to="/search" /> : <Login onLogin={handleLogin} />} />
+        <Route path="/register" element={isAuthenticated ? <Register /> : <Login />} />
+        <Route path="/search" element={isAuthenticated ? <UnifiedSearch onLogout={handleLogout} /> : <Navigate to="/login" />} />
+        <Route path="/import" element={isAuthenticated ? <ImportFile /> : <Login />} />
+        <Route path="/" element={<Navigate to="/login" />} />
+      </Routes>
+    </div>
   );
 };
 
-export default App;
+const AppWithRouter = () => (
+  <Router>
+    <App />
+  </Router>
+);
+
+export default AppWithRouter;
