@@ -432,7 +432,7 @@ def get_item_details(id):
     if not item:
         return jsonify({'error': 'Item not found'}), 404
 
-    price_history = PurchaseItem.query.filter_by(item_id=item.item_id).all()
+    price_history = PurchaseItem.query.order_by(PurchaseItem.dt_emis).filter_by(item_id=item.item_id).all()
     price_history_data = []
     for entry in price_history:
         purchase_data = PurchaseOrder.query.order_by(PurchaseOrder.dt_emis).filter_by(cod_pedc=entry.cod_pedc).first()
@@ -533,7 +533,7 @@ def get_quotations_fuzzy():
 
     all_quotations = Quotation.query.all()
     descriptions = [quotation.descricao for quotation in all_quotations]
-    matches = process.extractBests(descricao, descriptions, limit=10, score_cutoff=score_cutoff)
+    matches = process.extractBests(descricao, descriptions, limit=30, score_cutoff=score_cutoff)
     matched_quotations = [quotation for quotation in all_quotations if quotation.descricao in [match[0] for match in matches]]
 
     if not matched_quotations:
