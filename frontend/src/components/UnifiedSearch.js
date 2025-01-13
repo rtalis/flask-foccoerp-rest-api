@@ -6,13 +6,6 @@ import './UnifiedSearch.css'; // Adicione um arquivo CSS para estilos personaliz
 const UnifiedSearch = ({ onLogout }) => {
   const [searchParams, setSearchParams] = useState({
     query: '',
-    searchByCodPedc: true,
-    searchByFornecedor: true,
-    searchByObservacao: true,
-    searchByDescricao: true,
-    searchByItemId: true,
-    searchByAtendido: true, // Adiciona o filtro por itens atendidos
-    searchByNaoAtendido: true, // Adiciona o filtro por itens não atendidos
     searchPrecision: 'precisa', // Adiciona o parâmetro de precisão de busca
     score_cutoff: 100, // Valor padrão para precisão precisa
     selectedFuncName: 'todos' // Adiciona o filtro para o comprador selecionado
@@ -22,6 +15,11 @@ const UnifiedSearch = ({ onLogout }) => {
   const [funcNames, setFuncNames] = useState([]); // Estado para armazenar os nomes dos compradores
   const [showAllItems, setShowAllItems] = useState({}); // Estado para controlar a exibição de todos os itens
   const [showFuncName, setShowFuncName] = useState({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const [noResults, setNoResults] = useState(0);
+  const [perPage, setPerPage] = useState(100);
+
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
     // Buscar os nomes dos compradores do backend
@@ -50,30 +48,21 @@ const UnifiedSearch = ({ onLogout }) => {
         setSearchParams({
           ...searchParams,
           searchPrecision: value,
-          score_cutoff: score_cutoff,
-          searchByCodPedc: true,
-          searchByFornecedor: true,
-          searchByItemId: true
+          score_cutoff: score_cutoff
         });
       } else if (value === 'fuzzy') {
         score_cutoff = 70;
         setSearchParams({
           ...searchParams,
           searchPrecision: value,
-          score_cutoff: score_cutoff,
-          searchByCodPedc: false,
-          searchByFornecedor: false,
-          searchByItemId: false
+          score_cutoff: score_cutoff
         });
       } else if (value === 'tentar_a_sorte') {
         score_cutoff = 50;
         setSearchParams({
           ...searchParams,
           searchPrecision: value,
-          score_cutoff: score_cutoff,
-          searchByCodPedc: false,
-          searchByFornecedor: false,
-          searchByItemId: false
+          score_cutoff: score_cutoff
         });
       }
     } else {
@@ -90,88 +79,33 @@ const UnifiedSearch = ({ onLogout }) => {
     }
   };
 
-  const handleSearch = async () => {
+  const handleSearch = async (page = 1) => {
     try {
-      let purchaseResponse = [];
-      let itemResponse = [];
-      const uniqueResults = [];
-      const seenIds = new Set();
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/search_combined`, {
+        params: {
+          query: searchParams.query,
+          page: page,
+          per_page: perPage,
+          score_cutoff: searchParams.score_cutoff
+        },
+        withCredentials: true
+      });
 
-      if (searchParams.searchPrecision === 'precisa') {
-        if (searchParams.searchByCodPedc || searchParams.searchByFornecedor || searchParams.searchByObservacao || searchParams.searchByFuncName) {
-          const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/search_purchases`, {
-            params: {
-              cod_pedc: searchParams.searchByCodPedc ? searchParams.query : '',
-              fornecedor_descricao: searchParams.searchByFornecedor ? searchParams.query : '',
-              observacao: searchParams.searchByObservacao ? searchParams.query : '',
-              func_name: searchParams.searchByFuncName ? searchParams.selectedFuncName : ''
-            },
-            withCredentials: true
-          });
-          purchaseResponse = response.data;
-        }
-
-        if (searchParams.searchByDescricao || searchParams.searchByItemId) {
-          const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/search_items`, {
-            params: {
-              descricao: searchParams.searchByDescricao ? searchParams.query : '',
-              item_id: searchParams.searchByItemId ? searchParams.query : ''
-            },
-            withCredentials: true
-          });
-          itemResponse = response.data;
-          
-        }
+      if (response.data && response.data.purchases) {
+        setResults(response.data.purchases);
+        setCurrentPage(response.data.current_page || 1);
+        setTotalPages(response.data.total_pages || 1);
+        setNoResults(response.data.total_pages || 0);
       } else {
-        const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/search_fuzzy`, {
-          params: {
-            query: searchParams.query,
-            precision: searchParams.searchPrecision,
-            score_cutoff: searchParams.score_cutoff,
-            cod_pedc: searchParams.searchByCodPedc ? searchParams.query : '',
-            fornecedor_descricao: searchParams.searchByFornecedor ? searchParams.query : '',
-            observacao: searchParams.searchByObservacao ? searchParams.query : '',
-            descricao: searchParams.searchByDescricao ? searchParams.query : '',
-            item_id: searchParams.searchByItemId ? searchParams.query : '',
-            func_name: searchParams.searchByFuncName ? searchParams.selectedFuncName : ''
-          },
-          withCredentials: true
-        });
-        const fuzzyResponse = response.data;
-        purchaseResponse = fuzzyResponse.purchases;
-        itemResponse = fuzzyResponse.items;
+        setResults([]);
+        setCurrentPage(1);
+        setTotalPages(1);
       }
-
-      const combinedResults = [...purchaseResponse, ...itemResponse];
-
-      combinedResults.forEach(result => {
-        const id = result.cod_pedc || result.id;
-        if (!seenIds.has(id)) {
-          seenIds.add(id);
-          uniqueResults.push(result);
-        }
-      });
-
-      uniqueResults.sort((a, b) => {
-        const dateA = new Date(a.dt_emis || a.order.dt_emis);
-        const dateB = new Date(b.dt_emis || b.order.dt_emis);
-
-        if (dateB - dateA !== 0) {
-          return dateB - dateA; // Ordenar por data de emissão (mais recente primeiro)
-        }
-
-        const codPedcA = parseInt(a.cod_pedc || a.order.cod_pedc, 10);
-        const codPedcB = parseInt(b.cod_pedc || b.order.cod_pedc, 10);
-
-        return codPedcB - codPedcA; // Ordenar por código do pedido (mais alto primeiro)
-      });
-
-      // Filtrar por itens atendidos e não atendidos
-
-
-      setResults(uniqueResults);
     } catch (error) {
       console.error('Error fetching data', error);
+      setResults([]);
+      setCurrentPage(1);
+      setTotalPages(1);
     }
   };
 
@@ -216,6 +150,10 @@ const UnifiedSearch = ({ onLogout }) => {
     }));
   };
 
+  const handlePageChange = (newPage) => {
+    handleSearch(newPage);
+  };
+
   return (
     <div className="unified-search">
       <h2>Pedidos de compras Ruah</h2>
@@ -230,65 +168,12 @@ const UnifiedSearch = ({ onLogout }) => {
           onKeyDown={handleKeyDown} // Adiciona o manipulador de eventos onKeyDown
           className="search-input"
         />
-        <button onClick={handleSearch} className="search-button">
+        <button onClick={() => handleSearch(1)} className="search-button">
           <span className="icon">🔍</span>
           <span className="text">Buscar</span>
         </button>
       </div>
       <div className="checkbox-section">
-        <div className="checkbox-group">
-          <h3>Pesquisar por...</h3>
-          <label className={searchParams.searchPrecision !== 'precisa' ? 'disabled' : ''}>
-            <input
-              type="checkbox"
-              name="searchByCodPedc"
-              checked={searchParams.searchByCodPedc}
-              onChange={handleChange}
-              disabled={searchParams.searchPrecision !== 'precisa'}
-            />
-            Código do Pedido de Compra
-          </label>
-          <label className={searchParams.searchPrecision !== 'precisa' ? 'disabled' : ''}>
-            <input
-              type="checkbox"
-              name="searchByFornecedor"
-              checked={searchParams.searchByFornecedor}
-              onChange={handleChange}
-              disabled={searchParams.searchPrecision !== 'precisa'}
-            />
-            Nome do Fornecedor
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              name="searchByObservacao"
-              checked={searchParams.searchByObservacao}
-              onChange={handleChange}
-            />
-            Observação do Pedido de Compra
-          </label>
-
-          <label className={searchParams.searchPrecision !== 'precisa' ? 'disabled' : ''}>
-            <input
-              type="checkbox"
-              name="searchByItemId"
-              checked={searchParams.searchByItemId}
-              onChange={handleChange}
-              disabled={searchParams.searchPrecision !== 'precisa'}
-            />
-            Código do Item
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              name="searchByDescricao"
-              checked={searchParams.searchByDescricao}
-              onChange={handleChange}
-            />
-            Descrição do Item
-          </label>
-        </div>
-
         <div className="checkbox-group">
           <h3>Precisão da busca</h3>
           <label>
@@ -347,40 +232,8 @@ const UnifiedSearch = ({ onLogout }) => {
             </label>
           ))}
         </div>
-        <div className="checkbox-group">
-          <h3>Mostrar itens</h3>
-          <label>
-            <input
-              type="radio"
-              name="searchByAtendido"
-              value="todos"
-              checked={searchParams.searchByAtendido && searchParams.searchByNaoAtendido}
-              onChange={() => setSearchParams({ ...searchParams, searchByAtendido: true, searchByNaoAtendido: true })}
-            />
-            Todos os itens
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="searchByAtendido"
-              value="itens-concluidos"
-              checked={searchParams.searchByAtendido && !searchParams.searchByNaoAtendido}
-              onChange={() => setSearchParams({ ...searchParams, searchByAtendido: true, searchByNaoAtendido: false })}
-            />
-            Somente itens concluidos
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="searchByNaoAtendido"
-              value="itens-pendentes"
-              checked={!searchParams.searchByAtendido && searchParams.searchByNaoAtendido}
-              onChange={() => setSearchParams({ ...searchParams, searchByAtendido: false, searchByNaoAtendido: true })}
-            />
-            Somente itens pendentes
-          </label>
-        </div>
       </div>
+      <div><h3>{noResults*perPage} resultados. Pagina {currentPage} de {totalPages}</h3></div>
       <table className="results-table">
         <thead>
           <tr>
@@ -397,53 +250,39 @@ const UnifiedSearch = ({ onLogout }) => {
           </tr>
         </thead>
         <tbody>
-          {results.filter(item => showAllItems[item.cod_pedc] || (searchParams.searchByAtendido && item.quantidade === item.qtde_atendida) || (searchParams.searchByNaoAtendido && item.quantidade === item.qtde_atendida))
-            .filter(result => showFuncName[result.func_nome] || searchParams.selectedFuncName === 'todos' || result.func_nome === searchParams.selectedFuncName)
-            .map((result) => (
-              <React.Fragment key={result.cod_pedc}>
-                <tr>
-                  <td colSpan="10" className="order-header">
-                    Pedido de Compra: {result.cod_pedc} ~ {result.order ? result.order.fornecedor_id : result.fornecedor_id} {getFirstWords(result.order ? result.order.fornecedor_descricao : result.fornecedor_descricao, 3)} - {formatCurrency(result.order ? result.order.total_bruto : result.total_bruto)} ~ Comprador: {result.order ? result.order.func_nome : result.func_nome}
-                    <button className={`botao-mostrar ${(searchParams.searchByAtendido !== searchParams.searchByNaoAtendido) ? 'visible' : ''}`} onClick={() => toggleShowAllItems(result.cod_pedc)}>
-                      {showAllItems[result.cod_pedc] ? 'Ocultar' : 'Mostrar todos'}
-                    </button>
-                  </td>
+          {results.map((purchase) => (
+            <React.Fragment key={purchase.order.cod_pedc}>
+              <tr>
+                <td colSpan="10" className="order-header">
+                  Pedido de Compra: {purchase.order.cod_pedc} ~ {purchase.order.fornecedor_id} {getFirstWords(purchase.order.fornecedor_descricao, 3)} - {formatCurrency(purchase.order.total_bruto)} ~ Comprador: {purchase.order.func_nome}
+                  <button className={`botao-mostrar ${(searchParams.searchByAtendido !== searchParams.searchByNaoAtendido) ? 'visible' : ''}`} onClick={() => toggleShowAllItems(purchase.order.cod_pedc)}>
+                    {showAllItems[purchase.order.cod_pedc] ? 'Ocultar' : 'Mostrar todos'}
+                  </button>
+                </td>
+              </tr>
+              {purchase.items.map((item) => (
+                <tr key={item.id} className={`item-row ${item.quantidade === item.qtde_atendida ? 'atendida' : 'nao-atendida'}`}>
+                  <td>{formatDate(purchase.order.dt_emis)}</td>
+                  <td>{item.cod_pedc}</td>
+                  <td className="clickable" onClick={() => handleItemClick(item.id)}>{item.item_id}</td>
+                  <td>{item.descricao}</td>
+                  <td>{formatNumber(item.quantidade)} {item.unidade_medida}</td>
+                  <td>R$ {formatNumber(item.preco_unitario)}</td>
+                  <td>R$ {formatNumber(item.total)}</td>
+                  <td>{purchase.order.observacao}</td>
+                  <td>{formatNumber(item.qtde_atendida)} {item.unidade_medida}</td>
+                  <td>{purchase.order.nfes.map(nf => nf.num_nf).join(', ')}</td>
                 </tr>
-                {result.items ? (
-                  result.items
-                    .filter(item => showAllItems[result.cod_pedc] || (searchParams.searchByAtendido && item.quantidade === item.qtde_atendida) || (searchParams.searchByNaoAtendido && item.quantidade !== item.qtde_atendida))
-                    .map((item) => (
-                      <tr key={item.id} className={`item-row ${item.quantidade === item.qtde_atendida ? 'atendida' : 'nao-atendida'}`}>
-                        <td>{formatDate(result.dt_emis)}</td>
-                        <td>{result.cod_pedc}</td>
-                        <td className="clickable" onClick={() => handleItemClick(item.id)}>{item.item_id}</td>
-                        <td>{item.descricao}</td>
-                        <td>{formatNumber(item.quantidade)} {item.unidade_medida}</td>
-                        <td>R$ {formatNumber(item.preco_unitario)}</td>
-                        <td>R$ {formatNumber(item.total)}</td>
-                        <td>{result.observacao}</td>
-                        <td>{formatNumber(item.qtde_atendida)} {item.unidade_medida}</td>
-                        <td>{item.nfes.map(nf => nf.num_nf).join(', ')}</td>
-                      </tr>
-                    ))
-                ) : (
-                  <tr key={result.id} className={`item-row ${result.quantidade === result.qtde_atendida ? 'atendida' : 'nao-atendida'}`}>
-                    <td>{formatDate(result.order ? result.order.dt_emis : '')}</td>
-                    <td>{result.cod_pedc}</td>
-                    <td className="clickable" onClick={() => handleItemClick(result.id)}>{result.item_id}</td>
-                    <td>{result.descricao}</td>
-                    <td>{formatNumber(result.quantidade)} {result.unidade_medida}</td>
-                    <td>R$ {formatNumber(result.preco_unitario)}</td>
-                    <td>R$ {formatNumber(result.total)}</td>
-                    <td>{result.order ? result.order.observacao : ''}</td>
-                    <td>{formatNumber(result.qtde_atendida)} {result.unidade_medida}</td>
-                    <td>{result.nfes.map(nf => nf.num_nf).join(', ')}</td>
-                  </tr>
-                )}
-              </React.Fragment>
-            ))}
+              ))}
+            </React.Fragment>
+          ))}
         </tbody>
       </table>
+      <div className="pagination">
+        <button onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1}>Anterior</button>
+        <span>Página {currentPage} de {totalPages}</span>
+        <button onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage === totalPages}>Próxima</button>
+      </div>
       {selectedItemId && <ItemScreen itemId={selectedItemId} onClose={handleCloseItemScreen} />}
     </div>
   );

@@ -556,3 +556,79 @@ def get_quotations_fuzzy():
         })
 
     return jsonify(result), 200
+
+@bp.route('/search_combined', methods=['GET'])
+@login_required
+def search_combined():
+    query = request.args.get('query', '')
+    page = int(request.args.get('page', 1))
+    per_page = int(request.args.get('per_page', 10))
+    score_cutoff = int(request.args.get('score_cutoff', 80))
+
+    filters = []
+    if query:
+        filters.append(or_(
+            PurchaseItem.descricao.ilike(f'%{query}%'),
+            PurchaseItem.item_id.ilike(f'%{query}%'),
+            PurchaseOrder.cod_pedc.ilike(f'%{query}%'),
+            PurchaseOrder.fornecedor_descricao.ilike(f'%{query}%'),
+            PurchaseOrder.observacao.ilike(f'%{query}%')
+        ))
+
+    items_query = PurchaseItem.query.order_by(PurchaseOrder.dt_emis.desc()).join(PurchaseOrder, PurchaseItem.purchase_order_id == PurchaseOrder.id)
+    if filters:
+        items_query = items_query.filter(*filters)
+
+    items_paginated = items_query.paginate(page=page, per_page=per_page, count=True)
+    items = items_paginated.items
+
+    grouped_results = {}
+    for item in items:
+        cod_pedc = item.cod_pedc
+        if cod_pedc not in grouped_results:
+            grouped_results[cod_pedc] = {
+                'order': {
+                    'order_id': item.purchase_order_id,
+                    'cod_pedc': item.cod_pedc,
+                    'dt_emis': item.purchase_order.dt_emis,
+                    'fornecedor_id': item.purchase_order.fornecedor_id,
+                    'fornecedor_descricao': item.purchase_order.fornecedor_descricao,
+                    'total_bruto': item.purchase_order.total_bruto,
+                    'total_liquido': item.purchase_order.total_liquido,
+                    'total_liquido_ipi': item.purchase_order.total_liquido_ipi,
+                    'posicao': item.purchase_order.posicao,
+                    'posicao_hist': item.purchase_order.posicao_hist,
+                    'observacao': item.purchase_order.observacao,
+                    'contato': item.purchase_order.contato,
+                    'func_nome': item.purchase_order.func_nome,
+                    'cf_pgto': item.purchase_order.cf_pgto,
+                    'nfes': [{'num_nf': nf_entry.num_nf, 'id': nf_entry.id} for nf_entry in NFEntry.query.filter_by(cod_emp1=item.purchase_order.cod_emp1, cod_pedc=item.cod_pedc, linha=item.linha).all()]
+                },
+                'items': []
+            }
+        item_data = {
+            'id': item.id,
+            'item_id': item.item_id,
+            'descricao': item.descricao,
+            'quantidade': item.quantidade,
+            'preco_unitario': item.preco_unitario,
+            'total': item.total,
+            'unidade_medida': item.unidade_medida,
+            'dt_entrega': item.dt_entrega,
+            'perc_ipi': item.perc_ipi,
+            'tot_liquido_ipi': item.tot_liquido_ipi,
+            'tot_descontos': item.tot_descontos,
+            'tot_acrescimos': item.tot_acrescimos,
+            'qtde_canc': item.qtde_canc,
+            'qtde_canc_toler': item.qtde_canc_toler,
+            'perc_toler': item.perc_toler,
+            'qtde_atendida': item.qtde_atendida,
+            'qtde_saldo': item.qtde_saldo,
+        }
+        grouped_results[cod_pedc]['items'].append(item_data)
+
+    return jsonify({
+        'purchases': list(grouped_results.values()),
+        'total_pages': items_paginated.pages,
+        'current_page': items_paginated.page
+    }), 200
