@@ -6,9 +6,9 @@ import './UnifiedSearch.css'; // Adicione um arquivo CSS para estilos personaliz
 const UnifiedSearch = ({ onLogout }) => {
   const [searchParams, setSearchParams] = useState({
     query: '',
-    searchPrecision: 'precisa', 
-    score_cutoff: 100, 
-    selectedFuncName: 'todos', 
+    searchPrecision: 'precisa',
+    score_cutoff: 100,
+    selectedFuncName: 'todos',
     searchByCodPedc: true,
     searchByFornecedor: true,
     searchByObservacao: true,
@@ -24,8 +24,9 @@ const UnifiedSearch = ({ onLogout }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [noResults, setNoResults] = useState(0);
   const [perPage, setPerPage] = useState(100);
-
   const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(false); 
+  const [lastUpdated, setLastUpdated] = useState(''); 
 
   useEffect(() => {
     // Buscar os nomes dos compradores do backend
@@ -69,7 +70,7 @@ const UnifiedSearch = ({ onLogout }) => {
           ...searchParams,
           searchPrecision: value,
           score_cutoff: score_cutoff,
-       
+
         });
       }
     } else {
@@ -87,6 +88,7 @@ const UnifiedSearch = ({ onLogout }) => {
   };
 
   const handleSearch = async (page = 1) => {
+    setLoading(true); // Inicia o carregamento
     try {
       const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/search_combined`, {
         params: {
@@ -113,12 +115,16 @@ const UnifiedSearch = ({ onLogout }) => {
         setResults([]);
         setCurrentPage(1);
         setTotalPages(1);
+        setNoResults(0);
       }
     } catch (error) {
       console.error('Error fetching data', error);
       setResults([]);
       setCurrentPage(1);
       setTotalPages(1);
+      setNoResults(0);
+    } finally {
+      setLoading(false); // Finaliza o carregamento
     }
   };
 
@@ -169,7 +175,10 @@ const UnifiedSearch = ({ onLogout }) => {
 
   return (
     <div className="unified-search">
-      <h2>Pedidos de compras Ruah</h2>
+      <h2>
+        Pedidos de compras Ruah - atualizado em {lastUpdated}
+        <a href="https://pedidosdecompraruah.duckdns.org/import" target="_blank" rel="noopener noreferrer" className="link">Atualizar</a>
+      </h2>
       <div className="search-container">
         <button onClick={onLogout} className="logout-button">Logout</button>
         <input
@@ -333,50 +342,55 @@ const UnifiedSearch = ({ onLogout }) => {
         </div>
       </div>
       <div><h3>Mostrando {noResults} resultados. Pagina {currentPage} de {totalPages}</h3></div>
-      <table className="results-table">
-        <thead>
-          <tr>
-            <th>Data Emissão</th>
-            <th>Cod. ped c.</th>
-            <th>Cod. item</th>
-            <th>Descrição do item</th>
-            <th>Quantidade</th>
-            <th>Preço Unitário</th>
-            <th>Total</th>
-            <th>Observação do ped.</th>
-            <th>Qtde Atendida</th>
-            <th>Num NF</th>
-          </tr>
-        </thead>
-        <tbody>
-          {results.map((purchase) => (
-            <React.Fragment key={purchase.order.cod_pedc}>
-              <tr>
-                <td colSpan="10" className="order-header">
-                  Pedido de Compra: {purchase.order.cod_pedc} ~ {purchase.order.fornecedor_id} {getFirstWords(purchase.order.fornecedor_descricao, 3)} - {formatCurrency(purchase.order.total_bruto)} ~ Comprador: {purchase.order.func_nome}
-                  <button className={`botao-mostrar ${(searchParams.searchByAtendido !== searchParams.searchByNaoAtendido) ? 'visible' : ''}`} onClick={() => toggleShowAllItems(purchase.order.cod_pedc)}>
-                    {showAllItems[purchase.order.cod_pedc] ? 'Ocultar' : 'Mostrar todos'}
-                  </button>
-                </td>
-              </tr>
-              {purchase.items.map((item) => (
-                <tr key={item.id} className={`item-row ${item.quantidade === item.qtde_atendida ? 'atendida' : 'nao-atendida'}`}>
-                  <td>{formatDate(purchase.order.dt_emis)}</td>
-                  <td>{item.cod_pedc}</td>
-                  <td className="clickable" onClick={() => handleItemClick(item.id)}>{item.item_id}</td>
-                  <td>{item.descricao}</td>
-                  <td>{formatNumber(item.quantidade)} {item.unidade_medida}</td>
-                  <td>R$ {formatNumber(item.preco_unitario)}</td>
-                  <td>R$ {formatNumber(item.total)}</td>
-                  <td>{purchase.order.observacao}</td>
-                  <td>{formatNumber(item.qtde_atendida)} {item.unidade_medida}</td>
-                  <td>{purchase.order.nfes.map(nf => nf.num_nf).join(', ')}</td>
+      {loading ? (
+        <div className="loading-icon">
+          <div className="spinner"></div>
+        </div>) : (
+        <table className="results-table">
+          <thead>
+            <tr>
+              <th>Data Emissão</th>
+              <th>Cod. ped c.</th>
+              <th>Cod. item</th>
+              <th>Descrição do item</th>
+              <th>Quantidade</th>
+              <th>Preço Unitário</th>
+              <th>Total</th>
+              <th>Observação do ped.</th>
+              <th>Qtde Atendida</th>
+              <th>Num NF</th>
+            </tr>
+          </thead>
+          <tbody>
+            {results.map((purchase) => (
+              <React.Fragment key={purchase.order.cod_pedc}>
+                <tr>
+                  <td colSpan="10" className="order-header">
+                    Pedido de Compra: {purchase.order.cod_pedc} ~ {purchase.order.fornecedor_id} {getFirstWords(purchase.order.fornecedor_descricao, 3)} - {formatCurrency(purchase.order.total_bruto)} ~ Comprador: {purchase.order.func_nome}
+                    <button className={`botao-mostrar ${(searchParams.searchByAtendido !== searchParams.searchByNaoAtendido) ? 'visible' : ''}`} onClick={() => toggleShowAllItems(purchase.order.cod_pedc)}>
+                      {showAllItems[purchase.order.cod_pedc] ? 'Ocultar' : 'Mostrar todos'}
+                    </button>
+                  </td>
                 </tr>
-              ))}
-            </React.Fragment>
-          ))}
-        </tbody>
-      </table>
+                {purchase.items.map((item) => (
+                  <tr key={item.id} className={`item-row ${item.quantidade === item.qtde_atendida ? 'atendida' : 'nao-atendida'}`}>
+                    <td>{formatDate(purchase.order.dt_emis)}</td>
+                    <td>{item.cod_pedc}</td>
+                    <td className="clickable" onClick={() => handleItemClick(item.id)}>{item.item_id}</td>
+                    <td>{item.descricao}</td>
+                    <td>{formatNumber(item.quantidade)} {item.unidade_medida}</td>
+                    <td>R$ {formatNumber(item.preco_unitario)}</td>
+                    <td>R$ {formatNumber(item.total)}</td>
+                    <td>{purchase.order.observacao}</td>
+                    <td>{formatNumber(item.qtde_atendida)} {item.unidade_medida}</td>
+                    <td>{purchase.order.nfes.map(nf => nf.num_nf).join(', ')}</td>
+                  </tr>
+                ))}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      )}
       <div className="pagination">
         <button onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1}>Anterior</button>
         <span>Página {currentPage} de {totalPages}</span>

@@ -308,6 +308,8 @@ def import_rcot0300(file_content):
 def fuzzy_search(query, items, score_cutoff, search_by_descricao, search_by_observacao):
     results = []
     for item in items:
+        if len(results) >= 3000:
+            return results
         ratio = fuzz.partial_ratio(query.lower(), item.descricao.lower())
         if ratio >= score_cutoff and search_by_descricao:  # Ajuste o limite conforme necessário
             results.append(item)
