@@ -52,6 +52,7 @@ const App = () => {
           path="/search"
           element={isAuthenticated ? <UnifiedSearch onLogout={handleLogout} /> : <Navigate to="/login" />}
         />
+          <Route path="/import" element={isAuthenticated ? <ImportFile /> : <Login />} />
         <Route path="*" element={<Navigate to={isAuthenticated ? "/search" : "/login"} />} />
       </Routes>
     </Router>

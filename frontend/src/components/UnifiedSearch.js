@@ -23,7 +23,7 @@ const UnifiedSearch = ({ onLogout }) => {
   const [showFuncName, setShowFuncName] = useState({});
   const [currentPage, setCurrentPage] = useState(1);
   const [noResults, setNoResults] = useState(0);
-  const [perPage, setPerPage] = useState(100);
+  const [perPage, setPerPage] = useState(200);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false); 
   const [lastUpdated, setLastUpdated] = useState(''); 
@@ -39,7 +39,7 @@ const UnifiedSearch = ({ onLogout }) => {
 
         setFuncNames(sortedFuncNames);
       } catch (error) {
-        console.error('Error fetching purchasers', error);
+        console.error('Error fetching purchasers: ', error);
       }
     };
 
