@@ -6,9 +6,15 @@ import './UnifiedSearch.css'; // Adicione um arquivo CSS para estilos personaliz
 const UnifiedSearch = ({ onLogout }) => {
   const [searchParams, setSearchParams] = useState({
     query: '',
-    searchPrecision: 'precisa', // Adiciona o parâmetro de precisão de busca
-    score_cutoff: 100, // Valor padrão para precisão precisa
-    selectedFuncName: 'todos' // Adiciona o filtro para o comprador selecionado
+    searchPrecision: 'precisa', 
+    score_cutoff: 100, 
+    selectedFuncName: 'todos', 
+    searchByCodPedc: true,
+    searchByFornecedor: true,
+    searchByObservacao: true,
+    searchByItemId: true,
+    searchByDescricao: true,
+    searchByAtendido: true
   });
   const [results, setResults] = useState([]);
   const [selectedItemId, setSelectedItemId] = useState(null);
@@ -51,18 +57,19 @@ const UnifiedSearch = ({ onLogout }) => {
           score_cutoff: score_cutoff
         });
       } else if (value === 'fuzzy') {
-        score_cutoff = 70;
+        score_cutoff = 80;
         setSearchParams({
           ...searchParams,
           searchPrecision: value,
           score_cutoff: score_cutoff
         });
       } else if (value === 'tentar_a_sorte') {
-        score_cutoff = 50;
+        score_cutoff = 60;
         setSearchParams({
           ...searchParams,
           searchPrecision: value,
-          score_cutoff: score_cutoff
+          score_cutoff: score_cutoff,
+       
         });
       }
     } else {
@@ -86,7 +93,13 @@ const UnifiedSearch = ({ onLogout }) => {
           query: searchParams.query,
           page: page,
           per_page: perPage,
-          score_cutoff: searchParams.score_cutoff
+          score_cutoff: searchParams.score_cutoff,
+          searchByCodPedc: searchParams.searchByCodPedc,
+          searchByFornecedor: searchParams.searchByFornecedor,
+          searchByObservacao: searchParams.searchByObservacao,
+          searchByItemId: searchParams.searchByItemId,
+          searchByDescricao: searchParams.searchByDescricao,
+          selectedFuncName: searchParams.selectedFuncName
         },
         withCredentials: true
       });
@@ -95,7 +108,7 @@ const UnifiedSearch = ({ onLogout }) => {
         setResults(response.data.purchases);
         setCurrentPage(response.data.current_page || 1);
         setTotalPages(response.data.total_pages || 1);
-        setNoResults(response.data.total_pages || 0);
+        setNoResults(response.data.purchases.length || 0);
       } else {
         setResults([]);
         setCurrentPage(1);
@@ -175,6 +188,59 @@ const UnifiedSearch = ({ onLogout }) => {
       </div>
       <div className="checkbox-section">
         <div className="checkbox-group">
+          <h3>Pesquisar por...</h3>
+          <label className={searchParams.searchPrecision !== 'precisa' ? 'disabled' : ''}>
+            <input
+              type="checkbox"
+              name="searchByCodPedc"
+              checked={searchParams.searchByCodPedc}
+              onChange={handleChange}
+              disabled={searchParams.searchPrecision !== 'precisa'}
+            />
+            Código do Pedido de Compra
+          </label>
+          <label className={searchParams.searchPrecision !== 'precisa' ? 'disabled' : ''}>
+            <input
+              type="checkbox"
+              name="searchByFornecedor"
+              checked={searchParams.searchByFornecedor}
+              onChange={handleChange}
+              disabled={searchParams.searchPrecision !== 'precisa'}
+            />
+            Nome do Fornecedor
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              name="searchByObservacao"
+              checked={searchParams.searchByObservacao}
+              onChange={handleChange}
+            />
+            Observação do Pedido de Compra
+          </label>
+
+          <label className={searchParams.searchPrecision !== 'precisa' ? 'disabled' : ''}>
+            <input
+              type="checkbox"
+              name="searchByItemId"
+              checked={searchParams.searchByItemId}
+              onChange={handleChange}
+              disabled={searchParams.searchPrecision !== 'precisa'}
+            />
+            Código do Item
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              name="searchByDescricao"
+              checked={searchParams.searchByDescricao}
+              onChange={handleChange}
+            />
+            Descrição do Item
+          </label>
+        </div>
+
+        <div className="checkbox-group">
           <h3>Precisão da busca</h3>
           <label>
             <input
@@ -232,8 +298,41 @@ const UnifiedSearch = ({ onLogout }) => {
             </label>
           ))}
         </div>
+        <div className="checkbox-group">
+          <h3>Mostrar itens</h3>
+          <label>
+            <input
+              type="radio"
+              name="searchByAtendido"
+              value="todos"
+              checked={searchParams.searchByAtendido && searchParams.searchByNaoAtendido}
+              onChange={() => setSearchParams({ ...searchParams, searchByAtendido: true, searchByNaoAtendido: true })}
+            />
+            Todos os itens
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="searchByAtendido"
+              value="itens-concluidos"
+              checked={searchParams.searchByAtendido && !searchParams.searchByNaoAtendido}
+              onChange={() => setSearchParams({ ...searchParams, searchByAtendido: true, searchByNaoAtendido: false })}
+            />
+            Somente itens concluidos
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="searchByNaoAtendido"
+              value="itens-pendentes"
+              checked={!searchParams.searchByAtendido && searchParams.searchByNaoAtendido}
+              onChange={() => setSearchParams({ ...searchParams, searchByAtendido: false, searchByNaoAtendido: true })}
+            />
+            Somente itens pendentes
+          </label>
+        </div>
       </div>
-      <div><h3>{noResults*perPage} resultados. Pagina {currentPage} de {totalPages}</h3></div>
+      <div><h3>Mostrando {noResults} resultados. Pagina {currentPage} de {totalPages}</h3></div>
       <table className="results-table">
         <thead>
           <tr>

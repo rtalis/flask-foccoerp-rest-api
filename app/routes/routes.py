@@ -3,7 +3,7 @@ from flask import Blueprint, request, jsonify
 from sqlalchemy import or_
 from flask_login import login_user, logout_user, login_required, current_user
 from app.models import NFEntry, PurchaseOrder, PurchaseItem, Quotation, User
-from app.utils import  import_rcot0300, import_rpdc0250c, import_ruah
+from app.utils import  fuzzy_search, import_rcot0300, import_rpdc0250c, import_ruah
 
 from app import db
 
@@ -564,24 +564,48 @@ def search_combined():
     page = int(request.args.get('page', 1))
     per_page = int(request.args.get('per_page', 10))
     score_cutoff = int(request.args.get('score_cutoff', 80))
-
+    search_by_cod_pedc = request.args.get('searchByCodPedc', 'false').lower() == 'true'
+    search_by_fornecedor = request.args.get('searchByFornecedor', 'false').lower() == 'true'
+    search_by_observacao = request.args.get('searchByObservacao', 'false').lower() == 'true'
+    search_by_item_id = request.args.get('searchByItemId', 'false').lower() == 'true'
+    search_by_descricao = request.args.get('searchByDescricao', 'false').lower() == 'true'
+    search_by_func_nome = request.args.get('selectedFuncName').lower()
     filters = []
     if query:
-        filters.append(or_(
-            PurchaseItem.descricao.ilike(f'%{query}%'),
-            PurchaseItem.item_id.ilike(f'%{query}%'),
-            PurchaseOrder.cod_pedc.ilike(f'%{query}%'),
-            PurchaseOrder.fornecedor_descricao.ilike(f'%{query}%'),
-            PurchaseOrder.observacao.ilike(f'%{query}%')
-        ))
+        if search_by_cod_pedc:
+            filters.append(PurchaseOrder.cod_pedc.ilike(f'%{query}%'))
+        if search_by_fornecedor:
+            filters.append(PurchaseOrder.fornecedor_descricao.ilike(f'%{query}%'))
+        if search_by_observacao:
+            filters.append(PurchaseOrder.observacao.ilike(f'%{query}%'))
+        if search_by_item_id:
+            filters.append(PurchaseItem.item_id.ilike(f'%{query}%'))
+        if search_by_descricao:
+            filters.append(PurchaseItem.descricao.ilike(f'%{query}%'))
+        if search_by_func_nome != 'todos':
+            filters.append(PurchaseOrder.func_nome.ilike(f'%{search_by_func_nome}%'))
+        if not any([search_by_cod_pedc, search_by_fornecedor, search_by_observacao, search_by_item_id, search_by_descricao]):
+            filters.append(or_(
+                PurchaseItem.descricao.ilike(f'%{query}%'),
+                PurchaseItem.item_id.ilike(f'%{query}%'),
+                PurchaseOrder.cod_pedc.ilike(f'%{query}%'),
+                PurchaseOrder.fornecedor_descricao.ilike(f'%{query}%'),
+                PurchaseOrder.observacao.ilike(f'%{query}%')
+            ))
 
     items_query = PurchaseItem.query.order_by(PurchaseOrder.dt_emis.desc()).join(PurchaseOrder, PurchaseItem.purchase_order_id == PurchaseOrder.id)
     if filters:
-        items_query = items_query.filter(*filters)
-
-    items_paginated = items_query.paginate(page=page, per_page=per_page, count=True)
-    items = items_paginated.items
-
+        items_query = items_query.filter(or_(*filters))
+    
+    if score_cutoff < 100:
+        fuzzy_query = PurchaseItem.query.order_by(PurchaseOrder.dt_emis.desc()).join(PurchaseOrder, PurchaseItem.purchase_order_id == PurchaseOrder.id)
+        if search_by_func_nome != 'todos':
+            fuzzy_query =  fuzzy_query.filter(PurchaseOrder.func_nome.ilike(f'%{search_by_func_nome}%'))
+        items = fuzzy_query.all()
+        items = fuzzy_search(query, items, score_cutoff, search_by_descricao, search_by_observacao)
+    else:
+        items_paginated = items_query.paginate(page=page, per_page=per_page, count=True)
+        items = items_paginated.items
     grouped_results = {}
     for item in items:
         cod_pedc = item.cod_pedc
@@ -627,8 +651,15 @@ def search_combined():
         }
         grouped_results[cod_pedc]['items'].append(item_data)
 
+    if score_cutoff < 100:
+        total_pages = 1
+        current_page = 1
+    else:
+        total_pages = items_paginated.pages
+        current_page = items_paginated.page
+
     return jsonify({
         'purchases': list(grouped_results.values()),
-        'total_pages': items_paginated.pages,
-        'current_page': items_paginated.page
+        'total_pages': total_pages,
+        'current_page': current_page
     }), 200

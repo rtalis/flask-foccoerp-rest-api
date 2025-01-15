@@ -2,6 +2,8 @@ from datetime import datetime
 from flask import jsonify
 from app.models import NFEntry, PurchaseItem, PurchaseOrder, Quotation
 from app import db
+from fuzzywuzzy import fuzz
+
 
 def parse_xml(xml_data):
     import xml.etree.ElementTree as ET
@@ -302,3 +304,16 @@ def import_rcot0300(file_content):
 
     db.session.commit()
     return jsonify({'message': 'Data imported successfully, quotations {}'.format(quotation_count)}), 201
+
+def fuzzy_search(query, items, score_cutoff, search_by_descricao, search_by_observacao):
+    results = []
+    for item in items:
+        ratio = fuzz.partial_ratio(query.lower(), item.descricao.lower())
+        if ratio >= score_cutoff and search_by_descricao:  # Ajuste o limite conforme necessário
+            results.append(item)
+        else:
+            observacao = item.purchase_order.observacao or ''
+            ratio = fuzz.partial_ratio(query.lower(), observacao.lower())
+            if ratio >= score_cutoff and search_by_observacao:  # Ajuste o limite conforme necessário
+                results.append(item)
+    return results

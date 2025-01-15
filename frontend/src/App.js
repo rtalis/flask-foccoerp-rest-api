@@ -1,16 +1,12 @@
-// filepath: /home/talison/dev/flask-rest-api/frontend/src/App.js
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { BrowserRouter as Router, Route, Routes, Navigate, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import UnifiedSearch from './components/UnifiedSearch';
 import Login from './components/Login';
 import Register from './components/Register';
-import ImportFile from './components/ImportFile';
-
 
 const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const navigate = useNavigate();
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -18,9 +14,10 @@ const App = () => {
         const response = await axios.get(`${process.env.REACT_APP_API_URL}/auth/protected`, { withCredentials: true });
         if (response.status === 200) {
           setIsAuthenticated(true);
-          setTimeout(() => {
-            handleLogout();
-          }, 3600000); // 1 hora em milissegundos
+
+          // Automatically log out after 1 hour
+          const logoutTimer = setTimeout(handleLogout, 3600000);
+          return () => clearTimeout(logoutTimer); // Cleanup timeout
         }
       } catch (error) {
         setIsAuthenticated(false);
@@ -32,38 +29,33 @@ const App = () => {
 
   const handleLogin = () => {
     setIsAuthenticated(true);
-    setTimeout(() => {
-      handleLogout();
-    }, 3600000); // 1 hora em milissegundos
+
+    setTimeout(handleLogout, 3600000);
   };
 
   const handleLogout = async () => {
     try {
       await axios.post(`${process.env.REACT_APP_API_URL}/auth/logout`, {}, { withCredentials: true });
-      setIsAuthenticated(false);
-      navigate('/login');
     } catch (error) {
-      console.error('Error logging out', error);
+      console.error('Error logging out:', error);
+    } finally {
+      setIsAuthenticated(false);
     }
   };
 
   return (
-    <div className="App">
+    <Router>
       <Routes>
         <Route path="/login" element={isAuthenticated ? <Navigate to="/search" /> : <Login onLogin={handleLogin} />} />
-        <Route path="/register" element={isAuthenticated ? <Register /> : <Login />} />
-        <Route path="/search" element={isAuthenticated ? <UnifiedSearch onLogout={handleLogout} /> : <Navigate to="/login" />} />
-        <Route path="/import" element={isAuthenticated ? <ImportFile /> : <Login />} />
-        <Route path="/" element={<Navigate to="/login" />} />
+        <Route path="/register" element={isAuthenticated ? <Navigate to="/search" /> : <Register />} />
+        <Route
+          path="/search"
+          element={isAuthenticated ? <UnifiedSearch onLogout={handleLogout} /> : <Navigate to="/login" />}
+        />
+        <Route path="*" element={<Navigate to={isAuthenticated ? "/search" : "/login"} />} />
       </Routes>
-    </div>
+    </Router>
   );
 };
 
-const AppWithRouter = () => (
-  <Router>
-    <App />
-  </Router>
-);
-
-export default AppWithRouter;
+export default App;
