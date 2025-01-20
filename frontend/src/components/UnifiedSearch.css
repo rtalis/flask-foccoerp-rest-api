@@ -212,3 +212,43 @@
 .link:hover {
   text-decoration: underline;
 }
+
+.input-currency {
+  position: relative;
+  display: inline-block;
+}
+
+.currency-symbol {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #666;
+  z-index: 1;
+}
+
+.value-input {
+  padding-left: 30px;
+  width: 120px;
+  height: 30px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.value-filter {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  align-items: center;
+}
+.value-type-selector {
+  margin-bottom: 10px;
+  display: flex;
+  gap: 20px;
+}
+
+.value-type-selector label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}

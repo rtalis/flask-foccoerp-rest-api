@@ -1,6 +1,6 @@
 from fuzzywuzzy import process, fuzz
 from flask import Blueprint, request, jsonify
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 from flask_login import login_user, logout_user, login_required, current_user
 from app.models import NFEntry, PurchaseOrder, PurchaseItem, Quotation, User
 from app.utils import  fuzzy_search, import_rcot0300, import_rpdc0250c, import_ruah
@@ -569,7 +569,25 @@ def search_combined():
     search_by_observacao = request.args.get('searchByObservacao', 'false').lower() == 'true'
     search_by_item_id = request.args.get('searchByItemId', 'false').lower() == 'true'
     search_by_descricao = request.args.get('searchByDescricao', 'false').lower() == 'true'
-    search_by_func_nome = request.args.get('selectedFuncName').lower()
+    search_by_func_nome = request.args.get('selectedFuncName')
+    min_value = request.args.get('minValue', type=float)
+    max_value = request.args.get('maxValue', type=float)
+    value_search_type = request.args.get('valueSearchType', 'item')
+    value_filters = []
+    if min_value is not None or max_value is not None:
+        
+        if value_search_type == 'item':
+            if min_value is not None:
+                value_filters.append(PurchaseItem.total >= min_value)
+            if max_value is not None:
+                value_filters.append(PurchaseItem.total <= max_value)
+        else:  #order
+            if min_value is not None:
+                value_filters.append(PurchaseOrder.total_bruto >= min_value)
+            if max_value is not None:
+                value_filters.append(PurchaseOrder.total_bruto <= max_value)
+        
+    
     filters = []
     if query:
         if search_by_cod_pedc:
@@ -582,8 +600,7 @@ def search_combined():
             filters.append(PurchaseItem.item_id.ilike(f'%{query}%'))
         if search_by_descricao:
             filters.append(PurchaseItem.descricao.ilike(f'%{query}%'))
-        if search_by_func_nome != 'todos':
-            filters.append(PurchaseOrder.func_nome.ilike(f'%{search_by_func_nome}%'))
+      
         if not any([search_by_cod_pedc, search_by_fornecedor, search_by_observacao, search_by_item_id, search_by_descricao]):
             filters.append(or_(
                 PurchaseItem.descricao.ilike(f'%{query}%'),
@@ -594,13 +611,19 @@ def search_combined():
             ))
 
     items_query = PurchaseItem.query.order_by(PurchaseOrder.dt_emis.desc()).join(PurchaseOrder, PurchaseItem.purchase_order_id == PurchaseOrder.id)
+    if value_filters:
+            filters.append(and_(*value_filters))
     if filters:
         items_query = items_query.filter(or_(*filters))
+    if search_by_func_nome != 'todos':
+        items_query = items_query.filter(and_(PurchaseOrder.func_nome.ilike(f'%{search_by_func_nome}%')))
     
     if score_cutoff < 100:
         fuzzy_query = PurchaseItem.query.order_by(PurchaseOrder.dt_emis.desc()).join(PurchaseOrder, PurchaseItem.purchase_order_id == PurchaseOrder.id)
         if search_by_func_nome != 'todos':
             fuzzy_query =  fuzzy_query.filter(PurchaseOrder.func_nome.ilike(f'%{search_by_func_nome}%'))
+        if value_filters:
+            fuzzy_query = fuzzy_query.filter(and_(*value_filters))
         items = fuzzy_query.all()
         items = fuzzy_search(query, items, score_cutoff, search_by_descricao, search_by_observacao)
     else:
@@ -663,3 +686,16 @@ def search_combined():
         'total_pages': total_pages,
         'current_page': current_page
     }), 200
+    
+@bp.route('/last_update', methods=['GET'])
+@login_required
+def get_last_update():
+    try:
+        last_order = PurchaseOrder.query.order_by(PurchaseOrder.dt_emis.desc()).first()
+        if last_order:
+            return jsonify({
+                'last_updated': last_order.dt_emis
+            }), 200
+        return jsonify({'error': 'No orders found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

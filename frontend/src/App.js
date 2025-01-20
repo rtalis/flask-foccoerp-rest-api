@@ -3,6 +3,7 @@ import axios from 'axios';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import UnifiedSearch from './components/UnifiedSearch';
 import Login from './components/Login';
+import ImportFile from './components/ImportFile';
 import Register from './components/Register';
 
 const App = () => {
@@ -47,8 +48,10 @@ const App = () => {
     <Router>
       <Routes>
         <Route path="/login" element={isAuthenticated ? <Navigate to="/search" /> : <Login onLogin={handleLogin} />} />
-        <Route path="/register" element={isAuthenticated ? <Navigate to="/search" /> : <Register />} />
-        <Route
+        <Route path="/register" element={isAuthenticated ? <Register /> : <Login />} />
+        
+
+               <Route
           path="/search"
           element={isAuthenticated ? <UnifiedSearch onLogout={handleLogout} /> : <Navigate to="/login" />}
         />

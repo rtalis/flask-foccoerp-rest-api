@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { Link } from 'react-router-dom';
 import ItemScreen from './ItemScreen';
 import './UnifiedSearch.css'; // Adicione um arquivo CSS para estilos personalizados
 
@@ -14,19 +15,22 @@ const UnifiedSearch = ({ onLogout }) => {
     searchByObservacao: true,
     searchByItemId: true,
     searchByDescricao: true,
-    searchByAtendido: true
+    searchByAtendido: false,
+    searchByNaoAtendido: false,
+    min_value: '',
+    max_value: '',
+    valueSearchType: 'item'
   });
   const [results, setResults] = useState([]);
   const [selectedItemId, setSelectedItemId] = useState(null);
   const [funcNames, setFuncNames] = useState([]); // Estado para armazenar os nomes dos compradores
   const [showAllItems, setShowAllItems] = useState({}); // Estado para controlar a exibição de todos os itens
-  const [showFuncName, setShowFuncName] = useState({});
   const [currentPage, setCurrentPage] = useState(1);
   const [noResults, setNoResults] = useState(0);
   const [perPage, setPerPage] = useState(200);
   const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading] = useState(false); 
-  const [lastUpdated, setLastUpdated] = useState(''); 
+  const [loading, setLoading] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState('');
 
   useEffect(() => {
     // Buscar os nomes dos compradores do backend
@@ -43,6 +47,24 @@ const UnifiedSearch = ({ onLogout }) => {
       }
     };
 
+    const fetchLastUpdate = async () => {
+      try {
+        const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/last_update`, { withCredentials: true });
+        if (response.data && response.data.last_updated) {
+          const date = new Date(response.data.last_updated);
+          setLastUpdated(date.toLocaleDateString('pt-BR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+          }));
+        }
+      } catch (error) {
+        console.error('Error fetching last update:', error);
+        setLastUpdated('Data não disponível ');
+      }
+    };
+
+    fetchLastUpdate();
     fetchFuncNames();
   }, []);
 
@@ -101,7 +123,9 @@ const UnifiedSearch = ({ onLogout }) => {
           searchByObservacao: searchParams.searchByObservacao,
           searchByItemId: searchParams.searchByItemId,
           searchByDescricao: searchParams.searchByDescricao,
-          selectedFuncName: searchParams.selectedFuncName
+          selectedFuncName: searchParams.selectedFuncName,
+          minValue: searchParams.min_value,
+          maxValue: searchParams.max_value
         },
         withCredentials: true
       });
@@ -162,13 +186,6 @@ const UnifiedSearch = ({ onLogout }) => {
     }));
   };
 
-  const toggleShowFuncName = (funcName) => {
-    setShowFuncName(prevState => ({
-      ...prevState,
-      [funcName]: !prevState[funcName]
-    }));
-  };
-
   const handlePageChange = (newPage) => {
     handleSearch(newPage);
   };
@@ -176,8 +193,8 @@ const UnifiedSearch = ({ onLogout }) => {
   return (
     <div className="unified-search">
       <h2>
-        Pedidos de compras Ruah - atualizado em {lastUpdated}
-        <a href="https://pedidosdecompraruah.duckdns.org/import" target="_blank" rel="noopener noreferrer" className="link">Atualizar</a>
+        Pedidos de compras Ruah - atualizado em {lastUpdated} -
+        <Link to="/import" className="link"> Atualizar</Link>
       </h2>
       <div className="search-container">
         <button onClick={onLogout} className="logout-button">Logout</button>
@@ -308,12 +325,13 @@ const UnifiedSearch = ({ onLogout }) => {
           ))}
         </div>
         <div className="checkbox-group">
-          <h3>Mostrar itens</h3>
+          <h3>Mostrar itens </h3>
           <label>
             <input
               type="radio"
               name="searchByAtendido"
               value="todos"
+              disabled={true}
               checked={searchParams.searchByAtendido && searchParams.searchByNaoAtendido}
               onChange={() => setSearchParams({ ...searchParams, searchByAtendido: true, searchByNaoAtendido: true })}
             />
@@ -321,6 +339,7 @@ const UnifiedSearch = ({ onLogout }) => {
           </label>
           <label>
             <input
+              disabled={true}
               type="radio"
               name="searchByAtendido"
               value="itens-concluidos"
@@ -332,6 +351,7 @@ const UnifiedSearch = ({ onLogout }) => {
           <label>
             <input
               type="radio"
+              disabled={true}
               name="searchByNaoAtendido"
               value="itens-pendentes"
               checked={!searchParams.searchByAtendido && searchParams.searchByNaoAtendido}
@@ -340,8 +360,58 @@ const UnifiedSearch = ({ onLogout }) => {
             Somente itens pendentes
           </label>
         </div>
+        <div className="checkbox-group">
+          <h3>Filtrar por valor</h3>
+          <div className="value-type-selector">
+            <label>
+              <input
+                type="radio"
+                name="valueSearchType"
+                value="item"
+                checked={searchParams.valueSearchType === 'item'}
+                onChange={handleChange}
+              />
+              Valor do Item
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="valueSearchType"
+                value="order"
+                checked={searchParams.valueSearchType === 'order'}
+                onChange={handleChange}
+              />
+              Valor do Pedido
+            </label>
+          </div>
+          <div className="value-filter">
+            <div className="input-currency">
+              <span className="currency-symbol">R$</span>
+              <input
+                type="number"
+                name="min_value"
+                value={searchParams.min_value}
+                onChange={handleChange}
+                placeholder={`Valor mínimo ${searchParams.valueSearchType === 'item' ? 'do item' : 'do pedido'}`}
+                className="value-input"
+              />
+            </div>
+            <div className="input-currency">
+              <span className="currency-symbol">R$</span>
+              <input
+                type="number"
+                name="max_value"
+                value={searchParams.max_value}
+                onChange={handleChange}
+                placeholder={`Valor máximo ${searchParams.valueSearchType === 'item' ? 'do item' : 'do pedido'}`}
+                className="value-input"
+              />
+            </div>
+          </div>
+        </div>
       </div>
-      <div><h3>Mostrando {noResults} resultados. Pagina {currentPage} de {totalPages}</h3></div>
+      <div>
+        <h3>Mostrando {noResults} resultados. Pagina {currentPage} de {totalPages}</h3></div>
       {loading ? (
         <div className="loading-icon">
           <div className="spinner"></div>
