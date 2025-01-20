@@ -11,11 +11,12 @@ const Register = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await axios.post(`${process.env.REACT_APP_API_URL}/auth/register`, { username, email, password });
+      const response = await axios.post(`${process.env.REACT_APP_API_URL}/auth/register`, { username, email, password }, { withCredentials: true });
       if (response.status === 201) {
         window.location.href = '/login';
       }
     } catch (error) {
+      console.error('Registration failed', error);
       setError('Registration failed' );
     }
   };
