@@ -649,6 +649,7 @@ def search_combined():
                     'contato': item.purchase_order.contato,
                     'func_nome': item.purchase_order.func_nome,
                     'cf_pgto': item.purchase_order.cf_pgto,
+                    
                     'nfes': [{'num_nf': nf_entry.num_nf, 'id': nf_entry.id} for nf_entry in NFEntry.query.filter_by(cod_emp1=item.purchase_order.cod_emp1, cod_pedc=item.cod_pedc, linha=item.linha).all()]
                 },
                 'items': []
@@ -699,3 +700,40 @@ def get_last_update():
         return jsonify({'error': 'No orders found'}), 404
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+@bp.route('/count_results', methods=['GET'])
+@login_required
+def count_results():
+    search_by_func_nome = request.args.get('selectedFuncName')
+    score_cutoff = int(request.args.get('score_cutoff', 80))
+    search_by_cod_pedc = request.args.get('searchByCodPedc', 'false').lower() == 'true'
+    search_by_fornecedor = request.args.get('searchByFornecedor', 'false').lower() == 'true'
+    search_by_observacao = request.args.get('searchByObservacao', 'false').lower() == 'true'
+    search_by_item_id = request.args.get('searchByItemId', 'false').lower() == 'true'
+    search_by_descricao = request.args.get('searchByDescricao', 'false').lower() == 'true'
+
+    count_query = db.session.query(db.func.count(db.distinct(PurchaseItem.cod_pedc))).\
+        join(PurchaseOrder, PurchaseItem.purchase_order_id == PurchaseOrder.id)
+
+    if search_by_func_nome != 'todos':
+        count_query = count_query.filter(PurchaseOrder.func_nome.ilike(f'%{search_by_func_nome}%'))
+
+    base_count = count_query.scalar()
+
+    multiplier = sum([
+        search_by_cod_pedc,
+        search_by_fornecedor,
+        search_by_observacao,
+        search_by_item_id,
+        search_by_descricao
+    ])
+    
+    if multiplier == 0:
+        multiplier = 5
+
+    estimated_count = base_count * multiplier
+
+    return jsonify({
+        'count': estimated_count,
+        'estimated_pages': (estimated_count + 199) // 200  # 200 itens por página
+    }), 200

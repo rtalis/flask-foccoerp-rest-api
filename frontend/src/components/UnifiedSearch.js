@@ -31,6 +31,8 @@ const UnifiedSearch = ({ onLogout }) => {
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState('');
+  const [estimatedResults, setEstimatedResults] = useState(0);
+
 
   useEffect(() => {
     // Buscar os nomes dos compradores do backend
@@ -108,9 +110,31 @@ const UnifiedSearch = ({ onLogout }) => {
       handleSearch();
     }
   };
+  const getEstimatedResults = async () => {
+    try {
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/count_results`, {
+        params: {
+          query: searchParams.query,
+          score_cutoff: searchParams.score_cutoff,
+          searchByCodPedc: searchParams.searchByCodPedc,
+          searchByFornecedor: searchParams.searchByFornecedor,
+          searchByObservacao: searchParams.searchByObservacao,
+          searchByItemId: searchParams.searchByItemId,
+          searchByDescricao: searchParams.searchByDescricao,
+          selectedFuncName: searchParams.selectedFuncName
+        },
+        withCredentials: true
+      });
+      setEstimatedResults(response.data.count);
+      setTotalPages(response.data.estimated_pages);
+    } catch (error) {
+      console.error('Error getting estimated results:', error);
+    }
+  };
 
   const handleSearch = async (page = 1) => {
-    setLoading(true); // Inicia o carregamento
+    setLoading(true);
+    await getEstimatedResults();
     try {
       const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/search_combined`, {
         params: {
@@ -148,7 +172,7 @@ const UnifiedSearch = ({ onLogout }) => {
       setTotalPages(1);
       setNoResults(0);
     } finally {
-      setLoading(false); // Finaliza o carregamento
+      setLoading(false);
     }
   };
 
@@ -301,29 +325,21 @@ const UnifiedSearch = ({ onLogout }) => {
         </div>
         <div className="checkbox-group">
           <h3>Mostrar compradores</h3>
-          <label>
-            <input
-              type="radio"
-              name="selectedFuncName"
-              value="todos"
-              checked={searchParams.selectedFuncName === 'todos'}
-              onChange={handleChange}
-            />
-            Todos os compradores
-          </label>
-          {funcNames.map((funcName) => (
-            <label key={funcName}>
-              <input
-                type="radio"
-                name="selectedFuncName"
-                value={funcName}
-                checked={searchParams.selectedFuncName === funcName}
-                onChange={handleChange}
-              />
-              {funcName}
-            </label>
-          ))}
+          <select
+            name="selectedFuncName"
+            value={searchParams.selectedFuncName}
+            onChange={handleChange}
+            className="purchaser-select"
+          >
+            <option value="todos">Todos os compradores</option>
+            {funcNames.map((funcName) => (
+              <option key={funcName} value={funcName}>
+                {funcName}
+              </option>
+            ))}
+          </select>
         </div>
+        {/*}
         <div className="checkbox-group">
           <h3>Mostrar itens </h3>
           <label>
@@ -360,6 +376,7 @@ const UnifiedSearch = ({ onLogout }) => {
             Somente itens pendentes
           </label>
         </div>
+        */}
         <div className="checkbox-group">
           <h3>Filtrar por valor</h3>
           <div className="value-type-selector">
@@ -410,12 +427,19 @@ const UnifiedSearch = ({ onLogout }) => {
           </div>
         </div>
       </div>
+      {loading && (
+        <div className="loading-overlay">
+          <div className="loading-icon">
+            <div className="spinner"></div>
+          </div>
+          <div className="loading-text">
+            Buscando aproximadamente {estimatedResults} resultados...
+          </div>
+        </div>
+      )}
       <div>
         <h3>Mostrando {noResults} resultados. Pagina {currentPage} de {totalPages}</h3></div>
-      {loading ? (
-        <div className="loading-icon">
-          <div className="spinner"></div>
-        </div>) : (
+      {
         <table className="results-table">
           <thead>
             <tr>
@@ -425,8 +449,10 @@ const UnifiedSearch = ({ onLogout }) => {
               <th>Descrição do item</th>
               <th>Quantidade</th>
               <th>Preço Unitário</th>
+              <th>IPI</th>
               <th>Total</th>
               <th>Observação do ped.</th>
+              <th>Dt entrega</th>
               <th>Qtde Atendida</th>
               <th>Num NF</th>
             </tr>
@@ -435,7 +461,7 @@ const UnifiedSearch = ({ onLogout }) => {
             {results.map((purchase) => (
               <React.Fragment key={purchase.order.cod_pedc}>
                 <tr>
-                  <td colSpan="10" className="order-header">
+                  <td colSpan="12" className="order-header">
                     Pedido de Compra: {purchase.order.cod_pedc} ~ {purchase.order.fornecedor_id} {getFirstWords(purchase.order.fornecedor_descricao, 3)} - {formatCurrency(purchase.order.total_bruto)} ~ Comprador: {purchase.order.func_nome}
                     <button className={`botao-mostrar ${(searchParams.searchByAtendido !== searchParams.searchByNaoAtendido) ? 'visible' : ''}`} onClick={() => toggleShowAllItems(purchase.order.cod_pedc)}>
                       {showAllItems[purchase.order.cod_pedc] ? 'Ocultar' : 'Mostrar todos'}
@@ -450,8 +476,10 @@ const UnifiedSearch = ({ onLogout }) => {
                     <td>{item.descricao}</td>
                     <td>{formatNumber(item.quantidade)} {item.unidade_medida}</td>
                     <td>R$ {formatNumber(item.preco_unitario)}</td>
+                    <td>{item.perc_ipi ? `${formatNumber(item.perc_ipi)}%` : '0%'}</td>
                     <td>R$ {formatNumber(item.total)}</td>
                     <td>{purchase.order.observacao}</td>
+                    <td>{formatDate(item.dt_entrega)}</td>
                     <td>{formatNumber(item.qtde_atendida)} {item.unidade_medida}</td>
                     <td>{purchase.order.nfes.map(nf => nf.num_nf).join(', ')}</td>
                   </tr>
@@ -460,7 +488,7 @@ const UnifiedSearch = ({ onLogout }) => {
             ))}
           </tbody>
         </table>
-      )}
+      }
       <div className="pagination">
         <button onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1}>Anterior</button>
         <span>Página {currentPage} de {totalPages}</span>
