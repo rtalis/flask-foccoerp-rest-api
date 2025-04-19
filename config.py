@@ -13,3 +13,11 @@ class Config:
     SESSION_COOKIE_SAMESITE = 'Lax'  # Pode ser 'Strict', 'Lax' ou 'None'
     PERMANENT_SESSION_LIFETIME = timedelta(hours=1)  # Tempo de vida da sessão
     SESSION_COOKIE_DOMAIN = None
+    
+    ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
+    MAIL_SERVER = os.getenv('MAIL_SERVER')
+    MAIL_PORT = int(os.getenv('MAIL_PORT', 587))
+    MAIL_USE_TLS = os.getenv('MAIL_USE_TLS', 'true').lower() == 'true'
+    MAIL_USERNAME = os.getenv('MAIL_USERNAME')
+    MAIL_PASSWORD = os.getenv('MAIL_PASSWORD')
+    

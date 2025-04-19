@@ -3,6 +3,8 @@ from flask import jsonify
 from app.models import NFEntry, PurchaseItem, PurchaseOrder, Quotation
 from app import db
 from fuzzywuzzy import fuzz
+from flask_mail import Mail, Message
+from config import Config
 
 
 def parse_xml(xml_data):
@@ -319,3 +321,24 @@ def fuzzy_search(query, items, score_cutoff, search_by_descricao, search_by_obse
             if ratio >= score_cutoff and search_by_observacao:  # Ajuste o limite conforme necessário
                 results.append(item)
     return results
+
+
+mail = Mail()
+
+def send_login_notification_email(user, ip_address):
+    try:
+        msg = Message(
+            'Nova tentativa de login',
+            sender=Config.MAIL_USERNAME,
+            recipients=[Config.ADMIN_EMAIL]
+        )
+        msg.body = f"""
+        Novo login detectado:
+        Usuário: {user.username}
+        Email: {user.email}
+        IP: {ip_address}
+        Data/Hora: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
+        """
+        mail.send(msg)
+    except Exception as e:
+        print(f"Erro ao enviar email: {str(e)}")
