@@ -4,10 +4,16 @@ from sqlalchemy import and_, or_
 from flask_login import login_user, logout_user, login_required, current_user
 from app.models import NFEntry, PurchaseOrder, PurchaseItem, Quotation, User
 from app.utils import  fuzzy_search, import_rcot0300, import_rpdc0250c, import_ruah
-
+from werkzeug.utils import secure_filename
 from app import db
+import tempfile
+import os
 
 bp = Blueprint('api', __name__)
+
+
+UPLOAD_FOLDER = tempfile.gettempdir()
+ALLOWED_EXTENSIONS = {'xml'}
 
 
 @bp.route('/import', methods=['POST'])
@@ -737,3 +743,84 @@ def count_results():
         'count': estimated_count,
         'estimated_pages': (estimated_count + 199) // 200  # 200 itens por página
     }), 200
+    
+    
+    
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@bp.route('/upload_chunk', methods=['POST'])
+@login_required
+def upload_chunk():
+
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+
+    file = request.files['file']
+    chunk_index = int(request.form['chunkIndex'])
+    file_id = request.form['fileId']
+
+    try:
+        chunk_dir = os.path.join(UPLOAD_FOLDER, file_id)
+        os.makedirs(chunk_dir, exist_ok=True)
+
+        chunk_path = os.path.join(chunk_dir, f'chunk_{chunk_index}')
+        file.save(chunk_path)
+
+        return jsonify({'message': 'Chunk uploaded successfully'}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@bp.route('/process_file', methods=['POST'])
+@login_required
+def process_file():
+    file_id = request.json.get('fileId')
+    if not file_id:
+        return jsonify({'error': 'No file ID provided'}), 400
+
+    chunk_dir = os.path.join(UPLOAD_FOLDER, file_id)
+    if not os.path.exists(chunk_dir):
+        return jsonify({'error': 'File chunks not found'}), 404
+
+    try:
+        chunks = sorted(os.listdir(chunk_dir), key=lambda x: int(x.split('_')[1]))
+        final_file_path = os.path.join(UPLOAD_FOLDER, f'{file_id}_complete.xml')
+        with open(final_file_path, 'wb') as outfile:
+            for chunk_name in chunks:
+                chunk_path = os.path.join(chunk_dir, chunk_name)
+                with open(chunk_path, 'rb') as infile:
+                    outfile.write(infile.read())
+
+        with open(final_file_path, 'rb') as f:
+            content = f.read()
+            if not is_valid_xml(content):
+                raise ValueError('Invalid XML file')
+
+            if b'<RPDC0250_RUAH>' in content:
+                result = import_ruah(content)
+            elif b'<RPDC0250C>' in content:
+                result = import_rpdc0250c(content)
+            elif b'<RCOT0300>' in content:
+                result = import_rcot0300(content)
+            else:
+                raise ValueError('Invalid XML header')
+
+        return result
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+    finally:
+        import shutil
+        shutil.rmtree(chunk_dir, ignore_errors=True)
+        if os.path.exists(final_file_path):
+            os.remove(final_file_path)
+
+def is_valid_xml(content):
+    import xml.etree.ElementTree as ET
+    try:
+        ET.fromstring(content)
+        return True
+    except ET.ParseError:
+        return False
