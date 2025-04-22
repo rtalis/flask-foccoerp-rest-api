@@ -444,7 +444,6 @@ const UnifiedSearch = ({ onLogout }) => {
           <thead>
             <tr>
               <th>Data Emissão</th>
-              <th>Cod. ped c.</th>
               <th>Cod. item</th>
               <th>Descrição do item</th>
               <th>Quantidade</th>
@@ -455,13 +454,14 @@ const UnifiedSearch = ({ onLogout }) => {
               <th>Dt entrega</th>
               <th>Qtde Atendida</th>
               <th>Num NF</th>
+              <th>Dt Entrada</th>
             </tr>
           </thead>
           <tbody>
             {results.map((purchase) => (
               <React.Fragment key={purchase.order.cod_pedc}>
                 <tr>
-                  <td colSpan="12" className="order-header">
+                  <td colSpan="13" className="order-header">
                     Pedido de Compra: {purchase.order.cod_pedc} ~ {purchase.order.fornecedor_id} {getFirstWords(purchase.order.fornecedor_descricao, 3)} - {formatCurrency(purchase.order.total_bruto)} ~ Comprador: {purchase.order.func_nome}
                     <button className={`botao-mostrar ${(searchParams.searchByAtendido !== searchParams.searchByNaoAtendido) ? 'visible' : ''}`} onClick={() => toggleShowAllItems(purchase.order.cod_pedc)}>
                       {showAllItems[purchase.order.cod_pedc] ? 'Ocultar' : 'Mostrar todos'}
@@ -471,7 +471,6 @@ const UnifiedSearch = ({ onLogout }) => {
                 {purchase.items.map((item) => (
                   <tr key={item.id} className={`item-row ${item.quantidade === item.qtde_atendida ? 'atendida' : 'nao-atendida'}`}>
                     <td>{formatDate(purchase.order.dt_emis)}</td>
-                    <td>{item.cod_pedc}</td>
                     <td className="clickable" onClick={() => handleItemClick(item.id)}>{item.item_id}</td>
                     <td>{item.descricao}</td>
                     <td>{formatNumber(item.quantidade)} {item.unidade_medida}</td>
@@ -481,7 +480,19 @@ const UnifiedSearch = ({ onLogout }) => {
                     <td>{purchase.order.observacao}</td>
                     <td>{formatDate(item.dt_entrega)}</td>
                     <td>{formatNumber(item.qtde_atendida)} {item.unidade_medida}</td>
-                    <td>{purchase.order.nfes.map(nf => nf.num_nf).join(', ')}</td>
+                    <td>
+                      {purchase.order.nfes.map(nf => (
+                        <div key={nf.id}>
+                          <div>{nf.num_nf}</div>
+                        </div>
+                      ))}
+                    </td>                    <td>
+                      {purchase.order.nfes.map(nf => (
+                        <div key={nf.id}>
+                          <div>{nf.dt_ent ? formatDate(nf.dt_ent) : ''}</div>
+                        </div>
+                      ))}
+                    </td>
                   </tr>
                 ))}
               </React.Fragment>

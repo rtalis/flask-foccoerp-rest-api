@@ -54,8 +54,7 @@ class NFEntry(db.Model):
     cod_pedc = db.Column(db.String(50), nullable=False)
     linha = db.Column(db.Integer, nullable=True)
     num_nf = db.Column(db.String(50), nullable=False)
-    text_field = db.Column(db.Text, nullable=True)
-    #purchase_item_id = db.Column(db.Integer, db.ForeignKey('purchase_item.id'), nullable=False)
+    dt_ent = db.Column(db.Date, nullable=True)    #purchase_item_id = db.Column(db.Integer, db.ForeignKey('purchase_item.id'), nullable=False)
 
     #purchase_item = db.relationship('PurchaseItem', backref=db.backref('nf_entries', lazy=True))
     

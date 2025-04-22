@@ -131,13 +131,19 @@ def format_for_db_rpdc0250c(xml_data):
             linha = cgg_tpedc_item.find('LINHA1').text
             for g_nfe in cgg_tpedc_item.findall('.//G_NFE'):
                 num_nf = g_nfe.find('NUM_NF').text if g_nfe.find('NUM_NF') is not None else None
+                dt_ent = g_nfe.find('DT_ENT').text if g_nfe.find('DT_ENT') is not None else None
+                if dt_ent:
+                    try:
+                        dt_ent = datetime.strptime(dt_ent, '%d/%m/%y').date()
+                    except ValueError:
+                        dt_ent = None
                 if num_nf:                
                     formatted_items.append({
                         'cod_emp1': cod_emp1,
                         'cod_pedc': cod_pedc,
                         'linha': linha,
                         'num_nf': num_nf,
-                        'text_field': ''  # Campo de texto para uso futuro
+                        'dt_ent': dt_ent
                     })
     return formatted_items
 
@@ -219,6 +225,7 @@ def import_rpdc0250c(file_content):
                 cod_emp1=item_data['cod_emp1'],
                 cod_pedc=item_data['cod_pedc'],
                 linha=item_data['linha']
+                
             ).first()
 
             if existing_entry:
@@ -231,7 +238,7 @@ def import_rpdc0250c(file_content):
                 cod_pedc=item_data['cod_pedc'],
                 linha=item_data['linha'],
                 num_nf=item_data['num_nf'],
-                text_field=item_data.get('text_field', ''),
+                dt_ent=item_data.get('dt_ent', ''),
             )
             itemcount += 1
             db.session.add(nf_entry)

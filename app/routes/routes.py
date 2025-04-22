@@ -141,7 +141,7 @@ def search_items():
             cod_pedc=item.cod_pedc,  
             linha=item.linha 
         ).all()
-        nfes = [{'num_nf': nf_entry.num_nf, 'id': nf_entry.id} for nf_entry in nf_entries]
+        nfes = [{'num_nf': nf_entry.num_nf, 'id': nf_entry.id, 'dt_ent': nf_entry.dt_ent} for nf_entry in NFEntry.query.filter_by(cod_emp1=item.purchase_order.cod_emp1, cod_pedc=item.cod_pedc, linha=item.linha).all()]
         item_data['nfes'] = nfes
         result.append(item_data)
     return jsonify(result), 200
@@ -199,7 +199,7 @@ def search_purchases():
                 cod_pedc=item.cod_pedc,
                 linha=item.linha
             ).all()
-            nfes = [{'num_nf': nf_entry.num_nf, 'id': nf_entry.id} for nf_entry in nf_entries]
+            nfes = [{'num_nf': nf_entry.num_nf, 'id': nf_entry.id, 'dt_ent': nf_entry.dt_ent} for nf_entry in NFEntry.query.filter_by(cod_emp1=item.purchase_order.cod_emp1, cod_pedc=item.cod_pedc, linha=item.linha).all()]
 
             item_data = {
                 'id': item.id,
@@ -334,7 +334,7 @@ def search_fuzzy():
             cod_pedc=item.cod_pedc,  
             linha=item.linha 
             ).all()
-            nfes = [{'num_nf': nf_entry.num_nf, 'id': nf_entry.id} for nf_entry in nf_entries]
+            nfes = [{'num_nf': nf_entry.num_nf, 'id': nf_entry.id, 'dt_ent': nf_entry.dt_ent} for nf_entry in NFEntry.query.filter_by(cod_emp1=item.purchase_order.cod_emp1, cod_pedc=item.cod_pedc, linha=item.linha).all()]
             item_data['nfes'] = nfes
             item_result.append(item_data)
 
@@ -365,7 +365,7 @@ def search_fuzzy():
                 cod_pedc=item.cod_pedc,
                 linha=item.linha
             ).all()
-            nfes = [{'num_nf': nf_entry.num_nf, 'id': nf_entry.id} for nf_entry in nf_entries]
+            nfes = [{'num_nf': nf_entry.num_nf, 'id': nf_entry.id, 'dt_ent': nf_entry.dt_ent} for nf_entry in NFEntry.query.filter_by(cod_emp1=item.purchase_order.cod_emp1, cod_pedc=item.cod_pedc, linha=item.linha).all()]
 
             item_data = {
                 'id': item.id,
@@ -650,7 +650,7 @@ def search_combined():
                     'func_nome': item.purchase_order.func_nome,
                     'cf_pgto': item.purchase_order.cf_pgto,
                     
-                    'nfes': [{'num_nf': nf_entry.num_nf, 'id': nf_entry.id} for nf_entry in NFEntry.query.filter_by(cod_emp1=item.purchase_order.cod_emp1, cod_pedc=item.cod_pedc, linha=item.linha).all()]
+                    'nfes': [{'num_nf': nf_entry.num_nf, 'id': nf_entry.id, 'dt_ent': nf_entry.dt_ent} for nf_entry in NFEntry.query.filter_by(cod_emp1=item.purchase_order.cod_emp1, cod_pedc=item.cod_pedc, linha=item.linha).all()]
                 },
                 'items': []
             }
