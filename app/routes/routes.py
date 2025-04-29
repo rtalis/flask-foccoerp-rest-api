@@ -16,33 +16,6 @@ UPLOAD_FOLDER = tempfile.gettempdir()
 ALLOWED_EXTENSIONS = {'xml'}
 
 
-@bp.route('/import', methods=['POST'])
-@login_required
-def import_xml():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file part'}), 400
-
-    file = request.files['file']
-    
-    if file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
-
-    try:
-        file_content = file.read()  # Leia o conteúdo do arquivo
-        if b'<RPDC0250_RUAH>' in file_content:
-            return import_ruah(file_content)
-        elif b'<RPDC0250C>' in file_content:
-            return import_rpdc0250c(file_content)
-        elif b'<RCOT0300>' in file_content:
-            return import_rcot0300(file_content)
-        else:
-            return jsonify({'error': 'Invalid XML header'}), 400
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
-
-
 @bp.route('/purchasers', methods=['GET'])
 @login_required
 def get_purchasers():
@@ -797,7 +770,7 @@ def process_file():
             if not is_valid_xml(content):
                 raise ValueError('Invalid XML file')
 
-            if b'<RPDC0250_RUAH>' in content:
+            if b'<RPDC0250_RUAH>' in content or b'<RPDC0250>' in content:
                 result = import_ruah(content)
             elif b'<RPDC0250C>' in content:
                 result = import_rpdc0250c(content)
@@ -824,3 +797,31 @@ def is_valid_xml(content):
         return True
     except ET.ParseError:
         return False
+    
+    
+# Old endpoint for importing XML files
+@bp.route('/import', methods=['POST'])
+@login_required
+def import_xml():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+
+    file = request.files['file']
+    
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
+    try:
+        file_content = file.read()  # Leia o conteúdo do arquivo
+        if b'<RPDC0250_RUAH>' in file_content or b'<RPDC0250>' in file_content:            
+            return import_ruah(file_content)
+        elif b'<RPDC0250C>' in file_content:
+            return import_rpdc0250c(file_content)
+        elif b'<RCOT0300>' in file_content:
+            return import_rcot0300(file_content)
+        else:
+            return jsonify({'error': 'Invalid XML header'}), 400
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500

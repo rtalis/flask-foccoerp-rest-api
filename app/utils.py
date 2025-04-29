@@ -155,7 +155,10 @@ def import_ruah(file_content):
     updated = 0
 
     for order_data in formatted_orders:
-        existing_order = PurchaseOrder.query.filter_by(cod_pedc=order_data['cod_pedc']).first()
+        existing_order = PurchaseOrder.query.filter_by(
+                cod_pedc=order_data['cod_pedc'],
+                cod_emp1=order_data['cod_emp1']
+            ).first()        
         if existing_order:
             PurchaseItem.query.filter_by(purchase_order_id=existing_order.id).delete()
             db.session.delete(existing_order)
