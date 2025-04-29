@@ -628,6 +628,7 @@ def search_combined():
                     'contato': item.purchase_order.contato,
                     'func_nome': item.purchase_order.func_nome,
                     'cf_pgto': item.purchase_order.cf_pgto,
+                    'cod_emp1': item.purchase_order.cod_emp1,
                     
                     'nfes': [{'num_nf': nf_entry.num_nf, 'id': nf_entry.id, 'dt_ent': nf_entry.dt_ent} for nf_entry in NFEntry.query.filter_by(cod_emp1=item.purchase_order.cod_emp1, cod_pedc=item.cod_pedc, linha=item.linha).all()]
                 },

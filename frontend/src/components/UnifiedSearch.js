@@ -462,7 +462,7 @@ const UnifiedSearch = ({ onLogout }) => {
               <React.Fragment key={purchase.order.cod_pedc}>
                 <tr>
                   <td colSpan="13" className="order-header">
-                    Pedido de Compra: {purchase.order.cod_pedc} ~ {purchase.order.fornecedor_id} {getFirstWords(purchase.order.fornecedor_descricao, 3)} - {formatCurrency(purchase.order.total_bruto)} ~ Comprador: {purchase.order.func_nome}
+                    Pedido de Compra: {purchase.order.cod_pedc} ~ {purchase.order.fornecedor_id} {getFirstWords(purchase.order.fornecedor_descricao, 3)} - {formatCurrency(purchase.order.total_bruto)} ~ Comprador: {purchase.order.func_nome}. Empresa: {purchase.order.cod_emp1}
                     <button className={`botao-mostrar ${(searchParams.searchByAtendido !== searchParams.searchByNaoAtendido) ? 'visible' : ''}`} onClick={() => toggleShowAllItems(purchase.order.cod_pedc)}>
                       {showAllItems[purchase.order.cod_pedc] ? 'Ocultar' : 'Mostrar todos'}
                     </button>
