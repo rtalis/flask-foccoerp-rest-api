@@ -826,3 +826,77 @@ def import_xml():
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+    
+    
+@bp.route('/purchase_by_nf', methods=['GET'])
+@login_required
+def get_purchase_by_nf():
+    num_nf = request.args.get('num_nf')
+    if not num_nf:
+        return jsonify({'error': 'num_nf is required'}), 400
+
+    nf_entry = NFEntry.query.filter_by(num_nf=num_nf).first()
+    if not nf_entry:
+        return jsonify({'error': 'Nota fiscal não encontrada'}), 404
+
+    # Encontrar o item de compra relacionado
+    item = PurchaseItem.query.filter_by(
+        cod_pedc=nf_entry.cod_pedc,
+        linha=nf_entry.linha,
+        cod_emp1=nf_entry.cod_emp1
+    ).first()
+    if not item:
+        return jsonify({'error': 'Item relacionado não encontrado'}), 404
+
+    # Encontrar o pedido de compra relacionado
+    order = PurchaseOrder.query.filter_by(
+        cod_pedc=item.cod_pedc,
+        cod_emp1=item.cod_emp1
+    ).first()
+    if not order:
+        return jsonify({'error': 'Pedido de compra não encontrado'}), 404
+
+    # Buscar todos os itens do pedido
+    items = PurchaseItem.query.filter_by(purchase_order_id=order.id).all()
+    items_data = []
+    for i in items:
+        items_data.append({
+            'id': i.id,
+            'item_id': i.item_id,
+            'descricao': i.descricao,
+            'quantidade': i.quantidade,
+            'preco_unitario': i.preco_unitario,
+            'total': i.total,
+            'unidade_medida': i.unidade_medida,
+            'dt_entrega': i.dt_entrega,
+            'perc_ipi': i.perc_ipi,
+            'tot_liquido_ipi': i.tot_liquido_ipi,
+            'tot_descontos': i.tot_descontos,
+            'tot_acrescimos': i.tot_acrescimos,
+            'qtde_canc': i.qtde_canc,
+            'qtde_canc_toler': i.qtde_canc_toler,
+            'qtde_atendida': i.qtde_atendida,
+            'qtde_saldo': i.qtde_saldo,
+            'perc_toler': i.perc_toler
+        })
+
+    order_data = {
+        'order_id': order.id,
+        'cod_pedc': order.cod_pedc,
+        'dt_emis': order.dt_emis,
+        'fornecedor_id': order.fornecedor_id,
+        'fornecedor_descricao': order.fornecedor_descricao,
+        'total_bruto': order.total_bruto,
+        'total_liquido': order.total_liquido,
+        'total_liquido_ipi': order.total_liquido_ipi,
+        'posicao': order.posicao,
+        'posicao_hist': order.posicao_hist,
+        'observacao': order.observacao,
+        'contato': order.contato,
+        'func_nome': order.func_nome,
+        'cf_pgto': order.cf_pgto,
+        'cod_emp1': order.cod_emp1,
+        'items': items_data
+    }
+
+    return jsonify(order_data), 200
