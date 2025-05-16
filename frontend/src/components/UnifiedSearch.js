@@ -451,7 +451,6 @@ const UnifiedSearch = ({ onLogout }) => {
               <th>IPI</th>
               <th>Total</th>
               <th>Observação do ped.</th>
-              <th>Dt entrega</th>
               <th>Qtde Atendida</th>
               <th>Num NF</th>
               <th>Dt Entrada</th>
@@ -478,7 +477,6 @@ const UnifiedSearch = ({ onLogout }) => {
                     <td>{item.perc_ipi ? `${formatNumber(item.perc_ipi)}%` : '0%'}</td>
                     <td>R$ {formatNumber(item.total)}</td>
                     <td>{purchase.order.observacao}</td>
-                    <td>{formatDate(item.dt_entrega)}</td>
                     <td>{formatNumber(item.qtde_atendida)} {item.unidade_medida}</td>
                     <td>
                       {purchase.order.nfes.map(nf => (
