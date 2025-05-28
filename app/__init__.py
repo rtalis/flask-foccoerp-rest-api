@@ -17,8 +17,9 @@ migrate = Migrate()
 login_manager = LoginManager()
 
 def create_app():
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
     app = Flask(__name__)
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
+
     limiter = Limiter(
         get_remote_address,
         app=app,
