@@ -1,5 +1,5 @@
 from fuzzywuzzy import process, fuzz
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, redirect, request, jsonify
 from sqlalchemy import and_, or_
 from flask_login import login_user, logout_user, login_required, current_user
 from app.models import NFEntry, PurchaseOrder, PurchaseItem, Quotation, User
@@ -900,3 +900,8 @@ def get_purchase_by_nf():
     }
 
     return jsonify(order_data), 200
+
+@bp.route('/ai', methods=['GET'])
+@login_required
+def redirect_to_localhost():
+    return redirect('http://localhost:5000', code=302)
