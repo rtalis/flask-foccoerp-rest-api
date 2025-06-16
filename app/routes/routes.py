@@ -904,4 +904,4 @@ def get_purchase_by_nf():
 @bp.route('/ai', methods=['GET'])
 @login_required
 def redirect_to_localhost():
-    return redirect('http://localhost:5000', code=302)
+    return redirect('http://localhost:3000', code=302)
