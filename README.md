@@ -1,6 +1,6 @@
 # Flask REST API
 
-Este projeto é uma API REST desenvolvida com Flask que permite o recebimento de arquivos XML e armazena os dados em um banco de dados PostgreSQL. A API é projetada para gerenciar ordens de compra e itens associados, utilizando SQLAlchemy para a manipulação do banco de dados e Marshmallow para a validação dos dados.
+Este projeto é uma API REST desenvolvida com Flask que permite o recebimento de arquivos XML exportados do foccoERP e armazena os dados em um banco de dados PostgreSQL. A API é projetada para gerenciar ordens de compra e itens associados, utilizando SQLAlchemy para a manipulação do banco de dados e Marshmallow para a validação dos dados. Com o frontend, existem diversas opções que farão a busca pelos dados disponíveis mais fáceis. 
 
 ## Estrutura do Projeto
 
@@ -45,7 +45,7 @@ flask-rest-api
    pip install -r requirements.txt
    ```
 
-4. Configure as variáveis de ambiente no arquivo `.env`.
+4. Configure as variáveis de ambiente no arquivo `.env`, pode utilizar como base o arquivo .env.example.
 
 5. Execute as migrações do banco de dados:
    ```

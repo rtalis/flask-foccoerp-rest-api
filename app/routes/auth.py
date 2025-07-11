@@ -15,7 +15,7 @@ auth_bp = Blueprint('auth', __name__)
 limiter = Limiter(key_func=get_remote_address)
 
 @auth_bp.route('/login', methods=['POST'])
-@limiter.limit("5 per 5 seconds")
+@limiter.limit("2 per 5 seconds")
 def login():
     data = request.get_json()
     email = data.get('email').lower()
