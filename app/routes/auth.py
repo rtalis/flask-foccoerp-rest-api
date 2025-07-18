@@ -1,12 +1,12 @@
 from flask import Blueprint, request, jsonify, make_response
 from flask_login import login_user, logout_user, login_required
 from werkzeug.security import generate_password_hash, check_password_hash
-import app
+import jwt
 from app.models import User
-from app import db
+from app import db, login_manager
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from datetime import datetime
+from datetime import datetime, timedelta
 from app.models import LoginHistory
 from app.utils import send_login_notification_email
 from config import Config
@@ -86,3 +86,38 @@ def notify_admin_login(user, ip_address):
             
     except Exception as e:
         print(f"Erro ao enviar notificação: {str(e)}")
+
+@login_manager.request_loader
+def load_user_from_request(request):
+    auth_headers = request.headers.get('Authorization', '').split()
+    if len(auth_headers) != 2:
+        return None
+    try:
+        token = auth_headers[1]
+        data = jwt.decode(token, Config.SECRET_KEY)
+        user = User.by_email(data['sub'])
+        if user:
+            return user
+    except jwt.ExpiredSignatureError:
+        return None
+    except (jwt.InvalidTokenError, Exception) as e:
+        return None
+    return None
+
+
+
+def generate_jwt_token(request):
+    user = request.user
+    token = jwt.encode({
+        'sub': user.email,
+        'iat': datetime.now(datetime.timezone.utc),
+        'exp': datetime.now(datetime.timezone.utc) + timedelta(minutes=30)
+    }, Config.SECRET_KEY, algorithm='HS256')
+    return token
+    user = request.user
+    token = jwt.encode({
+        'sub': user.email,
+        'iat': datetime.utcnow(),
+        'exp': datetime.utcnow() + timedelta(minutes=30)
+    }, Config.SECRET_KEY, algorithm='HS256')
+    return token

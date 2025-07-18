@@ -8,6 +8,7 @@ from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 from config import Config
 import os
+import jwt
 from flask_mail import Mail
 
 mail = Mail()
@@ -48,3 +49,4 @@ def create_app():
 def load_user(user_id):
     from app.models import User
     return User.query.get(int(user_id))
+
