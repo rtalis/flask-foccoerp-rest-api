@@ -7,6 +7,7 @@ from app import db, login_manager
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from datetime import datetime, timedelta
+import datetime as dt
 from app.models import LoginHistory
 from app.utils import send_login_notification_email
 from config import Config
@@ -88,36 +89,38 @@ def notify_admin_login(user, ip_address):
         print(f"Erro ao enviar notificação: {str(e)}")
 
 @login_manager.request_loader
-def load_user_from_request(request):
-    auth_headers = request.headers.get('Authorization', '').split()
-    if len(auth_headers) != 2:
+@limiter.limit("2 per 5 seconds")
+@auth_bp.route('/login_by_token', methods=['POST'])
+def login_by_token():
+    auth_header = request.headers.get('Authorization')
+    if auth_header:
+        auth_headers = auth_header.split()
+        if len(auth_headers) == 2 and auth_headers[0].lower() == 'bearer':
+            token = auth_headers[1]
+            try:
+                data = jwt.decode(token, Config.SECRET_KEY, algorithms=['HS256'])
+                user = User.query.filter_by(email=data['sub']).first()
+                if user:
+                    login_user(user)
+                    return jsonify({'message': 'Logged in successfully'}), 200
+            except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, Exception) as e:
+                print("Token has expired or is invalid:", str(e))
+                return None
+            except (jwt.InvalidTokenError, Exception) as e:
+                print(f"Token error: {str(e)}")
+                return None
         return None
-    try:
-        token = auth_headers[1]
-        data = jwt.decode(token, Config.SECRET_KEY)
-        user = User.by_email(data['sub'])
-        if user:
-            return user
-    except jwt.ExpiredSignatureError:
-        return None
-    except (jwt.InvalidTokenError, Exception) as e:
-        return None
-    return None
 
-
-
-def generate_jwt_token(request):
-    user = request.user
+@auth_bp.route('/generate_jwt_token', methods=['POST'])
+@login_required
+@limiter.limit("5 per 5 seconds")
+def generate_jwt_token():
+    from flask_login import current_user
+    
     token = jwt.encode({
-        'sub': user.email,
-        'iat': datetime.now(datetime.timezone.utc),
-        'exp': datetime.now(datetime.timezone.utc) + timedelta(minutes=30)
+        'sub': current_user.email,
+        'iat': dt.datetime.now(dt.timezone.utc),
+        'exp': dt.datetime.now(tz=dt.timezone.utc) + timedelta(minutes=Config.JWT_EXPIRATION_MINUTES)
     }, Config.SECRET_KEY, algorithm='HS256')
-    return token
-    user = request.user
-    token = jwt.encode({
-        'sub': user.email,
-        'iat': datetime.utcnow(),
-        'exp': datetime.utcnow() + timedelta(minutes=30)
-    }, Config.SECRET_KEY, algorithm='HS256')
-    return token
+    
+    return jsonify({'token': token}), 200

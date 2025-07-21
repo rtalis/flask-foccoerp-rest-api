@@ -15,6 +15,7 @@ class Config:
     SESSION_COOKIE_SAMESITE = 'Lax'  # Pode ser 'Strict', 'Lax' ou 'None'
     PERMANENT_SESSION_LIFETIME = timedelta(hours=1)  # Tempo de vida da sessão
     SESSION_COOKIE_DOMAIN = None
+    JWT_EXPIRATION_MINUTES = int(os.getenv('JWT_EXPIRATION_MINUTES', 90))  # Tempo de expiração do JWT em minutos
     
     ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
     MAIL_SERVER = os.getenv('MAIL_SERVER')
