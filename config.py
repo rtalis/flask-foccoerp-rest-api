@@ -6,6 +6,8 @@ load_dotenv()
 
 class Config:
     SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL')
+    #SQLALCHEMY_DATABASE_URI = 'sqlite:///dev.db'
+
     SECRET_KEY = os.getenv('SECRET_KEY')
     SESSION_COOKIE_NAME = 'session'
     SESSION_COOKIE_HTTPONLY = True
@@ -13,6 +15,7 @@ class Config:
     SESSION_COOKIE_SAMESITE = 'Lax'  # Pode ser 'Strict', 'Lax' ou 'None'
     PERMANENT_SESSION_LIFETIME = timedelta(hours=1)  # Tempo de vida da sessão
     SESSION_COOKIE_DOMAIN = None
+    JWT_EXPIRATION_MINUTES = int(os.getenv('JWT_EXPIRATION_MINUTES', 90))  # Tempo de expiração do JWT em minutos
     
     ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
     MAIL_SERVER = os.getenv('MAIL_SERVER')
@@ -20,5 +23,6 @@ class Config:
     MAIL_USE_TLS = os.getenv('MAIL_USE_TLS', 'true').lower() == 'true'
     MAIL_USERNAME = os.getenv('MAIL_USERNAME')
     MAIL_PASSWORD = os.getenv('MAIL_PASSWORD')
+
     
     

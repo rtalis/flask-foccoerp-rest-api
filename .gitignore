@@ -22,7 +22,7 @@ build/
 
 tests/*.xml
 /*.xml
-
+cookies.txt
 
 # Flask specific
 instance/

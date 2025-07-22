@@ -1,12 +1,13 @@
 from flask import Blueprint, request, jsonify, make_response
 from flask_login import login_user, logout_user, login_required
 from werkzeug.security import generate_password_hash, check_password_hash
-import app
+import jwt
 from app.models import User
-from app import db
+from app import db, login_manager
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from datetime import datetime
+from datetime import datetime, timedelta
+import datetime as dt
 from app.models import LoginHistory
 from app.utils import send_login_notification_email
 from config import Config
@@ -86,3 +87,40 @@ def notify_admin_login(user, ip_address):
             
     except Exception as e:
         print(f"Erro ao enviar notificação: {str(e)}")
+
+@login_manager.request_loader
+@limiter.limit("2 per 5 seconds")
+@auth_bp.route('/login_by_token', methods=['POST'])
+def login_by_token():
+    auth_header = request.headers.get('Authorization')
+    if auth_header:
+        auth_headers = auth_header.split()
+        if len(auth_headers) == 2 and auth_headers[0].lower() == 'bearer':
+            token = auth_headers[1]
+            try:
+                data = jwt.decode(token, Config.SECRET_KEY, algorithms=['HS256'])
+                user = User.query.filter_by(email=data['sub']).first()
+                if user:
+                    login_user(user)
+                    return jsonify({'message': 'Logged in successfully'}), 200
+            except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, Exception) as e:
+                print("Token has expired or is invalid:", str(e))
+                return None
+            except (jwt.InvalidTokenError, Exception) as e:
+                print(f"Token error: {str(e)}")
+                return None
+        return None
+
+@auth_bp.route('/generate_jwt_token', methods=['POST'])
+@login_required
+@limiter.limit("5 per 5 seconds")
+def generate_jwt_token():
+    from flask_login import current_user
+    
+    token = jwt.encode({
+        'sub': current_user.email,
+        'iat': dt.datetime.now(dt.timezone.utc),
+        'exp': dt.datetime.now(tz=dt.timezone.utc) + timedelta(minutes=Config.JWT_EXPIRATION_MINUTES)
+    }, Config.SECRET_KEY, algorithm='HS256')
+    
+    return jsonify({'token': token}), 200
