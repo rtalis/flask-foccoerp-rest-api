@@ -2,7 +2,125 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
 import ItemScreen from './ItemScreen';
-import './UnifiedSearch.css'; // Adicione um arquivo CSS para estilos personalizados
+import './UnifiedSearch.css';
+
+import {
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TableFooter,
+  Paper, Collapse, Box, Typography, IconButton, TextField, Button, Radio, RadioGroup,
+  FormControlLabel, FormControl, FormLabel, Checkbox, Select, MenuItem, InputAdornment
+} from '@mui/material';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import SearchIcon from '@mui/icons-material/Search';
+import LogoutIcon from '@mui/icons-material/Logout';
+
+function PurchaseRow(props) {
+  const { purchase, formatDate, formatNumber, formatCurrency, getFirstWords, handleItemClick } = props;
+  const [open, setOpen] = useState(true); // Expanded by default
+
+  return (
+    <React.Fragment>
+      {/* Purchase header row */}
+      <TableRow sx={{
+        '& > *': { borderBottom: 'unset' },
+        backgroundColor: '#daf0ffff', // Light blue background
+        '&:hover': { backgroundColor: '#b5deffff' } // Slightly darker on hover
+      }}>        <TableCell>
+          <IconButton size="small" onClick={() => setOpen(!open)}>
+            {open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+          </IconButton>
+        </TableCell>
+        <TableCell colSpan={9} align="center" sx={{ fontWeight: 'bold' }}  >
+          Pedido de Compra: {purchase.order.cod_pedc} ~ {purchase.order.fornecedor_id} {getFirstWords(purchase.order.fornecedor_descricao, 3)} - {formatCurrency(purchase.order.total_bruto)} ~ Comprador: {purchase.order.func_nome}. Empresa: {purchase.order.cod_emp1}
+        </TableCell>
+      </TableRow>
+
+      {/* Collapsible items section */}
+      <TableRow>
+        <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={10}>
+          <Collapse in={open} timeout="auto" unmountOnExit>
+            <Box sx={{ margin: 1 }}>
+
+              <Table size="small" aria-label="items">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Data Emissão</TableCell>
+                    <TableCell>Cod. item</TableCell>
+                    <TableCell>Descrição do item</TableCell>
+                    <TableCell>Quantidade</TableCell>
+                    <TableCell>Preço Unitário</TableCell>
+                    <TableCell>IPI</TableCell>
+                    <TableCell>Total</TableCell>
+                    <TableCell>Qtde Atendida</TableCell>
+                    <TableCell>Num NF</TableCell>
+                    <TableCell>Dt Entrada</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {purchase.items.map((item) => (
+                    <TableRow
+                      key={item.id}
+                      sx={{
+                        backgroundColor: item.quantidade === item.qtde_atendida
+                          ? '#f4fbffff' // Light blue for fully fulfilled items
+                          : (item.qtde_atendida > 0 && item.qtde_atendida < item.quantidade)
+                            ? '#fff4f4ff' // Light red for partially fulfilled items
+                            : 'inherit', // Default color for unfulfilled items
+                        '&:hover': {
+                          backgroundColor: item.quantidade === item.qtde_atendida
+                            ? '#bbdefb' // Darker blue on hover
+                            : (item.qtde_atendida > 0 && item.qtde_atendida < item.quantidade)
+                              ? '#ffcdd2' // Darker red on hover
+                              : '#f5f5f5' // Light gray on hover for default
+                        }
+                      }}
+                    >
+                      <TableCell>{formatDate(purchase.order.dt_emis)}</TableCell>
+                      <TableCell
+                        onClick={() => handleItemClick(item.id)}
+                        sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+                      >
+                        {item.item_id}
+                      </TableCell>
+                      <TableCell>{item.descricao}</TableCell>
+                      <TableCell>{formatNumber(item.quantidade)} {item.unidade_medida}</TableCell>
+                      <TableCell>R$ {formatNumber(item.preco_unitario)}</TableCell>
+                      <TableCell>{item.perc_ipi ? `${formatNumber(item.perc_ipi)}%` : '0%'}</TableCell>
+                      <TableCell>R$ {formatNumber(item.total)}</TableCell>
+                      <TableCell>{formatNumber(item.qtde_atendida)} {item.unidade_medida}</TableCell>
+                      <TableCell>
+                        {purchase.order.nfes.map(nf => (
+                          <div key={nf.id}>{nf.num_nf}</div>
+                        ))}
+                      </TableCell>
+                      <TableCell>
+                        {purchase.order.nfes.map(nf => (
+                          <div key={nf.id}>{nf.dt_ent ? formatDate(nf.dt_ent) : ''}</div>
+                        ))}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+                <TableFooter>
+                  <TableRow>
+                    <TableCell colSpan={10} align="right">
+                      <Typography variant="body2" color="text.secondary">
+                        <Typography variant="body2" gutterBottom component="div" sx={{ fontStyle: 'italic' }}>
+                          Observação: {purchase.order.observacao}              Total: R$ {formatNumber(purchase.items.reduce((acc, item) => acc + item.total, 0))}
+                        </Typography>
+
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                </TableFooter>
+              </Table>
+            </Box>
+          </Collapse>
+        </TableCell>
+      </TableRow>
+    </React.Fragment>
+  );
+}
 
 const UnifiedSearch = ({ onLogout }) => {
   const [searchParams, setSearchParams] = useState({
@@ -216,293 +334,253 @@ const UnifiedSearch = ({ onLogout }) => {
 
   return (
     <div className="unified-search">
-      <h2>
+      <Typography variant="h5" gutterBottom>
         Pedidos de compras Ruah - atualizado em {lastUpdated} -
-        <Link to="/import" className="link"> Atualizar</Link>
-      </h2>
-      <div className="search-container">
-        <button onClick={onLogout} className="logout-button">Logout</button>
-        <input
-          type="text"
+        <Link to="/import" style={{ marginLeft: 8, textDecoration: 'none' }}> Atualizar</Link>
+      </Typography>
+
+      <Box sx={{ display: 'flex', mb: 3, alignItems: 'center', gap: 2 }}>
+        <TextField
           name="query"
           placeholder="Search..."
+          variant="outlined"
+          size="small"
+          fullWidth
           value={searchParams.query}
           onChange={handleChange}
-          onKeyDown={handleKeyDown} // Adiciona o manipulador de eventos onKeyDown
-          className="search-input"
+          onKeyDown={handleKeyDown}
+   
         />
-        <button onClick={() => handleSearch(1)} className="search-button">
-          <span className="icon">🔍</span>
-          <span className="text">Buscar</span>
-        </button>
-      </div>
-      <div className="checkbox-section">
-        <div className="checkbox-group">
-          <h3>Pesquisar por...</h3>
-          <label className={searchParams.searchPrecision !== 'precisa' ? 'disabled' : ''}>
-            <input
-              type="checkbox"
-              name="searchByCodPedc"
-              checked={searchParams.searchByCodPedc}
-              onChange={handleChange}
-              disabled={searchParams.searchPrecision !== 'precisa'}
-            />
-            Código do Pedido de Compra
-          </label>
-          <label className={searchParams.searchPrecision !== 'precisa' ? 'disabled' : ''}>
-            <input
-              type="checkbox"
-              name="searchByFornecedor"
-              checked={searchParams.searchByFornecedor}
-              onChange={handleChange}
-              disabled={searchParams.searchPrecision !== 'precisa'}
-            />
-            Nome do Fornecedor
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              name="searchByObservacao"
-              checked={searchParams.searchByObservacao}
-              onChange={handleChange}
-            />
-            Observação do Pedido de Compra
-          </label>
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={() => handleSearch(1)}
+          startIcon={<SearchIcon />}
+        >
+          Buscar
+        </Button>
+        <Button
+          variant="outlined"
+          color="error"
+          onClick={onLogout}
+          startIcon={<LogoutIcon />}
+        >
+          Logout
+        </Button>
+      </Box>
 
-          <label className={searchParams.searchPrecision !== 'precisa' ? 'disabled' : ''}>
-            <input
-              type="checkbox"
-              name="searchByItemId"
-              checked={searchParams.searchByItemId}
-              onChange={handleChange}
-              disabled={searchParams.searchPrecision !== 'precisa'}
-            />
-            Código do Item
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              name="searchByDescricao"
-              checked={searchParams.searchByDescricao}
-              onChange={handleChange}
-            />
-            Descrição do Item
-          </label>
-        </div>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 5, mb: 5 }}>
+        {/* Search fields section */}
+        <FormControl component="fieldset" sx={{ minWidth: '200px' }}>
+          <FormLabel component="legend">Pesquisar por...</FormLabel>
+          <FormControlLabel
+            control={
+              <Checkbox
+                name="searchByCodPedc"
+                checked={searchParams.searchByCodPedc}
+                onChange={handleChange}
+                disabled={searchParams.searchPrecision !== 'precisa'}
+              />
+            }
+            label="Código do Pedido de Compra"
+            sx={{ marginBottom: '-10px' }}
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                name="searchByFornecedor"
+                checked={searchParams.searchByFornecedor}
+                onChange={handleChange}
+                disabled={searchParams.searchPrecision !== 'precisa'}
+              />
+            }
+            label="Nome do Fornecedor"
+            sx={{ marginBottom: '-10px' }}
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                name="searchByObservacao"
+                checked={searchParams.searchByObservacao}
+                onChange={handleChange}
+              />
+            }
+            label="Observação do Pedido de Compra"
+            sx={{ marginBottom: '-10px' }}
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                name="searchByItemId"
+                checked={searchParams.searchByItemId}
+                onChange={handleChange}
+                disabled={searchParams.searchPrecision !== 'precisa'}
+              />
+            }
+            label="Código do Item"
+            sx={{ marginBottom: '-10px' }}
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                name="searchByDescricao"
+                checked={searchParams.searchByDescricao}
+                onChange={handleChange}
+              />
+            }
+            label="Descrição do Item"
+            sx={{ marginBottom: '-10px' }}
+          />
+        </FormControl>
 
-        <div className="checkbox-group">
-          <h3>Precisão da busca</h3>
-          <label>
-            <input
-              type="radio"
-              name="searchPrecision"
+        {/* Search precision section */}
+        <FormControl component="fieldset" sx={{ minWidth: '200px' }}>
+          <FormLabel component="legend">Precisão da busca</FormLabel>
+          <RadioGroup
+            name="searchPrecision"
+            value={searchParams.searchPrecision}
+            onChange={handleChange}
+          >
+            <FormControlLabel
               value="precisa"
-              checked={searchParams.searchPrecision === 'precisa'}
-              onChange={handleChange}
+              control={<Radio />}
+              label="Precisa"
+              sx={{ marginBottom: '-10px' }}
             />
-            Precisa
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="searchPrecision"
+            <FormControlLabel
               value="fuzzy"
-              checked={searchParams.searchPrecision === 'fuzzy'}
-              onChange={handleChange}
+              control={<Radio />}
+              label="Busca com erro de digitação"
+              sx={{ marginBottom: '-10px' }}
             />
-            Busca com erro de digitação
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="searchPrecision"
+            <FormControlLabel
               value="tentar_a_sorte"
-              checked={searchParams.searchPrecision === 'tentar_a_sorte'}
-              onChange={handleChange}
+              control={<Radio />}
+              label="Estou sem sorte"
+              sx={{ marginBottom: '-10px' }}
             />
-            Estou sem sorte
-          </label>
-        </div>
-        <div className="checkbox-group">
-          <h3>Mostrar compradores</h3>
-          <select
+          </RadioGroup>
+        </FormControl>
+
+        {/* Purchaser section */}
+        <FormControl sx={{ minWidth: '200px' }}>
+          <FormLabel component="legend">Mostrar compradores</FormLabel>
+          <Select
             name="selectedFuncName"
             value={searchParams.selectedFuncName}
             onChange={handleChange}
-            className="purchaser-select"
+            size="small"
+            fullWidth
           >
-            <option value="todos">Todos os compradores</option>
+            <MenuItem value="todos">Todos os compradores</MenuItem>
             {funcNames.map((funcName) => (
-              <option key={funcName} value={funcName}>
+              <MenuItem key={funcName} value={funcName}>
                 {funcName}
-              </option>
+              </MenuItem>
             ))}
-          </select>
-        </div>
-        {/*}
-        <div className="checkbox-group">
-          <h3>Mostrar itens </h3>
-          <label>
-            <input
-              type="radio"
-              name="searchByAtendido"
-              value="todos"
-              disabled={true}
-              checked={searchParams.searchByAtendido && searchParams.searchByNaoAtendido}
-              onChange={() => setSearchParams({ ...searchParams, searchByAtendido: true, searchByNaoAtendido: true })}
+          </Select>
+        </FormControl>
+
+        {/* Value filter section */}
+        <FormControl component="fieldset" sx={{ minWidth: '200px' }}>
+          <FormLabel component="legend">Filtrar por valor</FormLabel>
+          <RadioGroup
+            name="valueSearchType"
+            value={searchParams.valueSearchType}
+            onChange={handleChange}
+          >
+            <FormControlLabel
+              value="item"
+              control={<Radio />}
+              label="Valor do Item"
+              sx={{ marginBottom: '-10px' }}
             />
-            Todos os itens
-          </label>
-          <label>
-            <input
-              disabled={true}
-              type="radio"
-              name="searchByAtendido"
-              value="itens-concluidos"
-              checked={searchParams.searchByAtendido && !searchParams.searchByNaoAtendido}
-              onChange={() => setSearchParams({ ...searchParams, searchByAtendido: true, searchByNaoAtendido: false })}
+            <FormControlLabel
+              value="order"
+              control={<Radio />}
+              label="Valor do Pedido"
+              sx={{ marginBottom: '-10px' }}
             />
-            Somente itens concluidos
-          </label>
-          <label>
-            <input
-              type="radio"
-              disabled={true}
-              name="searchByNaoAtendido"
-              value="itens-pendentes"
-              checked={!searchParams.searchByAtendido && searchParams.searchByNaoAtendido}
-              onChange={() => setSearchParams({ ...searchParams, searchByAtendido: false, searchByNaoAtendido: true })}
+          </RadioGroup>
+
+          <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+            <TextField
+              label="Valor mínimo"
+              name="min_value"
+              type="number"
+              value={searchParams.min_value}
+              onChange={handleChange}
+              size="small"
+              InputProps={{
+                startAdornment: <InputAdornment position="start">R$</InputAdornment>,
+              }}
             />
-            Somente itens pendentes
-          </label>
-        </div>
-        */}
-        <div className="checkbox-group">
-          <h3>Filtrar por valor</h3>
-          <div className="value-type-selector">
-            <label>
-              <input
-                type="radio"
-                name="valueSearchType"
-                value="item"
-                checked={searchParams.valueSearchType === 'item'}
-                onChange={handleChange}
-              />
-              Valor do Item
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="valueSearchType"
-                value="order"
-                checked={searchParams.valueSearchType === 'order'}
-                onChange={handleChange}
-              />
-              Valor do Pedido
-            </label>
-          </div>
-          <div className="value-filter">
-            <div className="input-currency">
-              <span className="currency-symbol">R$</span>
-              <input
-                type="number"
-                name="min_value"
-                value={searchParams.min_value}
-                onChange={handleChange}
-                placeholder={`Valor mínimo ${searchParams.valueSearchType === 'item' ? 'do item' : 'do pedido'}`}
-                className="value-input"
-              />
-            </div>
-            <div className="input-currency">
-              <span className="currency-symbol">R$</span>
-              <input
-                type="number"
-                name="max_value"
-                value={searchParams.max_value}
-                onChange={handleChange}
-                placeholder={`Valor máximo ${searchParams.valueSearchType === 'item' ? 'do item' : 'do pedido'}`}
-                className="value-input"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
+            <TextField
+              label="Valor máximo"
+              name="max_value"
+              type="number"
+              value={searchParams.max_value}
+              onChange={handleChange}
+              size="small"
+              InputProps={{
+                startAdornment: <InputAdornment position="start">R$</InputAdornment>,
+              }}
+            />
+          </Box>
+        </FormControl>
+      </Box>
+
       {loading && (
-        <div className="loading-overlay">
-          <div className="loading-icon">
+        <Box sx={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexDirection: 'column',
+          backgroundColor: 'rgba(255, 255, 255, 0.8)',
+          zIndex: 9999
+        }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
             <div className="spinner"></div>
-          </div>
-          <div className="loading-text">
-            Buscando aproximadamente {estimatedResults} resultados...
-          </div>
-        </div>
+          </Box>
+          <Typography>
+            Buscando em aproximadamente {estimatedResults} resultados...
+          </Typography>
+        </Box>
       )}
-      <div>
-        <h3>Mostrando {noResults} resultados. Pagina {currentPage} de {totalPages}</h3></div>
-      {
-        <table className="results-table">
-          <thead>
-            <tr>
-              <th>Data Emissão</th>
-              <th>Cod. item</th>
-              <th>Descrição do item</th>
-              <th>Quantidade</th>
-              <th>Preço Unitário</th>
-              <th>IPI</th>
-              <th>Total</th>
-              <th>Observação do ped.</th>
-              <th>Qtde Atendida</th>
-              <th>Num NF</th>
-              <th>Dt Entrada</th>
-            </tr>
-          </thead>
-          <tbody>
+
+      <Typography variant="h6" gutterBottom>
+        Mostrando {noResults} resultados. Pagina {currentPage} de {totalPages}
+      </Typography>
+
+      <TableContainer component={Paper}>
+        <Table aria-label="collapsible table">
+          <TableBody>
             {results.map((purchase) => (
-              <React.Fragment key={purchase.order.cod_pedc}>
-                <tr>
-                  <td colSpan="13" className="order-header">
-                    Pedido de Compra: {purchase.order.cod_pedc} ~ {purchase.order.fornecedor_id} {getFirstWords(purchase.order.fornecedor_descricao, 3)} - {formatCurrency(purchase.order.total_bruto)} ~ Comprador: {purchase.order.func_nome}. Empresa: {purchase.order.cod_emp1}
-                    <button className={`botao-mostrar ${(searchParams.searchByAtendido !== searchParams.searchByNaoAtendido) ? 'visible' : ''}`} onClick={() => toggleShowAllItems(purchase.order.cod_pedc)}>
-                      {showAllItems[purchase.order.cod_pedc] ? 'Ocultar' : 'Mostrar todos'}
-                    </button>
-                  </td>
-                </tr>
-                {purchase.items.map((item) => (
-                  <tr key={item.id} className={`item-row ${item.quantidade === item.qtde_atendida ? 'atendida' : 'nao-atendida'}`}>
-                    <td>{formatDate(purchase.order.dt_emis)}</td>
-                    <td className="clickable" onClick={() => handleItemClick(item.id)}>{item.item_id}</td>
-                    <td>{item.descricao}</td>
-                    <td>{formatNumber(item.quantidade)} {item.unidade_medida}</td>
-                    <td>R$ {formatNumber(item.preco_unitario)}</td>
-                    <td>{item.perc_ipi ? `${formatNumber(item.perc_ipi)}%` : '0%'}</td>
-                    <td>R$ {formatNumber(item.total)}</td>
-                    <td>{purchase.order.observacao}</td>
-                    <td>{formatNumber(item.qtde_atendida)} {item.unidade_medida}</td>
-                    <td>
-                      {purchase.order.nfes.map(nf => (
-                        <div key={nf.id}>
-                          <div>{nf.num_nf}</div>
-                        </div>
-                      ))}
-                    </td>                    <td>
-                      {purchase.order.nfes.map(nf => (
-                        <div key={nf.id}>
-                          <div>{nf.dt_ent ? formatDate(nf.dt_ent) : ''}</div>
-                        </div>
-                      ))}
-                    </td>
-                  </tr>
-                ))}
-              </React.Fragment>
+              <PurchaseRow
+                key={purchase.order.cod_pedc}
+                purchase={purchase}
+                formatDate={formatDate}
+                formatNumber={formatNumber}
+                formatCurrency={formatCurrency}
+                getFirstWords={getFirstWords}
+                handleItemClick={handleItemClick}
+              />
             ))}
-          </tbody>
-        </table>
-      }
+          </TableBody>
+        </Table>
+      </TableContainer>
+
       <div className="pagination">
         <button onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1}>Anterior</button>
         <span>Página {currentPage} de {totalPages}</span>
         <button onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage === totalPages}>Próxima</button>
       </div>
+
       {selectedItemId && <ItemScreen itemId={selectedItemId} onClose={handleCloseItemScreen} />}
     </div>
   );
