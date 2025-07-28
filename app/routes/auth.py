@@ -104,12 +104,10 @@ def login_by_token():
                     login_user(user)
                     return jsonify({'message': 'Logged in successfully'}), 200
             except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, Exception) as e:
-                print("Token has expired or is invalid:", str(e))
-                return None
+                return jsonify({'error': 'Invalid or expired token'}), 401
             except (jwt.InvalidTokenError, Exception) as e:
-                print(f"Token error: {str(e)}")
-                return None
-        return None
+                return jsonify({'error': 'Invalid token'}), 401
+        return jsonify({'error': 'Authorization header missing or invalid'}), 401
 
 @auth_bp.route('/generate_jwt_token', methods=['POST'])
 @login_required

@@ -16,6 +16,8 @@ class Config:
     PERMANENT_SESSION_LIFETIME = timedelta(hours=1)  # Tempo de vida da sessão
     SESSION_COOKIE_DOMAIN = None
     JWT_EXPIRATION_MINUTES = int(os.getenv('JWT_EXPIRATION_MINUTES', 90))  # Tempo de expiração do JWT em minutos
+    SIEG_API_KEY = os.getenv('SIEG_API_KEY')
+    GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
     
     ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
     MAIL_SERVER = os.getenv('MAIL_SERVER')

@@ -8,6 +8,8 @@ from werkzeug.utils import secure_filename
 from app import db
 import tempfile
 import os
+from config import Config
+
 
 bp = Blueprint('api', __name__)
 
@@ -539,6 +541,8 @@ def get_quotations_fuzzy():
 @bp.route('/search_combined', methods=['GET'])
 @login_required
 def search_combined():
+    from sqlalchemy import text
+
     query = request.args.get('query', '')
     page = int(request.args.get('page', 1))
     per_page = int(request.args.get('per_page', 10))
@@ -553,6 +557,13 @@ def search_combined():
     max_value = request.args.get('maxValue', type=float)
     value_search_type = request.args.get('valueSearchType', 'item')
     value_filters = []
+    ignore_diacritics = request.args.get('ignoreDiacritics', 'true').lower() == 'true'
+
+    if ignore_diacritics:
+        if db.engine.name == 'postgresql':
+            db.session.execute(text("CREATE EXTENSION IF NOT EXISTS unaccent"))
+            remove_accents = lambda col: db.func.unaccent(col)
+
     if min_value is not None or max_value is not None:
         
         if value_search_type == 'item':
@@ -569,6 +580,8 @@ def search_combined():
     
     filters = []
     if query:
+        query = query.strip()
+        query = query.lower()
         if search_by_cod_pedc:
             filters.append(PurchaseOrder.cod_pedc.ilike(f'%{query}%'))
         if search_by_fornecedor:
@@ -578,8 +591,7 @@ def search_combined():
         if search_by_item_id:
             filters.append(PurchaseItem.item_id.ilike(f'%{query}%'))
         if search_by_descricao:
-            filters.append(PurchaseItem.descricao.ilike(f'%{query}%'))
-      
+            filters.append(remove_accents(PurchaseItem.descricao).contains(query))
         if not any([search_by_cod_pedc, search_by_fornecedor, search_by_observacao, search_by_item_id, search_by_descricao]):
             filters.append(or_(
                 PurchaseItem.descricao.ilike(f'%{query}%'),
@@ -901,7 +913,535 @@ def get_purchase_by_nf():
 
     return jsonify(order_data), 200
 
-@bp.route('/ai', methods=['GET'])
+
+
+@bp.route('/nfe_by_purchase', methods=['GET'])
 @login_required
-def redirect_to_localhost():
-    return redirect('http://localhost:3000', code=302)
+def get_nfe_by_purchase():
+    import requests
+    import base64
+    import xml.etree.ElementTree as ET
+    from datetime import datetime, timedelta
+    
+    cod_pedc = request.args.get('cod_pedc')
+    if not cod_pedc:
+        return jsonify({'error': 'cod_pedc is required'}), 400
+    
+    purchase_order = PurchaseOrder.query.filter_by(cod_pedc=cod_pedc).first()
+    if not purchase_order:
+        return jsonify({'error': 'Purchase order not found'}), 404
+    
+    fornecedor_cnpj = purchase_order.fornecedor_id
+    if not fornecedor_cnpj or len(str(fornecedor_cnpj).strip()) < 8:
+        return jsonify({'error': 'Valid fornecedor CNPJ not found'}), 400
+    
+    fornecedor_cnpj = ''.join(filter(str.isdigit, str(fornecedor_cnpj)))
+    
+    # Use purchase order date as start and current date as end
+    start_date = purchase_order.dt_emis
+    end_date = datetime.now()
+    
+    # Format dates for the API
+    start_date_str = start_date.strftime('%Y-%m-%dT00:00:00.000Z')
+    end_date_str = end_date.strftime('%Y-%m-%dT23:59:59.999Z')
+    
+    sieg_request_data = {
+        "XmlType": 1,
+        "Take": 0,
+        "Skip": 0,
+        "DataEmissaoInicio": start_date_str,
+        "DataEmissaoFim": end_date_str,
+        "CnpjEmit": fornecedor_cnpj,
+        "CnpjDest": "",
+        "CnpjRem": "",
+        "CnpjTom": "",
+        "Tag": "",
+        "Downloadevent": True,
+        "TypeEvent": 0
+    }
+    
+    try:
+        response = requests.post(
+            'https://api.sieg.com/BaixarXmlsV2?api_key={}'.format(Config.SIEG_API_KEY),
+            json=sieg_request_data,
+            headers={'Content-Type': 'application/json', 'Accept': 'application/json'}
+        )
+        
+        if response.status_code != 200:
+            return jsonify({
+                'error': f'Error from SIEG API: {response.status_code}',
+                'details': response.text
+            }), 500
+        
+        result = response.json()
+        if 'xmls' not in result or not result['xmls']:
+            return jsonify({'message': 'No NFE data found for this purchase order'}), 404
+        
+        nfe_data = []
+        for xml_base64 in result['xmls']:
+            try:
+                xml_content = base64.b64decode(xml_base64).decode('utf-8')
+                root = ET.fromstring(xml_content)
+                # Extract NFE data
+                chave_acesso = extract_xml_value(root, './/chNFe')
+                numero_nota = extract_xml_value(root, './/nNF')
+                data_emissao = extract_xml_value(root, './/dhEmi')
+                nome_fornecedor = extract_xml_value(root, './/xNome[ancestor::emit]')
+                valor_total = extract_xml_value(root, './/vNF')
+                
+                nfe_data.append({
+                    'chave': chave_acesso,
+                    'numero': numero_nota,
+                    'data_emissao': data_emissao,
+                    'fornecedor': nome_fornecedor,
+                    'valor': valor_total,
+                    'xml_content': xml_content  # Optional: include full XML content
+                })
+            except Exception as e:
+                # Log the error and continue with next XML
+                print(f"Error processing XML: {str(e)}")
+                continue
+        
+        return jsonify({
+            'purchase_order': cod_pedc,
+            'fornecedor': purchase_order.fornecedor_descricao,
+            'valor': valor_total,
+            'data_emissao': data_emissao,
+            'nfe_data': nfe_data
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Error: {str(e)}'}), 500
+
+# Helper function to extract values from XML
+def extract_xml_value(root, xpath):
+    try:
+        element = root.find(xpath)
+        return element.text if element is not None else ''
+    except:
+        return ''
+    
+@bp.route('/quotation_items', methods=['GET'])
+@login_required
+def get_quotation_items():
+    cod_cot = request.args.get('cod_cot')
+    if not cod_cot:
+        return jsonify({'error': 'cod_cot is required'}), 400
+
+    quotations = Quotation.query.filter_by(cod_cot=cod_cot).all()
+    if not quotations:
+        return jsonify({'error': 'Quotation not found'}), 404
+    
+    unique_items = {}    
+    # Process all quotations to get unique items by description only
+    for quotation in quotations:
+        item_key = quotation.descricao.strip().lower() if quotation.descricao else ""
+        
+        if item_key not in unique_items:
+            last_purchase = PurchaseItem.query.join(PurchaseOrder)\
+                .filter(PurchaseItem.descricao.ilike(f"%{quotation.descricao}%"))\
+                .order_by(PurchaseOrder.dt_emis.desc())\
+                .first()
+            
+            last_purchase_data = None
+            if last_purchase:
+                last_purchase_data = {
+                    'price': last_purchase.preco_unitario,
+                    'date': last_purchase.purchase_order.dt_emis,
+                    'cod_pedc': last_purchase.cod_pedc,
+                    'fornecedor': last_purchase.purchase_order.fornecedor_descricao
+                }
+            
+            unique_items[item_key] = {
+                'item_id': quotation.item_id,
+                'descricao': quotation.descricao,
+                'quantidade': quotation.quantidade,
+                'dt_emissao': quotation.dt_emissao,
+                'last_purchase': last_purchase_data,
+                'fornecedores': []
+            }
+
+        supplier_exists = False
+        for supplier in unique_items[item_key]['fornecedores']:
+            if supplier['fornecedor_id'] == quotation.fornecedor_id:
+                supplier_exists = True
+                break
+                
+        if not supplier_exists:
+            unique_items[item_key]['fornecedores'].append({
+                'fornecedor_id': quotation.fornecedor_id,
+                'fornecedor_descricao': quotation.fornecedor_descricao,
+                'preco_unitario': quotation.preco_unitario
+            })
+
+    quotation_data = {
+        'cod_cot': quotations[0].cod_cot,
+        'dt_emissao': quotations[0].dt_emissao,
+        'items': list(unique_items.values())
+    }
+
+    return jsonify(quotation_data), 200
+
+@bp.route('/extract_quotation_data', methods=['POST'])
+@login_required
+def extract_quotation_data():
+    import json
+    import tempfile
+    import os
+    import google.generativeai as genai
+    from datetime import datetime
+
+    # Check if files were uploaded
+    if not request.files:
+        return jsonify({'error': 'No files uploaded'}), 400
+    
+    # Get quotation reference number if provided
+    cod_cot = request.form.get('cod_cot', '')
+    
+    # Setup Google Generative AI (Gemini)
+    gemini_api_key = Config.GEMINI_API_KEY
+    if not gemini_api_key:
+        return jsonify({'error': 'GEMINI_API_KEY not set in environment'}), 500
+    
+    genai.configure(api_key=gemini_api_key)
+    
+    try:
+        # Fetch existing items if we have a quotation code
+        existing_items = []
+        items_descriptions = []
+        
+        if cod_cot:
+            quotations = Quotation.query.filter_by(cod_cot=cod_cot).all()
+            for quotation in quotations:
+                # Store item descriptions for prompt
+                if quotation.descricao and quotation.descricao not in items_descriptions:
+                    items_descriptions.append(quotation.descricao)
+                
+                existing_item = {
+                    'item_id': quotation.item_id,
+                    'descricao': quotation.descricao,
+                    'quantidade': quotation.quantidade,
+                    'preco_unitario': quotation.preco_unitario,
+                    'fornecedor_id': quotation.fornecedor_id,
+                    'fornecedor_descricao': quotation.fornecedor_descricao
+                }
+                
+                # Get last purchase data
+                last_purchase = PurchaseItem.query.join(PurchaseOrder)\
+                    .filter(PurchaseItem.descricao.ilike(f"%{quotation.descricao}%"))\
+                    .order_by(PurchaseOrder.dt_emis.desc())\
+                    .first()
+                
+                if last_purchase:
+                    existing_item['last_purchase'] = {
+                        'price': last_purchase.preco_unitario,
+                        'date': last_purchase.purchase_order.dt_emis,
+                        'cod_pedc': last_purchase.cod_pedc,
+                        'fornecedor': last_purchase.purchase_order.fornecedor_descricao
+                    }
+                
+                existing_items.append(existing_item)
+
+        # Process uploaded files
+        temp_files = []
+        file_types = []
+        
+        for key in request.files:
+            file = request.files[key]
+            file_extension = file.filename.split('.')[-1].lower()
+            
+            # Determine file type and appropriate temporary file suffix
+            if file_extension in ['xls', 'xlsx']:
+                file_type = 'excel'
+                suffix = '.xlsx'
+            elif file_extension in ['pdf']:
+                file_type = 'pdf'
+                suffix = '.pdf'
+            elif file_extension in ['jpg', 'jpeg', 'png']:
+                file_type = 'image'
+                suffix = f'.{file_extension}'
+            else:
+                continue  # Skip unsupported file types
+            
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+            file.save(temp_file.name)
+            temp_files.append(temp_file.name)
+            file_types.append(file_type)
+        
+        if not temp_files:
+            return jsonify({'error': 'No supported files uploaded'}), 400
+
+        generation_config = {
+            "temperature": 0.1,  
+            "top_p": 0.95,
+            "top_k": 40,
+            "max_output_tokens": 4096,
+        }
+        
+        model = genai.GenerativeModel(
+            model_name="gemini-2.0-flash",
+            generation_config=generation_config
+        )
+        extracted_data = []
+        
+        for i, file_path in enumerate(temp_files):
+            file_type = file_types[i]
+            content_parts = []
+            
+            if file_type == 'pdf':
+                # For PDFs, try text extraction first as it's more reliable for matching
+                try:
+                    import PyPDF2
+                    pdf_text = ""
+                    with open(file_path, 'rb') as pdf_file:
+                        pdf_reader = PyPDF2.PdfReader(pdf_file)
+                        for page_num in range(min(5, len(pdf_reader.pages))):
+                            pdf_text += pdf_reader.pages[page_num].extract_text()
+                    
+                    if pdf_text.strip():
+                        content_parts.append(pdf_text)
+                    else:
+                        # If text extraction yields no results, fallback to image conversion
+                        raise ValueError("PDF text extraction yielded empty results")
+                        
+                except Exception as e:
+                    print(f"Error extracting PDF text: {str(e)}")
+                    try:
+                        # Fallback to image conversion
+                        from pdf2image import convert_from_path
+                        images = convert_from_path(file_path, dpi=300, first_page=1, last_page=5)
+                        
+                        for img in images:
+                            import io
+                            img_byte_arr = io.BytesIO()
+                            img.save(img_byte_arr, format='PNG')
+                            img_byte_arr = img_byte_arr.getvalue()
+                            
+                            content_parts.append({
+                                "mime_type": "image/png",
+                                "data": img_byte_arr
+                            })
+                    except Exception as e2:
+                        print(f"Error converting PDF to image: {str(e2)}")
+                        continue
+            
+            elif file_type == 'excel':
+                # Extract data from Excel
+                try:
+                    import pandas as pd
+                    # Read all sheets
+                    excel_data = pd.read_excel(file_path, sheet_name=None)
+                    excel_text = "Excel file content:\n\n"
+                    
+                    for sheet_name, df in excel_data.items():
+                        excel_text += f"Sheet: {sheet_name}\n"
+                        excel_text += df.to_string(index=False, max_rows=100) + "\n\n"
+                    
+                    content_parts.append(excel_text)
+                except Exception as e:
+                    print(f"Error processing Excel file: {str(e)}")
+                    continue
+            
+            elif file_type == 'image':
+                # Process image directly
+                try:
+                    with open(file_path, 'rb') as img_file:
+                        img_data = img_file.read()
+                        
+                    content_parts.append({
+                        "mime_type": f"image/{file_path.split('.')[-1].lower()}",
+                        "data": img_data
+                    })
+                except Exception as e:
+                    print(f"Error processing image: {str(e)}")
+                    continue
+            
+            # Prepare enhanced prompt for Gemini that includes item descriptions from quotation
+            items_list_text = ""
+            if items_descriptions:
+                items_list_text = "Os itens que estou procurando na cotação são:\n"
+                for idx, desc in enumerate(items_descriptions, 1):
+                    items_list_text += f"{idx}. {desc}\n"
+            
+            prompt = f"""
+            Extraia informações estruturadas desta cotação em formato detalhado. Preciso das seguintes informações:
+            1. Nome do fornecedor/empresa
+            2. Data da cotação
+            3. Lista completa de itens com seus respectivos:
+               - Código (se disponível)
+               - Descrição detalhada
+               - Quantidade
+               - Unidade (un, kg, caixa, etc.)
+               - Preço unitário (se disponível, 0 caso não informado)
+               - Preço total
+               - Fabricante/marca (se disponível)
+
+            {items_list_text}
+
+            Para cada item encontrado, tente identificar a qual dos itens listados acima ele corresponde.
+            O código pode ser diferente, use principalmente a descrição para fazer a correspondência.
+            
+            Tenha cautela para não trocar o valor total pelo valor unitário e não confunda com o preço total da cotação.
+
+            Observe atentamente os valores e formatos. Retorne um JSON válido com esta estrutura:
+            ```json
+            {{
+              "supplier": "Nome do Fornecedor",
+              "date": "Data da Cotação (formato YYYY-MM-DD)",
+              "items": [
+                {{
+                  "code": "código do item (se disponível)",
+                  "description": "descrição completa do item",
+                  "quantity": 1,
+                  "unit": "unidade (un, kg, etc.)",
+                  "unitPrice": 99.99,
+                  "totalPrice": 99.99,
+                  "manufacturer": "nome do fabricante (se disponível)",
+                  "matchedItemDescription": "descrição do item da lista que corresponde (se encontrado)"
+                }}
+              ],
+              "totalValue": 999.99
+            }}
+            ```
+            
+            Caso não consiga identificar algum valor, use valores vazios para strings ("") e 0 para números.
+            """
+            
+            # Add the prompt to the beginning of content_parts
+            all_parts = [prompt] + content_parts
+            
+            # Make request to Gemini
+            response = model.generate_content(all_parts)
+            
+            # Parse and process response
+            response_text = response.text
+            
+            # Extract JSON from response
+            import re
+            json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)
+            
+            if json_match:
+                try:
+                    supplier_data = json.loads(json_match.group(1))
+                    extracted_data.append(supplier_data)
+                except json.JSONDecodeError:
+                    print(f"Invalid JSON in response: {json_match.group(1)}")
+            else:
+                try:
+                    # Try to parse the whole response as JSON
+                    supplier_data = json.loads(response_text)
+                    extracted_data.append(supplier_data)
+                except json.JSONDecodeError:
+                    print("Could not extract JSON from response")
+        
+        # Match extracted items with existing items (for cases where Gemini didn't provide matches)
+        matched_results = []
+        
+        for supplier_data in extracted_data:
+            matched_supplier = {
+                "supplier": supplier_data.get("supplier", ""),
+                "date": supplier_data.get("date", ""),
+                "items": [],
+                "totalValue": supplier_data.get("totalValue", 0)
+            }
+            
+            for item in supplier_data.get("items", []):
+                matched_item = item.copy()
+                
+                # If Gemini already provided a match, use it
+                if "matchedItemDescription" in item and item["matchedItemDescription"]:
+                    # Find the corresponding item_id in existing_items
+                    for existing_item in existing_items:
+                        if existing_item.get("descricao", "").lower() == item["matchedItemDescription"].lower():
+                            matched_item["matchedItemId"] = existing_item.get("item_id", "")
+                            
+                            # Determine confidence based on exact match
+                            matched_item["matchConfidence"] = "Alta"
+                            
+                            # Add last purchase info if available
+                            if "last_purchase" in existing_item:
+                                matched_item["lastPurchase"] = existing_item["last_purchase"]
+                                
+                                # Calculate price difference percentage
+                                last_price = existing_item["last_purchase"].get("price", 0)
+                                current_price = item.get("unitPrice", 0)
+                                
+                                if last_price and current_price:
+                                    price_diff_pct = ((current_price - last_price) / last_price) * 100
+                                    matched_item["priceDifferencePercent"] = round(price_diff_pct, 2)
+                            break
+                else:
+                    # Fallback to our own matching logic if Gemini didn't provide a match
+                    best_match = None
+                    best_match_score = 0
+                    
+                    if existing_items:
+                        for existing_item in existing_items:
+                            try:
+                                from difflib import SequenceMatcher
+                                
+                                item_desc = item.get('description', '').lower()
+                                existing_desc = existing_item.get('descricao', '').lower()
+                                
+                                ratio = SequenceMatcher(None, item_desc, existing_desc).ratio() * 100
+                                match_score = int(ratio)
+                                
+                                if match_score > best_match_score:
+                                    best_match_score = match_score
+                                    best_match = existing_item
+                            except Exception as e:
+                                print(f"Error matching items: {str(e)}")
+                                continue
+                    
+                    # Add match information
+                    if best_match:
+                        matched_item["matchedItemId"] = best_match.get("item_id", "")
+                        matched_item["matchedItemDescription"] = best_match.get("descricao", "")
+                        
+                        if best_match_score >= 85:
+                            matched_item["matchConfidence"] = "Alta"
+                        elif best_match_score >= 70:
+                            matched_item["matchConfidence"] = "Média"
+                        else:
+                            matched_item["matchConfidence"] = "Baixa"
+                        
+                        # Add last purchase info if available
+                        if "last_purchase" in best_match:
+                            matched_item["lastPurchase"] = best_match["last_purchase"]
+                            
+                            # Calculate price difference percentage
+                            last_price = best_match["last_purchase"].get("price", 0)
+                            current_price = item.get("unitPrice", 0)
+                            
+                            if last_price and current_price:
+                                price_diff_pct = ((current_price - last_price) / last_price) * 100
+                                matched_item["priceDifferencePercent"] = round(price_diff_pct, 2)
+                    else:
+                        matched_item["matchedItemDescription"] = ""
+                        matched_item["matchConfidence"] = "Não encontrado"
+                
+                matched_supplier["items"].append(matched_item)
+            
+            matched_results.append(matched_supplier)
+        
+        # Clean up temporary files
+        for temp_file in temp_files:
+            try:
+                os.unlink(temp_file)
+            except:
+                pass
+        
+        return jsonify({
+            "extractedData": matched_results,
+            "existingItems": existing_items if cod_cot else []
+        }), 200
+        
+    except Exception as e:
+        # Clean up temporary files on error
+        for temp_file in temp_files:
+            try:
+                os.unlink(temp_file)
+            except:
+                pass
+        
+        return jsonify({'error': f'Error extracting data: {str(e)}'}), 500

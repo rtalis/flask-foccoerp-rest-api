@@ -1,0 +1,44 @@
+/* filepath: /home/talison/dev/flask-foccoerp-rest-api/frontend/src/components/QuotationExtractor.css */
+.quotation-extractor {
+  padding-top: 24px;
+  padding-bottom: 24px;
+}
+
+.file-list {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #eee;
+  border-radius: 4px;
+  padding: 8px;
+  margin-bottom: 16px;
+}
+
+.match-confidence-high {
+  background-color: rgba(76, 175, 80, 0.1);
+}
+
+.match-confidence-medium {
+  background-color: rgba(255, 152, 0, 0.1);
+}
+
+.match-confidence-low {
+  background-color: rgba(244, 67, 54, 0.1);
+}
+
+.price-diff-lower {
+  color: #4caf50;
+  display: flex;
+  align-items: center;
+}
+
+.price-diff-higher {
+  color: #f44336;
+  display: flex;
+  align-items: center;
+}
+
+.price-diff-slightly-higher {
+  color: #ff9800;
+  display: flex;
+  align-items: center;
+}

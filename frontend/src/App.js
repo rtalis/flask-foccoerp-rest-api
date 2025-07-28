@@ -5,6 +5,8 @@ import UnifiedSearch from './components/UnifiedSearch';
 import Login from './components/Login';
 import ImportFile from './components/ImportFile';
 import Register from './components/Register';
+import QuotationAnalyzer from './components/QuotationAnalyzer';
+
 
 const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -49,14 +51,16 @@ const App = () => {
       <Routes>
         <Route path="/login" element={isAuthenticated ? <Navigate to="/search" /> : <Login onLogin={handleLogin} />} />
         <Route path="/register" element={isAuthenticated ? <Register /> : <Login />} />
-        
+        <Route path="/quotation-analyzer" element={true ? <QuotationAnalyzer /> : <Navigate to="/login" />} />
 
-               <Route
+
+        <Route
           path="/search"
           element={isAuthenticated ? <UnifiedSearch onLogout={handleLogout} /> : <Navigate to="/login" />}
         />
-          <Route path="/import" element={isAuthenticated ? <ImportFile /> : <Login />} />
+        <Route path="/import" element={isAuthenticated ? <ImportFile /> :  <Navigate to="/login" />} />
         <Route path="*" element={<Navigate to={isAuthenticated ? "/search" : "/login"} />} />
+
       </Routes>
     </Router>
   );

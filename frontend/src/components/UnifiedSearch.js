@@ -23,8 +23,8 @@ function PurchaseRow(props) {
       {/* Purchase header row */}
       <TableRow sx={{
         '& > *': { borderBottom: 'unset' },
-        backgroundColor: '#daf0ffff', // Light blue background
-        '&:hover': { backgroundColor: '#b5deffff' } // Slightly darker on hover
+        backgroundColor: '#59a0cfff', // Light blue background
+        '&:hover': { backgroundColor: '#3a6e99ff' } // Slightly darker on hover
       }}>        <TableCell>
           <IconButton size="small" onClick={() => setOpen(!open)}>
             {open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
@@ -102,14 +102,21 @@ function PurchaseRow(props) {
                   ))}
                 </TableBody>
                 <TableFooter>
-                  <TableRow>
-                    <TableCell colSpan={10} align="right">
-                      <Typography variant="body2" color="text.secondary">
-                        <Typography variant="body2" gutterBottom component="div" sx={{ fontStyle: 'italic' }}>
-                          Observação: {purchase.order.observacao}              Total: R$ {formatNumber(purchase.items.reduce((acc, item) => acc + item.total, 0))}
+                  <TableRow sx={{ backgroundColor: '#e9e9e9ff' }}>
+                    <TableCell colSpan={10}>
+                      <Box sx={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        width: '100%'
+                      }}>
+                        <Typography variant="body2" component="div" sx={{ fontWeight: 'bold', textAlign: 'left' }}>
+                          Observação: {purchase.order.observacao}
                         </Typography>
-
-                      </Typography>
+                        <Typography variant="body2" component="div" sx={{ fontWeight: 'bold', textAlign: 'right' }}>
+                          Total: {formatCurrency(purchase.items.reduce((acc, item) => acc + item.total, 0))}
+                        </Typography>
+                      </Box>
                     </TableCell>
                   </TableRow>
                 </TableFooter>
@@ -349,7 +356,7 @@ const UnifiedSearch = ({ onLogout }) => {
           value={searchParams.query}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-   
+
         />
         <Button
           variant="contained"
