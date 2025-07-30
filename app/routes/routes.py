@@ -1,3 +1,4 @@
+from urllib import response
 from fuzzywuzzy import process, fuzz
 from flask import Blueprint, redirect, request, jsonify
 from sqlalchemy import and_, or_
@@ -928,6 +929,8 @@ def get_nfe_by_purchase():
     import base64
     import xml.etree.ElementTree as ET
     from datetime import datetime, timedelta
+    from dateutil.relativedelta import relativedelta
+    from app.models import Supplier
     
     cod_pedc = request.args.get('cod_pedc')
     if not cod_pedc:
@@ -935,19 +938,25 @@ def get_nfe_by_purchase():
     
     purchase_order = PurchaseOrder.query.filter_by(cod_pedc=cod_pedc).first()
     if not purchase_order:
-        return jsonify({'error': 'Purchase order not found'}), 404
+        return jsonify({'error': 'Purchase order not found'}), 404  
+
+    if purchase_order.fornecedor_id:
+        supplier = Supplier.query.filter( 
+        (Supplier.cod_for == str(purchase_order.fornecedor_id))
+        ).first()
+    else:
+        return jsonify({'error': 'Fornecedor ID not found in purchase order'}), 400
     
-    fornecedor_cnpj = purchase_order.fornecedor_id
-    if not fornecedor_cnpj or len(str(fornecedor_cnpj).strip()) < 8:
-        return jsonify({'error': 'Valid fornecedor CNPJ not found'}), 400
-    
+    if supplier and supplier.nvl_forn_cnpj_forn_cpf:
+        fornecedor_cnpj = supplier.nvl_forn_cnpj_forn_cpf
+    else:
+        return jsonify({'error': 'Valid fornecedor CNPJ not found in database'}), 400
+
     fornecedor_cnpj = ''.join(filter(str.isdigit, str(fornecedor_cnpj)))
     
-    # Use purchase order date as start and current date as end
     start_date = purchase_order.dt_emis
     end_date = datetime.now()
     
-    # Format dates for the API
     start_date_str = start_date.strftime('%Y-%m-%dT00:00:00.000Z')
     end_date_str = end_date.strftime('%Y-%m-%dT23:59:59.999Z')
     
@@ -965,7 +974,6 @@ def get_nfe_by_purchase():
         "Downloadevent": True,
         "TypeEvent": 0
     }
-    
     try:
         response = requests.post(
             'https://api.sieg.com/BaixarXmlsV2?api_key={}'.format(Config.SIEG_API_KEY),
@@ -973,36 +981,57 @@ def get_nfe_by_purchase():
             headers={'Content-Type': 'application/json', 'Accept': 'application/json'}
         )
         
-        if response.status_code != 200:
-            return jsonify({
-                'error': f'Error from SIEG API: {response.status_code}',
-                'details': response.text
-            }), 500
-        
-        result = response.json()
-        if 'xmls' not in result or not result['xmls']:
-            return jsonify({'message': 'No NFE data found for this purchase order'}), 404
-        
+        if response.status_code == 200:
+            result = response.json()
+            if 'xmls' not in result or not result['xmls']:
+                return jsonify({'message': 'No NFE data found for this purchase order'}), 404
+        else:
+            if response.status_code == 404:
+                # Retry with a date range of one month before the start date, for after receive order purchase generation
+                retry_start_date = start_date - relativedelta(months=1)
+                retry_start_date_str = retry_start_date.strftime('%Y-%m-%dT00:00:00.000Z')
+                retry_request_data = sieg_request_data.copy()
+                retry_request_data["DataEmissaoInicio"] = retry_start_date_str
+
+                retry_response = requests.post(
+                    'https://api.sieg.com/BaixarXmlsV2?api_key={}'.format(Config.SIEG_API_KEY),
+                    json=retry_request_data,
+                    headers={'Content-Type': 'application/json', 'Accept': 'application/json'}
+                )
+
+                if retry_response.status_code != 200:
+                    return jsonify({'error': 'No NFE data found for this purchase order after retry'}), 404
+
+                result = retry_response.json()
+                if 'xmls' not in result or not result['xmls']:
+                    return jsonify({'message': 'No NFE data found for this purchase order after retry'}), 404
+
+            else:
+                return jsonify({'error': f'Error fetching NFE data: {response.status_code} - {response.text}'}), response.status_code
+           
+        ns = {'nfe': 'http://www.portalfiscal.inf.br/nfe'}
+
         nfe_data = []
         for xml_base64 in result['xmls']:
             try:
                 xml_content = base64.b64decode(xml_base64).decode('utf-8')
                 root = ET.fromstring(xml_content)
                 # Extract NFE data
-                chave_acesso = extract_xml_value(root, './/chNFe')
-                numero_nota = extract_xml_value(root, './/nNF')
-                data_emissao = extract_xml_value(root, './/dhEmi')
-                nome_fornecedor = extract_xml_value(root, './/xNome[ancestor::emit]')
-                valor_total = extract_xml_value(root, './/vNF')
-                
-                nfe_data.append({
-                    'chave': chave_acesso,
-                    'numero': numero_nota,
-                    'data_emissao': data_emissao,
-                    'fornecedor': nome_fornecedor,
-                    'valor': valor_total,
-                    'xml_content': xml_content  # Optional: include full XML content
-                })
+                chave_acesso = root.find('.//nfe:protNFe/nfe:infProt/nfe:chNFe', ns)
+                numero_nota = root.find('.//nfe:NFe/nfe:infNFe/nfe:ide/nfe:nNF', ns)
+                data_emissao = root.find('.//nfe:NFe/nfe:infNFe/nfe:ide/nfe:dhEmi', ns)
+                nome_fornecedor = root.find('.//nfe:NFe/nfe:infNFe/nfe:emit/nfe:xNome', ns)
+                valor_total = root.find('.//nfe:NFe/nfe:infNFe/nfe:total/nfe:ICMSTot/nfe:vNF', ns)
+
+                if chave_acesso.text != "":
+                    nfe_data.append({
+                        'chave': chave_acesso.text,
+                        'numero': numero_nota.text,
+                        'data_emissao': data_emissao.text,
+                        'fornecedor': nome_fornecedor.text,
+                        'valor': valor_total.text,
+                        'xml_content': xml_content
+                    })
             except Exception as e:
                 # Log the error and continue with next XML
                 print(f"Error processing XML: {str(e)}")
@@ -1011,15 +1040,15 @@ def get_nfe_by_purchase():
         return jsonify({
             'purchase_order': cod_pedc,
             'fornecedor': purchase_order.fornecedor_descricao,
-            'valor': valor_total,
-            'data_emissao': data_emissao,
+            'valor': valor_total.text if valor_total is not None else '',
+            'data_emissao': data_emissao.text if data_emissao is not None else '',
+            'numero_nota': numero_nota.text if numero_nota is not None else '',
             'nfe_data': nfe_data
         }), 200
         
     except Exception as e:
         return jsonify({'error': f'Error: {str(e)}'}), 500
 
-# Helper function to extract values from XML
 def extract_xml_value(root, xpath):
     try:
         element = root.find(xpath)
