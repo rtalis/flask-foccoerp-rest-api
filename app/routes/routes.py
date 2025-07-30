@@ -559,7 +559,7 @@ def search_combined():
     max_value = request.args.get('maxValue', type=float)
     value_search_type = request.args.get('valueSearchType', 'item')
     value_filters = []
-    ignore_diacritics = request.args.get('ignoreDiacritics', 'true').lower() == 'true'
+    ignore_diacritics = request.args.get('ignoreDiacritics', 'false').lower() == 'true'
 
     if ignore_diacritics:
         if db.engine.name == 'postgresql':
@@ -582,8 +582,7 @@ def search_combined():
     
     filters = []
     if query:
-        query = query.strip()
-        query = query.lower()
+        query = query.upper()
         if search_by_cod_pedc:
             filters.append(PurchaseOrder.cod_pedc.ilike(f'%{query}%'))
         if search_by_fornecedor:
@@ -593,7 +592,8 @@ def search_combined():
         if search_by_item_id:
             filters.append(PurchaseItem.item_id.ilike(f'%{query}%'))
         if search_by_descricao:
-            filters.append(remove_accents(PurchaseItem.descricao).contains(query))
+            filters.append(PurchaseItem.descricao.ilike(f'%{query}%'))
+            #filters.append(remove_accents(PurchaseItem.descricao).contains(query))
         if not any([search_by_cod_pedc, search_by_fornecedor, search_by_observacao, search_by_item_id, search_by_descricao]):
             filters.append(or_(
                 PurchaseItem.descricao.ilike(f'%{query}%'),
