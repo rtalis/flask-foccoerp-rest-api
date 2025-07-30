@@ -1,6 +1,7 @@
 from urllib import response
 from fuzzywuzzy import process, fuzz
 from flask import Blueprint, redirect, request, jsonify
+import requests
 from sqlalchemy import and_, or_
 from flask_login import login_user, logout_user, login_required, current_user
 from app.models import NFEntry, PurchaseOrder, PurchaseItem, Quotation, User
@@ -1480,3 +1481,24 @@ def extract_quotation_data():
                 pass
         
         return jsonify({'error': f'Error extracting data: {str(e)}'}), 500
+    
+@bp.route('/get_danfe_pdf', methods=['GET'])
+@login_required
+def get_danfe_pdf():
+    xml_key = request.args.get('xmlKey')
+    if not xml_key:
+        return jsonify({'error': 'xmlKey is required'}), 400
+    
+    try:
+        response = requests.get(
+            f'https://api.sieg.com/api/Arquivos/GerarDanfeViaChave?xmlKey={xml_key}&api_key={Config.SIEG_API_KEY}',
+            headers={'Accept': 'application/json'}
+        )
+        
+        if response.status_code == 200:
+            return jsonify(response.json()), 200
+        else:
+            return jsonify({'error': f'Error fetching DaNFe: {response.status_code} - {response.text}'}), response.status_code
+    
+    except Exception as e:
+        return jsonify({'error': f'Error: {str(e)}'}), 500

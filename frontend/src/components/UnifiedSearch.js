@@ -13,10 +13,65 @@ import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import SearchIcon from '@mui/icons-material/Search';
 import LogoutIcon from '@mui/icons-material/Logout';
+import ReceiptIcon from '@mui/icons-material/Receipt';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
+import CircularProgress from '@mui/material/CircularProgress';
+import Card from '@mui/material/Card';
+import CardContent from '@mui/material/CardContent';
+import CardActions from '@mui/material/CardActions';
 
 function PurchaseRow(props) {
   const { purchase, formatDate, formatNumber, formatCurrency, getFirstWords, handleItemClick } = props;
   const [open, setOpen] = useState(true); // Expanded by default
+  const [nfeData, setNfeData] = useState(null);
+  const [loadingNfe, setLoadingNfe] = useState(false);
+  const [showNfeDialog, setShowNfeDialog] = useState(false);
+
+  const fetchNfeData = async () => {
+    setLoadingNfe(true);
+    try {
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/nfe_by_purchase`, {
+        params: { cod_pedc: purchase.order.cod_pedc },
+        withCredentials: true
+      });
+      setNfeData(response.data);
+      // Show the dialog immediately after fetching data
+      setShowNfeDialog(true);
+    } catch (error) {
+      console.error('Error fetching NFE data:', error);
+    } finally {
+      setLoadingNfe(false);
+    }
+  };
+
+  const handleNfeClick = async (nfe) => {
+    try {
+      const newWindow = window.open('', '_blank');
+      newWindow.document.write('Carregando DANFE...');
+
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/get_danfe_pdf`, {
+        params: { xmlKey: nfe.chave },
+        withCredentials: true
+      });
+
+      if (response.data && response.data.arquivo) {
+        newWindow.location.href = `data:application/pdf;base64,${response.data.arquivo}`;
+      } else {
+        newWindow.document.write('Erro ao carregar o PDF. Por favor tente novamente.');
+        console.error('Invalid PDF data received');
+      }
+    } catch (error) {
+      console.error('Error fetching DaNFe PDF:', error);
+    }
+  };
+
+  const handleDialogClose = () => {
+    setShowNfeDialog(false);
+  };
 
   return (
     <React.Fragment>
@@ -38,10 +93,9 @@ function PurchaseRow(props) {
 
       {/* Collapsible items section */}
       <TableRow>
-        <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={10}>
+        <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={11}>
           <Collapse in={open} timeout="auto" unmountOnExit>
             <Box sx={{ margin: 1 }}>
-
               <Table size="small" aria-label="items">
                 <TableHead>
                   <TableRow>
@@ -53,8 +107,8 @@ function PurchaseRow(props) {
                     <TableCell>IPI</TableCell>
                     <TableCell>Total</TableCell>
                     <TableCell>Qtde Atendida</TableCell>
-                    <TableCell>Num NF</TableCell>
                     <TableCell>Dt Entrada</TableCell>
+                    <TableCell>NFEs</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -63,15 +117,15 @@ function PurchaseRow(props) {
                       key={item.id}
                       sx={{
                         backgroundColor: item.quantidade === item.qtde_atendida
-                          ? '#e7f6ffff' // Light blue for fully fulfilled items
+                          ? '#f4fbffff' // Light blue for fully fulfilled items
                           : (item.qtde_atendida > 0 && item.qtde_atendida < item.quantidade)
-                            ? '#fce8e8ff' // Light red for partially fulfilled items
+                            ? '#fff4f4ff' // Light red for partially fulfilled items
                             : 'inherit', // Default color for unfulfilled items
                         '&:hover': {
                           backgroundColor: item.quantidade === item.qtde_atendida
                             ? '#bbdefb' // Darker blue on hover
                             : (item.qtde_atendida > 0 && item.qtde_atendida < item.quantidade)
-                              ? '#24070aff' // Darker red on hover
+                              ? '#ffcdd2' // Darker red on hover
                               : '#f5f5f5' // Light gray on hover for default
                         }
                       }}
@@ -90,21 +144,47 @@ function PurchaseRow(props) {
                       <TableCell>R$ {formatNumber(item.total)}</TableCell>
                       <TableCell>{formatNumber(item.qtde_atendida)} {item.unidade_medida}</TableCell>
                       <TableCell>
-                        {purchase.order.nfes.map(nf => (
-                          <div key={nf.id}>{nf.num_nf}</div>
+         {purchase.order.nfes.map(nf => (
+                          <div key={nf.id}>{nf.dt_ent ? formatDate(nf.dt_ent) : ''}</div>
                         ))}
+
                       </TableCell>
                       <TableCell>
                         {purchase.order.nfes.map(nf => (
-                          <div key={nf.id}>{nf.dt_ent ? formatDate(nf.dt_ent) : ''}</div>
+                          <div key={nf.id}>{nf.num_nf}</div>
                         ))}
+
+                      </TableCell>
+                      <TableCell>
+                        {true ? (
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            onClick={fetchNfeData}
+                            disabled={loadingNfe}
+                            title="Ver detalhes das notas fiscais"
+                          >
+                            <SearchIcon fontSize="small" />
+                          </IconButton>
+                        ) : null}
+                        {loadingNfe ? (
+                          <CircularProgress size={24} />
+                        ) : nfeData && nfeData.nfe_data && nfeData.nfe_data.length > 0 ? (
+                          <IconButton
+                            color="secondary"
+                            onClick={() => setShowNfeDialog(true)}
+                            title="Ver Notas Fiscais"
+                          >
+                            <ReceiptIcon />
+                          </IconButton>
+                        ) : null}
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
-                <TableFooter >
+                <TableFooter>
                   <TableRow sx={{ backgroundColor: '#e9e9e9ff' }}>
-                    <TableCell colSpan={10}>
+                    <TableCell colSpan={11}>
                       <Box sx={{
                         display: 'flex',
                         justifyContent: 'space-between',
@@ -126,6 +206,64 @@ function PurchaseRow(props) {
           </Collapse>
         </TableCell>
       </TableRow>
+
+      {/* NFE Dialog */}
+      <Dialog
+        open={showNfeDialog}
+        onClose={handleDialogClose}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Notas Fiscais - Pedido {purchase.order.cod_pedc}
+        </DialogTitle>
+        <DialogContent>
+          {loadingNfe ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+              <CircularProgress />
+            </Box>
+          ) : nfeData && nfeData.nfe_data ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {nfeData.nfe_data.map((nfe, index) => (
+                <Card key={index} variant="outlined">
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      NF-e Nº {nfe.numero}
+                    </Typography>
+                    <Typography variant="body2">
+                      <strong>Fornecedor:</strong> {nfe.fornecedor}
+                    </Typography>
+                    <Typography variant="body2">
+                      <strong>Data Emissão:</strong> {nfe.data_emissao ? new Date(nfe.data_emissao).toLocaleDateString('pt-BR') : ''}
+                    </Typography>
+                    <Typography variant="body2">
+                      <strong>Valor:</strong> {nfe.valor ? formatCurrency(parseFloat(nfe.valor)) : ''}
+                    </Typography>
+                    <Typography variant="body2">
+                      <strong>Chave:</strong> {nfe.chave}
+                    </Typography>
+                  </CardContent>
+                  <CardActions>
+                    <Button
+                      size="small"
+                      startIcon={<PictureAsPdfIcon />}
+                      onClick={() => handleNfeClick(nfe)}
+                      color="primary"
+                    >
+                      Visualizar DANFE
+                    </Button>
+                  </CardActions>
+                </Card>
+              ))}
+            </Box>
+          ) : (
+            <Typography>Nenhuma Nota Fiscal encontrada para este pedido.</Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDialogClose}>Fechar</Button>
+        </DialogActions>
+      </Dialog>
     </React.Fragment>
   );
 }
