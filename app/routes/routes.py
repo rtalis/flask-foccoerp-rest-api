@@ -3,7 +3,7 @@ from flask import Blueprint, redirect, request, jsonify
 from sqlalchemy import and_, or_
 from flask_login import login_user, logout_user, login_required, current_user
 from app.models import NFEntry, PurchaseOrder, PurchaseItem, Quotation, User
-from app.utils import  fuzzy_search, import_rcot0300, import_rpdc0250c, import_ruah
+from app.utils import  fuzzy_search, import_rcot0300, import_rfor0302, import_rpdc0250c, import_ruah
 from werkzeug.utils import secure_filename
 from app import db
 import tempfile
@@ -789,13 +789,17 @@ def process_file():
                 result = import_rpdc0250c(content)
             elif b'<RCOT0300>' in content:
                 result = import_rcot0300(content)
+            elif b'<RFOR0302>' in content:
+                result = import_rfor0302(content)
             else:
-                raise ValueError('Invalid XML header')
+                raise ValueError('Arquivo XML invalido ou não suportado')
 
         return result
 
     except Exception as e:
+        db.session.rollback()
         return jsonify({'error': str(e)}), 500
+    
 
     finally:
         import shutil
@@ -832,6 +836,8 @@ def import_xml():
             return import_rpdc0250c(file_content)
         elif b'<RCOT0300>' in file_content:
             return import_rcot0300(file_content)
+        elif b'<RFOR0302>' in file_content:
+            return import_rfor0302(file_content)
         else:
             return jsonify({'error': 'Invalid XML header'}), 400
 

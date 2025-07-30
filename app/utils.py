@@ -292,30 +292,52 @@ def parse_rcot0300(xml_data):
 
     return {'quotations': quotations}
 
-
 def import_rcot0300(file_content):
     data = parse_rcot0300(file_content)
     quotations = data['quotations']
-    quotation_count = 0
+    new_count = 0
+    updated_count = 0
 
     for quotation_data in quotations:
-        quotation = Quotation(
+        # Check if quotation already exists
+        existing_quotation = Quotation.query.filter_by(
             cod_cot=quotation_data['cod_cot'],
-            dt_emissao=quotation_data['dt_emissao'],
-            fornecedor_id=quotation_data['fornecedor_id'],
-            fornecedor_descricao=quotation_data['fornecedor_descricao'],
             item_id=quotation_data['item_id'],
-            descricao=quotation_data['descricao'],
-            quantidade=quotation_data['quantidade'],
-            preco_unitario=quotation_data['preco_unitario'],
-            dt_entrega=quotation_data['dt_entrega'],
-            cod_emp1=quotation_data['cod_emp1']
-        )
-        quotation_count += 1
-        db.session.add(quotation)
+            fornecedor_id=quotation_data['fornecedor_id']
+        ).first()
+        
+        if existing_quotation:
+            # Update existing quotation
+            existing_quotation.dt_emissao = quotation_data['dt_emissao']
+            existing_quotation.fornecedor_descricao = quotation_data['fornecedor_descricao']
+            existing_quotation.descricao = quotation_data['descricao']
+            existing_quotation.quantidade = quotation_data['quantidade']
+            existing_quotation.preco_unitario = quotation_data['preco_unitario']
+            existing_quotation.dt_entrega = quotation_data['dt_entrega']
+            existing_quotation.cod_emp1 = quotation_data['cod_emp1']
+            updated_count += 1
+        else:
+            # Create new quotation
+            quotation = Quotation(
+                cod_cot=quotation_data['cod_cot'],
+                dt_emissao=quotation_data['dt_emissao'],
+                fornecedor_id=quotation_data['fornecedor_id'],
+                fornecedor_descricao=quotation_data['fornecedor_descricao'],
+                item_id=quotation_data['item_id'],
+                descricao=quotation_data['descricao'],
+                quantidade=quotation_data['quantidade'],
+                preco_unitario=quotation_data['preco_unitario'],
+                dt_entrega=quotation_data['dt_entrega'],
+                cod_emp1=quotation_data['cod_emp1']
+            )
+            db.session.add(quotation)
+            new_count += 1
 
     db.session.commit()
-    return jsonify({'message': 'Data imported successfully, quotations {}'.format(quotation_count)}), 201
+    return jsonify({
+        'message': f'Data imported successfully: {len(quotations)} total quotations ({new_count} new, {updated_count} updated)'
+    }), 201
+
 
 def fuzzy_search(query, items, score_cutoff, search_by_descricao, search_by_observacao):
     results = []
@@ -352,3 +374,63 @@ def send_login_notification_email(user, ip_address):
         mail.send(msg)
     except Exception as e:
         print(f"Erro ao enviar email: {str(e)}")
+
+def import_rfor0302(file_content):
+    import xml.etree.ElementTree as ET
+    from app.models import Supplier
+
+    root = ET.fromstring(file_content)
+    suppliers = []
+    new_count = 0
+    updated_count = 0
+    
+    for g_fornec in root.findall('.//G_FORNEC'):
+        cod_for = g_fornec.findtext('COD_FOR')
+        existing_supplier = Supplier.query.filter_by(cod_for=cod_for).first()
+        
+        if existing_supplier:
+            existing_supplier.tip_forn = g_fornec.findtext('TIP_FORN')
+            existing_supplier.conta_itens = g_fornec.findtext('CONTA_ITENS')
+            existing_supplier.insc_est = g_fornec.findtext('INSC_EST')
+            existing_supplier.insc_mun = g_fornec.findtext('INSC_MUN')
+            existing_supplier.email = g_fornec.findtext('EMAIL')
+            existing_supplier.tel_ddd_tel_telefone = g_fornec.findtext('TEL_DDD_TEL_TELEFONE')
+            existing_supplier.endereco = g_fornec.findtext('ENDERECO')
+            existing_supplier.cep = g_fornec.findtext('CEP')
+            existing_supplier.cidade = g_fornec.findtext('CIDADE')
+            existing_supplier.uf = g_fornec.findtext('UF')
+            existing_supplier.cod_for = g_fornec.findtext('COD_FOR')
+            existing_supplier.nvl_forn_cnpj_forn_cpf = g_fornec.findtext('NVL_FORN_CNPJ_FORN_CPF')
+            existing_supplier.descricao = g_fornec.findtext('DESCRICAO')
+            existing_supplier.bairro = g_fornec.findtext('BAIRRO')
+            existing_supplier.cf_fax = g_fornec.findtext('CF_FAX')
+            suppliers.append(existing_supplier)
+            updated_count += 1
+        else:
+            # Create new supplier
+            supplier = Supplier(
+                tip_forn=g_fornec.findtext('TIP_FORN'),
+                conta_itens=g_fornec.findtext('CONTA_ITENS'),
+                insc_est=g_fornec.findtext('INSC_EST'),
+                insc_mun=g_fornec.findtext('INSC_MUN'),
+                email=g_fornec.findtext('EMAIL'),
+                tel_ddd_tel_telefone=g_fornec.findtext('TEL_DDD_TEL_TELEFONE'),
+                endereco=g_fornec.findtext('ENDERECO'),
+                cep=g_fornec.findtext('CEP'),
+                cidade=g_fornec.findtext('CIDADE'),
+                uf=g_fornec.findtext('UF'),
+                id_for= g_fornec.findtext('ID_FOR'),
+                cod_for=g_fornec.findtext('COD_FOR'),
+                nvl_forn_cnpj_forn_cpf=g_fornec.findtext('NVL_FORN_CNPJ_FORN_CPF'),
+                descricao=g_fornec.findtext('DESCRICAO'),
+                bairro=g_fornec.findtext('BAIRRO'),
+                cf_fax=g_fornec.findtext('CF_FAX')
+            )
+            suppliers.append(supplier)
+            db.session.add(supplier)
+            new_count += 1
+            
+    db.session.commit()
+    return jsonify({
+        'message': f'Suppliers imported: {len(suppliers)} total ({new_count} new, {updated_count} updated)'
+    }), 201

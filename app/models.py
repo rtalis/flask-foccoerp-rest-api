@@ -85,3 +85,24 @@ class Quotation(db.Model):
     preco_unitario = db.Column(db.Float, nullable=True)
     dt_entrega = db.Column(db.Date, nullable=True)
     cod_emp1 = db.Column(db.String, nullable=True)
+
+
+class Supplier(db.Model):
+    __tablename__ = 'suppliers'
+    id = db.Column(db.Integer, primary_key=True)
+    id_for = db.Column(db.Integer)
+    cod_for = db.Column(db.String(20))
+    tip_forn = db.Column(db.String(100))
+    conta_itens = db.Column(db.String(50))
+    insc_est = db.Column(db.String(50))
+    insc_mun = db.Column(db.String(50))
+    email = db.Column(db.String(150))
+    tel_ddd_tel_telefone = db.Column(db.String(50))
+    endereco = db.Column(db.String(200))
+    cep = db.Column(db.String(20))
+    cidade = db.Column(db.String(100))
+    uf = db.Column(db.String(10))
+    nvl_forn_cnpj_forn_cpf = db.Column(db.String(30))
+    descricao = db.Column(db.String(200))
+    bairro = db.Column(db.String(100))
+    cf_fax = db.Column(db.String(50))
