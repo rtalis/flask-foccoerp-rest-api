@@ -23,14 +23,15 @@ function PurchaseRow(props) {
       {/* Purchase header row */}
       <TableRow sx={{
         '& > *': { borderBottom: 'unset' },
-        backgroundColor: '#59a0cfff', // Light blue background
-        '&:hover': { backgroundColor: '#3a6e99ff' } // Slightly darker on hover
-      }}>        <TableCell>
+        backgroundColor: '#64a176ff',
+        '&:hover': { backgroundColor: '#5d836cff' }
+      }}>
+        <TableCell style={{ padding: 0 }}>
           <IconButton size="small" onClick={() => setOpen(!open)}>
             {open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
           </IconButton>
         </TableCell>
-        <TableCell colSpan={9} align="center" sx={{ fontWeight: 'bold' }}  >
+        <TableCell colSpan={9} align="center" sx={{ fontWeight: 'bold', fontSize: '1.05rem' }}  >
           Pedido de Compra: {purchase.order.cod_pedc} ~ {purchase.order.fornecedor_id} {getFirstWords(purchase.order.fornecedor_descricao, 3)} - {formatCurrency(purchase.order.total_bruto)} ~ Comprador: {purchase.order.func_nome}. Empresa: {purchase.order.cod_emp1}
         </TableCell>
       </TableRow>
@@ -62,15 +63,15 @@ function PurchaseRow(props) {
                       key={item.id}
                       sx={{
                         backgroundColor: item.quantidade === item.qtde_atendida
-                          ? '#f4fbffff' // Light blue for fully fulfilled items
+                          ? '#e7f6ffff' // Light blue for fully fulfilled items
                           : (item.qtde_atendida > 0 && item.qtde_atendida < item.quantidade)
-                            ? '#fff4f4ff' // Light red for partially fulfilled items
+                            ? '#fce8e8ff' // Light red for partially fulfilled items
                             : 'inherit', // Default color for unfulfilled items
                         '&:hover': {
                           backgroundColor: item.quantidade === item.qtde_atendida
                             ? '#bbdefb' // Darker blue on hover
                             : (item.qtde_atendida > 0 && item.qtde_atendida < item.quantidade)
-                              ? '#ffcdd2' // Darker red on hover
+                              ? '#24070aff' // Darker red on hover
                               : '#f5f5f5' // Light gray on hover for default
                         }
                       }}
@@ -101,7 +102,7 @@ function PurchaseRow(props) {
                     </TableRow>
                   ))}
                 </TableBody>
-                <TableFooter>
+                <TableFooter >
                   <TableRow sx={{ backgroundColor: '#e9e9e9ff' }}>
                     <TableCell colSpan={10}>
                       <Box sx={{
