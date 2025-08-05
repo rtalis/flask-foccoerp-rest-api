@@ -87,7 +87,7 @@ function PurchaseRow(props) {
           </IconButton>
         </TableCell>
         <TableCell colSpan={9} align="center" sx={{ fontWeight: 'bold', fontSize: '1.05rem' }}  >
-          Pedido de Compra: {purchase.order.cod_pedc} ~ {purchase.order.fornecedor_id} {getFirstWords(purchase.order.fornecedor_descricao, 3)} - {formatCurrency(purchase.order.total_bruto)} ~ Comprador: {purchase.order.func_nome}. Empresa: {purchase.order.cod_emp1}
+          Pedido de Compra: {purchase.order.cod_pedc} ~ {purchase.order.fornecedor_id} {getFirstWords(purchase.order.fornecedor_descricao, 4)} - {formatCurrency(purchase.order.adjusted_total)} ~ Comprador: {purchase.order.func_nome}. Empresa: {purchase.order.cod_emp1}
         </TableCell>
       </TableRow>
 
@@ -182,6 +182,7 @@ function PurchaseRow(props) {
                     </TableRow>
                   ))}
                 </TableBody>
+                {/* Footer */}
                 <TableFooter>
                   <TableRow sx={{ backgroundColor: '#e9e9e9ff' }}>
                     <TableCell colSpan={11}>
@@ -195,7 +196,7 @@ function PurchaseRow(props) {
                           Observação: {purchase.order.observacao}
                         </Typography>
                         <Typography variant="body2" component="div" sx={{ fontWeight: 'bold', textAlign: 'right' }}>
-                          Total: {formatCurrency(purchase.items.reduce((acc, item) => acc + item.total, 0))}
+                          Total c/ ipi: {formatCurrency(purchase.order.total_pedido_com_ipi)} Total c/ desconto: {formatCurrency(purchase.order.adjusted_total)}
                         </Typography>
                       </Box>
                     </TableCell>

@@ -1,5 +1,7 @@
-import React, { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
 import axios from 'axios';
+import { generateQuotationExcel } from '../utils/excelUtils';
+
 import {
   Box,
   Button,
@@ -24,11 +26,7 @@ import {
   List,
   ListItem,
   ListItemText,
-  Chip,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Tooltip
+  Chip
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -94,6 +92,10 @@ const QuotationAnalyzer = () => {
     }
   };
 
+  const getFirstWords = (text, numWords) => {
+    if (!text) return ''; // Verifica se o texto é undefined ou null
+    return text.split(' ').slice(0, numWords).join(' ');
+  };
   // Handle file upload
   const handleFileUpload = (event) => {
     const selectedFiles = Array.from(event.target.files);
@@ -152,15 +154,10 @@ const QuotationAnalyzer = () => {
     try {
       // Create a FormData object to send files
       const formData = new FormData();
-
       files.forEach((file, index) => {
         formData.append(`file_${index}`, file);
       });
-
-      // Add quotation code if available
       formData.append('cod_cot', codCotacao);
-
-      // Send to backend for processing
       const response = await axios.post(
         `${process.env.REACT_APP_API_URL}/api/extract_quotation_data`,
         formData,
@@ -171,7 +168,6 @@ const QuotationAnalyzer = () => {
           }
         }
       );
-
       setExtractedData(response.data);
       setSnackbar({
         open: true,
@@ -189,119 +185,37 @@ const QuotationAnalyzer = () => {
       setLoading(false);
     }
   };
+const exportToExcel = () => {
+  if (!extractedData) {
+    setSnackbar({
+      open: true,
+      message: 'Nenhum dado extraído para exportar',
+      severity: 'warning'
+    });
+    return;
+  }
 
-  // Export data to Excel
-  const exportToExcel = () => {
-    if (!extractedData) {
-      setSnackbar({
-        open: true,
-        message: 'Nenhum dado extraído para exportar',
-        severity: 'warning'
-      });
-      return;
-    }
-
-    try {
-      // Create comparison worksheet
-      const comparisonData = [];
-
-      extractedData.extractedData.forEach(supplierData => {
-        const supplierName = supplierData.supplier;
-
-        supplierData.items.forEach(item => {
-          const itemRow = {
-            'Fornecedor': supplierName,
-            'Data Cotação': supplierData.date,
-            'Código': item.code,
-            'Descrição': item.description,
-            'Quantidade': item.quantity,
-            'Unidade': item.unit,
-            'Preço Unitário': item.unitPrice,
-            'Preço Total': item.totalPrice,
-            'Fabricante': item.manufacturer || 'N/A',
-            'Item Correspondente': item.matchedItemDescription || 'N/A',
-            'Confiança': item.matchConfidence || 'N/A'
-          };
-
-          if (item.lastPurchase) {
-            itemRow['Última Compra - Fornecedor'] = item.lastPurchase.fornecedor;
-            itemRow['Última Compra - Preço'] = item.lastPurchase.price;
-            itemRow['Última Compra - Data'] = new Date(item.lastPurchase.date).toLocaleDateString('pt-BR');
-            itemRow['Diferença de Preço (%)'] = item.priceDifferencePercent || 'N/A';
-          }
-
-          comparisonData.push(itemRow);
-        });
-      });
-
-      // Create worksheet
-      const ws = XLSX.utils.json_to_sheet(comparisonData);
-
-      // Set column widths
-      const wscols = [
-        { wch: 20 }, // Fornecedor
-        { wch: 12 }, // Data Cotação
-        { wch: 10 }, // Código
-        { wch: 40 }, // Descrição
-        { wch: 10 }, // Quantidade
-        { wch: 8 },  // Unidade
-        { wch: 12 }, // Preço Unitário
-        { wch: 12 }, // Preço Total
-        { wch: 15 }, // Fabricante
-        { wch: 40 }, // Item Correspondente
-        { wch: 10 }, // Confiança
-        { wch: 20 }, // Última Compra - Fornecedor
-        { wch: 15 }, // Última Compra - Preço
-        { wch: 15 }, // Última Compra - Data
-        { wch: 18 }  // Diferença de Preço (%)
-      ];
-      ws['!cols'] = wscols;
-
-      // Create workbook and add the worksheet
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Comparação');
-
-      // Create supplier-specific sheets
-      extractedData.extractedData.forEach(supplierData => {
-        const supplierName = supplierData.supplier.substring(0, 30); // Truncate name if too long
-        const supplierItems = supplierData.items.map(item => ({
-          'Código': item.code,
-          'Descrição': item.description,
-          'Quantidade': item.quantity,
-          'Unidade': item.unit,
-          'Preço Unitário': item.unitPrice,
-          'Preço Total': item.totalPrice,
-          'Fabricante': item.manufacturer || 'N/A',
-          'Item Correspondente': item.matchedItemDescription || 'N/A',
-          'Confiança': item.matchConfidence || 'N/A',
-          'Diferença de Preço (%)': item.priceDifferencePercent || 'N/A'
-        }));
-
-        const supplierWs = XLSX.utils.json_to_sheet(supplierItems);
-        XLSX.utils.book_append_sheet(wb, supplierWs, supplierName);
-      });
-
-      // Generate Excel file
-      const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-      const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-
-      // Save file
-      saveAs(data, `Comparacao_Cotacoes_${new Date().toISOString().slice(0, 10)}.xlsx`);
-
+  try {
+    const result = generateQuotationExcel(extractedData);
+    
+    if (result.success) {
       setSnackbar({
         open: true,
         message: 'Exportação para Excel concluída!',
         severity: 'success'
       });
-    } catch (err) {
-      setError('Erro ao exportar para Excel: ' + err.message);
-      setSnackbar({
-        open: true,
-        message: 'Erro ao exportar para Excel',
-        severity: 'error'
-      });
+    } else {
+      throw new Error(result.error);
     }
-  };
+  } catch (err) {
+    setError('Erro ao exportar para Excel: ' + err.message);
+    setSnackbar({
+      open: true,
+      message: 'Erro ao exportar para Excel',
+      severity: 'error'
+    });
+  }
+};
 
   const handleCloseSnackbar = () => {
     setSnackbar({ ...snackbar, open: false });
@@ -309,7 +223,7 @@ const QuotationAnalyzer = () => {
 
   // Format currency for display
   const formatCurrency = (value) => {
-    if (value === undefined || value === null) return 'N/A';
+    if (value === undefined || value === null) return '—';
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: 'BRL'
@@ -404,16 +318,16 @@ const QuotationAnalyzer = () => {
                       <TableCell>{item.descricao}</TableCell>
                       <TableCell>{item.quantidade}</TableCell>
                       <TableCell>
-                        {item.last_purchase ? item.last_purchase.fornecedor : 'N/A'}
+                        {item.last_purchase ? getFirstWords(item.last_purchase.fornecedor, 4) + '...' : '—'}
                       </TableCell>
                       <TableCell>
-                        {item.last_purchase ? formatCurrency(item.last_purchase.price) : 'N/A'}
+                        {item.last_purchase ? formatCurrency(item.last_purchase.price) : '—'}
                       </TableCell>
                       <TableCell>
-                        {item.last_purchase ? new Date(item.last_purchase.date).toLocaleDateString('pt-BR') : 'N/A'}
+                        {item.last_purchase ? new Date(item.last_purchase.date).toLocaleDateString('pt-BR') : '—'}
                       </TableCell>
                       <TableCell>
-                        {item.last_purchase ? item.last_purchase.cod_pedc : 'N/A'}
+                        {item.last_purchase ? item.last_purchase.cod_pedc : '—'}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -497,7 +411,7 @@ const QuotationAnalyzer = () => {
             {loading ? <CircularProgress size={24} /> : 'Extrair Dados dos Arquivos'}
           </Button>
         </Box>
-
+        {/* Display extracted data comparison table */}
         {extractedData && (
           <>
             <Divider sx={{ my: 4 }} />
@@ -535,82 +449,43 @@ const QuotationAnalyzer = () => {
                       <TableCell sx={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }}>Data</TableCell>
                       <TableCell sx={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }}>Pedido</TableCell>
 
-                      {/* Dynamic columns for each supplier with sub-columns */}
+                      {/* Dynamic columns for each supplier*/}
                       {extractedData.extractedData.map((supplier, index) => (
-                        <React.Fragment key={index}>
-                          <TableCell
-                            align="center"
-                            colSpan={3}
-                            sx={{
-                              fontWeight: 'bold',
-                              backgroundColor: '#e3f2fd',
-                              borderLeft: '2px solid #ccc',
-                              borderRight: '2px solid #ccc',
-                              borderBottom: 'none'
-                            }}
-                          >
-                            <Typography variant="subtitle2">
-                              {supplier.supplier}
-                            </Typography>
-                            <Typography variant="caption" display="block">
-                              {supplier.date || 'N/A'}
-                            </Typography>
-                          </TableCell>
-                        </React.Fragment>
+                        <TableCell
+                          align="center"
+                          sx={{
+                            fontWeight: 'bold',
+                            backgroundColor: '#e3f2fd',
+                            borderLeft: index === 0 ? '2px solid #ccc' : '1px solid #ccc',
+                            borderRight: '1px solid #ccc'
+                          }}
+                        >
+                          <Typography variant="subtitle2" noWrap>
+                            {supplier.supplier}
+                          </Typography>
+                          <Typography variant="caption" display="block">
+                            {supplier.date || '—'}
+                          </Typography>
+                        </TableCell>
                       ))}
+                      {/* Best price column */}
+                      <TableCell sx={{ fontWeight: 'bold', backgroundColor: '#e8f5e9' }} align="center">
+                        Melhor Preço
+                      </TableCell>
 
-                      <TableCell sx={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }}>Melhor Preço</TableCell>
+                      {/* New columns */}
+                      <TableCell sx={{ fontWeight: 'bold', backgroundColor: '#f0f4c3' }} align="center">
+                        Variação
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 'bold', backgroundColor: '#bbdefb' }} align="center">
+                        Confiança
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 'bold', backgroundColor: '#e1bee7', align: 'center' }} align="center">
+                        Fabricante
+                      </TableCell>
                     </TableRow>
 
-                    {/* Sub-header row for supplier details */}
-                    <TableRow>
-                      {/* Empty cells for item info columns */}
-                      <TableCell sx={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }}></TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }}></TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }}></TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }}></TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }}></TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }}></TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }}></TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }}></TableCell>
 
-                      {/* Supplier sub-columns */}
-                      {extractedData.extractedData.map((supplier, index) => (
-                        <React.Fragment key={index}>
-                          <TableCell
-                            align="center"
-                            sx={{
-                              fontWeight: 'bold',
-                              backgroundColor: '#e3f2fd',
-                              borderLeft: '2px solid #ccc'
-                            }}
-                          >
-                            Preço
-                          </TableCell>
-                          <TableCell
-                            align="center"
-                            sx={{
-                              fontWeight: 'bold',
-                              backgroundColor: '#e3f2fd'
-                            }}
-                          >
-                            Variação
-                          </TableCell>
-                          <TableCell
-                            align="center"
-                            sx={{
-                              fontWeight: 'bold',
-                              backgroundColor: '#e3f2fd',
-                              borderRight: '2px solid #ccc'
-                            }}
-                          >
-                            Conf.
-                          </TableCell>
-                        </React.Fragment>
-                      ))}
-
-                      <TableCell sx={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }}></TableCell>
-                    </TableRow>
                   </TableHead>
 
                   <TableBody>
@@ -682,86 +557,109 @@ const QuotationAnalyzer = () => {
                                 '&:hover': { backgroundColor: '#f0f0f0' }
                               }}
                             >
-                              <TableCell>{item.item_id || 'N/A'}</TableCell>
+                              <TableCell>{item.item_id || '—'}</TableCell>
                               <TableCell>
                                 <Typography variant="body2" sx={{ maxWidth: 300, whiteSpace: 'normal' }}>
                                   {item.description}
                                 </Typography>
                               </TableCell>
-                              <TableCell>{item.quantity || 'N/A'}</TableCell>
-                              <TableCell>{item.manufacturer || 'N/A'}</TableCell>
+                              <TableCell>{item.quantity || '—'}</TableCell>
+                              <TableCell>{item.manufacturer || '—'}</TableCell>
                               <TableCell>
-                                {item.last_purchase ? item.last_purchase.fornecedor : 'N/A'}
+                                {item.last_purchase ? getFirstWords(item.last_purchase.fornecedor, 4) + '...' : '—'}
                               </TableCell>
                               <TableCell>
-                                {item.last_purchase ? formatCurrency(item.last_purchase.price) : 'N/A'}
+                                {item.last_purchase ? formatCurrency(item.last_purchase.price) : '—'}
                               </TableCell>
                               <TableCell>
-                                {item.last_purchase ? new Date(item.last_purchase.date).toLocaleDateString('pt-BR') : 'N/A'}
+                                {item.last_purchase ? new Date(item.last_purchase.date).toLocaleDateString('pt-BR') : '—'}
                               </TableCell>
                               <TableCell>
-                                {item.last_purchase ? item.last_purchase.cod_pedc : 'N/A'}
+                                {item.last_purchase ? item.last_purchase.cod_pedc : '—'}
                               </TableCell>
 
                               {/* Render each supplier's price data in separate columns */}
                               {item.supplier_prices.map((supplierPrice, spIndex) => {
                                 const isBestPrice = supplierPrice && supplierPrice.price === bestPrice && supplierPrice.price > 0;
                                 return (
-                                  <React.Fragment key={spIndex}>
-                                    {/* Price column */}
-                                    <TableCell
-                                      align="center"
-                                      sx={{
-                                        backgroundColor: isBestPrice ? 'rgba(76, 175, 80, 0.15)' : 'inherit',
-                                        fontWeight: isBestPrice ? 'bold' : 'normal',
-                                        borderLeft: '2px solid #ccc'
-                                      }}
-                                    >
-                                      {supplierPrice ? formatCurrency(supplierPrice.price) : '—'}
-                                    </TableCell>
-
-                                    {/* Price difference column */}
-                                    <TableCell align="center">
-                                      {supplierPrice && supplierPrice.priceDiff !== undefined ? (
-                                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                          {getPriceDiffIcon(supplierPrice.priceDiff)}
-                                          <Typography
-                                            variant="body2"
-                                            color={getPriceDiffColor(supplierPrice.priceDiff)}
-                                          >
-                                            {supplierPrice.priceDiff > 0 ? '+' : ''}{supplierPrice.priceDiff}%
-                                          </Typography>
-                                        </Box>
-                                      ) : '—'}
-                                    </TableCell>
-
-                                    {/* Confidence column */}
-                                    <TableCell
-                                      align="center"
-                                      sx={{
-                                        borderRight: '2px solid #ccc'
-                                      }}
-                                    >
-                                      {supplierPrice && supplierPrice.confidence ? (
-                                        <Chip
-                                          label={supplierPrice.confidence}
-                                          size="small"
-                                          color={
-                                            supplierPrice.confidence === "Alta" ? "success" :
-                                              supplierPrice.confidence === "Média" ? "warning" :
-                                                supplierPrice.confidence === "Baixa" ? "error" : "default"
-                                          }
-                                          sx={{ height: 20, fontSize: '0.7rem' }}
-                                        />
-                                      ) : '—'}
-                                    </TableCell>
-                                  </React.Fragment>
+                                  <TableCell
+                                    key={spIndex}
+                                    align="center"
+                                    sx={{
+                                      backgroundColor: isBestPrice ? 'rgba(76, 175, 80, 0.15)' : 'inherit',
+                                      fontWeight: isBestPrice ? 'bold' : 'normal',
+                                      borderLeft: spIndex === 0 ? '2px solid #ccc' : '1px solid #ccc',
+                                      borderRight: '1px solid #ccc'
+                                    }}
+                                  >
+                                    {supplierPrice ? formatCurrency(supplierPrice.price) : '—'}
+                                  </TableCell>
                                 );
                               })}
 
                               {/* Best price column */}
-                              <TableCell align="center" sx={{ backgroundColor: '#e8f5e9', fontWeight: 'bold' }}>
-                                {bestPrice ? formatCurrency(bestPrice) : 'N/A'}
+                              <TableCell align="center" sx={{ fontWeight: 'bold' }}>
+                                {bestPrice ? formatCurrency(bestPrice) : '—'}
+                              </TableCell>
+                              {/* Variation */}
+                              <TableCell align="center" sx={{ }}>
+                                {(() => {
+                                  if (!bestPrice || !item.last_purchase || !item.last_purchase.price) return '—';
+
+                                  const lastPrice = item.last_purchase.price;
+                                  const variation = ((bestPrice - lastPrice) / lastPrice) * 100;
+                                  const color = variation < 0 ? 'success.main' : (variation > 10 ? 'error.main' : 'warning.main');
+                                  const icon = variation < 0 ?
+                                    <ArrowDownwardIcon fontSize="small" color="success" /> :
+                                    <ArrowUpwardIcon fontSize="small" color={variation > 10 ? "error" : "warning"} />;
+
+                                  return (
+                                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                      {icon}
+                                      <Typography color={color} sx={{ ml: 0.5 }}>
+                                        {variation.toFixed(2)}%
+                                      </Typography>
+                                    </Box>
+                                  );
+                                })()}
+                              </TableCell>
+
+                              {/* Confidence*/}
+                              <TableCell align="center" sx={{ }}>
+                                {(() => {
+                                  if (!bestPrice) return '—';
+                                  // Find the supplier with the best price
+                                  const bestPriceSupplierIndex = item.supplier_prices.findIndex(sp =>
+                                    sp && sp.price === bestPrice && sp.price > 0                                  );
+
+                                  if (bestPriceSupplierIndex === -1) return '—';
+
+                                  const confidence = item.supplier_prices[bestPriceSupplierIndex].confidence;
+                                  return confidence ? `${confidence}` : '—';
+                                })()}
+                              </TableCell>
+
+                              {/* Manufacturer */}
+                              <TableCell align="center" sx={{  }}>
+                                {(() => {
+                                  if (!bestPrice) return '—';
+
+                                  // Find the supplier with the best price
+                                  const bestPriceSupplierIndex = item.supplier_prices.findIndex(sp =>
+                                    sp && sp.price === bestPrice && sp.price > 0
+                                  );
+                                  if (bestPriceSupplierIndex === -1) return item.manufacturer || '—';
+                                  // Get the supplier data
+                                  const supplier = extractedData.extractedData[bestPriceSupplierIndex];
+                                  // Find the item in that supplier's items
+                                  const matchingItem = supplier.items.find(supplierItem =>
+                                    (supplierItem.matchedItemDescription === item.description ||
+                                      supplierItem.description === item.description) &&
+                                    supplierItem.unitPrice === bestPrice
+                                  );
+
+                                  return matchingItem?.manufacturer || item.manufacturer || '—';
+                                })()}
                               </TableCell>
                             </TableRow>
                           );
