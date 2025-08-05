@@ -20,6 +20,7 @@ class PurchaseOrder(db.Model):
     func_nome = db.Column(db.String, nullable=True)
     cf_pgto = db.Column(db.String, nullable=True)
     cod_emp1 = db.Column(db.String, nullable=True)
+    total_pedido_com_ipi = db.Column(db.Float, nullable=True)
     items = db.relationship('PurchaseItem', backref='purchase_order', lazy=True)
 
 class PurchaseItem(db.Model):
@@ -47,6 +48,7 @@ class PurchaseItem(db.Model):
     qtde_atendida = db.Column(db.Float, nullable=True)
     qtde_saldo = db.Column(db.Float, nullable=True)
     cod_emp1 = db.Column(db.String, nullable=True)
+
     
 class NFEntry(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -106,3 +108,18 @@ class Supplier(db.Model):
     descricao = db.Column(db.String(200))
     bairro = db.Column(db.String(100))
     cf_fax = db.Column(db.String(50))
+
+class PurchaseAdjustment(db.Model):
+    __tablename__ = 'purchase_adjustments'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    purchase_order_id = db.Column(db.Integer, db.ForeignKey('purchase_orders.id'), nullable=False)
+    tp_apl = db.Column(db.String(50), nullable=True)
+    tp_dctacr1 = db.Column(db.String(50), nullable=True)
+    tp_vlr1 = db.Column(db.String(50), nullable=True)
+    vlr1 = db.Column(db.Float, nullable=True)
+    order_index = db.Column(db.Integer, nullable=True)
+    cod_emp1 = db.Column(db.String(50), nullable=True)
+    cod_pedc = db.Column(db.String(50), nullable=True)
+    
+    purchase_order = db.relationship('PurchaseOrder', backref=db.backref('adjustments', lazy=True))

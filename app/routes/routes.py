@@ -5,7 +5,7 @@ import requests
 from sqlalchemy import and_, or_
 from flask_login import login_user, logout_user, login_required, current_user
 from app.models import NFEntry, PurchaseOrder, PurchaseItem, Quotation, User
-from app.utils import  fuzzy_search, import_rcot0300, import_rfor0302, import_rpdc0250c, import_ruah
+from app.utils import  apply_adjustments, fuzzy_search, import_rcot0300, import_rfor0302, import_rpdc0250c, import_ruah
 from werkzeug.utils import secure_filename
 from app import db
 import tempfile
@@ -622,10 +622,15 @@ def search_combined():
     else:
         items_paginated = items_query.paginate(page=page, per_page=per_page, count=True)
         items = items_paginated.items
+
     grouped_results = {}
     for item in items:
         cod_pedc = item.cod_pedc
         if cod_pedc not in grouped_results:
+            order = item.purchase_order
+            adjustments = order.adjustments  
+            base_total = order.total_pedido_com_ipi or 0
+            adjusted_total = apply_adjustments(base_total, adjustments)
             grouped_results[cod_pedc] = {
                 'order': {
                     'order_id': item.purchase_order_id,
@@ -634,6 +639,17 @@ def search_combined():
                     'fornecedor_id': item.purchase_order.fornecedor_id,
                     'fornecedor_descricao': item.purchase_order.fornecedor_descricao,
                     'total_bruto': item.purchase_order.total_bruto,
+                    'total_pedido_com_ipi': item.purchase_order.total_pedido_com_ipi,
+                    'adjusted_total': adjusted_total,
+                    'adjustments': [
+                        {
+                            'tp_apl': adj.tp_apl,
+                            'tp_dctacr1': adj.tp_dctacr1,
+                            'tp_vlr1': adj.tp_vlr1,
+                            'vlr1': adj.vlr1,
+                            'order_index': adj.order_index
+                        } for adj in adjustments
+                    ],
                     'total_liquido': item.purchase_order.total_liquido,
                     'total_liquido_ipi': item.purchase_order.total_liquido_ipi,
                     'posicao': item.purchase_order.posicao,
@@ -644,7 +660,12 @@ def search_combined():
                     'cf_pgto': item.purchase_order.cf_pgto,
                     'cod_emp1': item.purchase_order.cod_emp1,
                     
-                    'nfes': [{'num_nf': nf_entry.num_nf, 'id': nf_entry.id, 'dt_ent': nf_entry.dt_ent} for nf_entry in NFEntry.query.filter_by(cod_emp1=item.purchase_order.cod_emp1, cod_pedc=item.cod_pedc, linha=item.linha).all()]
+                    'nfes': [
+                        {
+                            'num_nf': nf_entry.num_nf,
+                            'id': nf_entry.id,
+                            'dt_ent': nf_entry.dt_ent
+                        } for nf_entry in NFEntry.query.filter_by(cod_emp1=item.purchase_order.cod_emp1, cod_pedc=item.cod_pedc, linha=item.linha).all()]
                 },
                 'items': []
             }

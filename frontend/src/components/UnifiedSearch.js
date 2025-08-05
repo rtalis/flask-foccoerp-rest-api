@@ -144,7 +144,7 @@ function PurchaseRow(props) {
                       <TableCell>R$ {formatNumber(item.total)}</TableCell>
                       <TableCell>{formatNumber(item.qtde_atendida)} {item.unidade_medida}</TableCell>
                       <TableCell>
-         {purchase.order.nfes.map(nf => (
+                        {purchase.order.nfes.map(nf => (
                           <div key={nf.id}>{nf.dt_ent ? formatDate(nf.dt_ent) : ''}</div>
                         ))}
 

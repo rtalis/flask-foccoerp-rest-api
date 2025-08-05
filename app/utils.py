@@ -1,6 +1,6 @@
 from datetime import datetime
 from flask import jsonify
-from app.models import NFEntry, PurchaseItem, PurchaseOrder, Quotation
+from app.models import NFEntry, PurchaseAdjustment, PurchaseItem, PurchaseOrder, Quotation
 from app import db
 from fuzzywuzzy import fuzz
 from flask_mail import Mail, Message
@@ -16,6 +16,17 @@ def parse_xml(xml_data):
     for order in root.findall('.//TPED_COMPRA'):
         cod_pedc = order.find('COD_PEDC').text if order.find('COD_PEDC') is not None else None,
 
+        adjustments = []
+        dctacr_list = order.find('LIST_TPEDC_DCTACR')
+        if dctacr_list is not None:
+            for idx, dctacr in enumerate(dctacr_list.findall('TPEDC_DCTACR')):
+                adjustments.append({
+                    'tp_apl': dctacr.find('TP_APL').text if dctacr.find('TP_APL') is not None else None,
+                    'tp_dctacr1': dctacr.find('TP_DCTACR1').text if dctacr.find('TP_DCTACR1') is not None else None,
+                    'tp_vlr1': dctacr.find('TP_VLR1').text if dctacr.find('TP_VLR1') is not None else None,
+                    'vlr1': float(dctacr.find('VLR1').text.replace(',', '.')) if dctacr.find('VLR1') is not None and dctacr.find('VLR1').text else None,
+                    'order_index': idx,
+                })
         order_data = {
             'cod_pedc': cod_pedc,
             'dt_emis': order.find('DT_EMIS').text if order.find('DT_EMIS') is not None else None,
@@ -23,7 +34,8 @@ def parse_xml(xml_data):
             'fornecedor_descricao': order.find('FOR_DESCRICAO').text if order.find('FOR_DESCRICAO') is not None else None,
             'total_bruto': float(order.find('TOT_BRUTO1').text.replace(',', '.')) if order.find('TOT_BRUTO1') is not None and order.find('TOT_BRUTO1').text else None,
             'total_liquido': float(order.find('TOT_LIQUIDO1').text.replace(',', '.')) if order.find('TOT_LIQUIDO1') is not None and order.find('TOT_LIQUIDO1').text else None,
-            'total_liquido_ipi': float(order.find('CP_TOT_IPI').text.replace(',', '.')) if order.find('CP_TOT_IPI') is not None and order.find('TOT_LIQUIDO_IPI1').text else None,
+            'total_liquido_ipi': float(order.find('CP_TOT_IPI').text.replace(',', '.')) if order.find('CP_TOT_IPI') is not None and order.find('CP_TOT_IPI').text else None,
+            'total_pedido_com_ipi': float(order.find('TOT_LIQUIDO_IPI1').text.replace(',', '.')) if order.find('TOT_LIQUIDO_IPI1') is not None and order.find('TOT_LIQUIDO_IPI1').text else None,
             'posicao': order.find('POSICAO1').text if order.find('POSICAO1') is not None else None,
             'posicao_hist': order.find('POSICAO_HIST1').text if order.find('POSICAO_HIST1') is not None else None,
             'observacao': order.find('OBSERVACAO').text if order.find('OBSERVACAO') is not None else None,
@@ -31,6 +43,7 @@ def parse_xml(xml_data):
             'func_nome': order.find('FUNC_NOME').text if order.find('FUNC_NOME') is not None else None,
             'cf_pgto': order.find('CF_PGTO').text if order.find('CF_PGTO') is not None else None,
             'cod_emp1': order.find('EMPR_ID').text if order.find('EMPR_ID') is not None else None,
+            'adjustments': adjustments,
 
 
             'items': []
@@ -72,6 +85,7 @@ def format_for_db(data):
     purchase_orders = data['purchase_orders']
     formatted_orders = []
     formatted_items = []
+    formatted_adjustments = []
 
     for order in purchase_orders:
         formatted_orders.append({
@@ -88,9 +102,15 @@ def format_for_db(data):
             'contato': order['contato'],
             'func_nome': order['func_nome'],
             'cf_pgto': order['cf_pgto'],
-            'cod_emp1': order['cod_emp1']
-            
+            'cod_emp1': order['cod_emp1'],
+            'total_pedido_com_ipi': order['total_pedido_com_ipi']
         })
+        for adj in order.get('adjustments', []):
+            formatted_adjustments.append({
+                'cod_pedc': order['cod_pedc'],
+                'cod_emp1': order['cod_emp1'],
+                **adj
+            })
 
         for item in order['items']:
             formatted_items.append({
@@ -117,7 +137,7 @@ def format_for_db(data):
                 'cod_emp1': item['cod_emp1']
             })
 
-    return formatted_orders, formatted_items
+    return formatted_orders, formatted_items, formatted_adjustments
 
 def format_for_db_rpdc0250c(xml_data):
     formatted_items = []
@@ -146,21 +166,22 @@ def format_for_db_rpdc0250c(xml_data):
                         'dt_ent': dt_ent
                     })
     return formatted_items
-
 def import_ruah(file_content):
+
     data = parse_xml(file_content)  # Passe o conteúdo do arquivo para a função parse_xml
-    formatted_orders, formatted_items = format_for_db(data)  # Formate os dados para o banco de dados
+    formatted_orders, formatted_items, formatted_adjustments = format_for_db(data) #Formate os dados para o banco de dados
     itemcount = 0
     purchasecount = 0
     updated = 0
 
-    for order_data in formatted_orders:
+    for order_data in formatted_orders:       
         existing_order = PurchaseOrder.query.filter_by(
                 cod_pedc=order_data['cod_pedc'],
                 cod_emp1=order_data['cod_emp1']
             ).first()        
         if existing_order:
             PurchaseItem.query.filter_by(purchase_order_id=existing_order.id).delete()
+            PurchaseAdjustment.query.filter_by(purchase_order_id=existing_order.id).delete()
             db.session.delete(existing_order)
             db.session.commit()
             updated += 1
@@ -174,6 +195,7 @@ def import_ruah(file_content):
             total_bruto=order_data['total_bruto'],
             total_liquido=order_data['total_liquido'],
             total_liquido_ipi=order_data['total_liquido_ipi'],
+            total_pedido_com_ipi=order_data['total_pedido_com_ipi'],
             posicao=order_data['posicao'],
             posicao_hist=order_data['posicao_hist'],
             observacao=order_data['observacao'],
@@ -185,8 +207,8 @@ def import_ruah(file_content):
         purchasecount += 1
         db.session.add(order)
         db.session.flush()  # To get the order ID for items
-
         for item_data in formatted_items:
+          
             if item_data['purchase_order_id'] == order_data['cod_pedc']:
                 item = PurchaseItem(
                     purchase_order_id=order.id,
@@ -214,6 +236,23 @@ def import_ruah(file_content):
                 itemcount += 1
                 db.session.add(item)
 
+        
+        for adj_data in formatted_adjustments:
+            if order:
+                if adj_data['cod_pedc'] == order_data['cod_pedc'] and adj_data['cod_emp1'] == order_data['cod_emp1']:
+                    adjustment = PurchaseAdjustment(
+                        purchase_order_id=order.id,
+                        cod_pedc=adj_data['cod_pedc'],
+                        cod_emp1=adj_data['cod_emp1'],
+                        tp_apl=adj_data['tp_apl'],
+                        tp_dctacr1=adj_data['tp_dctacr1'],
+                        tp_vlr1=adj_data['tp_vlr1'],
+                        vlr1=adj_data['vlr1'],
+                        order_index=adj_data['order_index']
+                    )
+                    db.session.add(adjustment)
+                
+        
     db.session.commit()
     return jsonify({'message': 'Data imported successfully purchases {}, items {}, updated {}'.format(purchasecount - updated, itemcount, updated)}), 201
 
@@ -434,3 +473,29 @@ def import_rfor0302(file_content):
     return jsonify({
         'message': f'Suppliers imported: {len(suppliers)} total ({new_count} new, {updated_count} updated)'
     }), 201
+
+def apply_adjustments(base_value, adjustments):
+    value = base_value
+    for adj in adjustments:
+        if adj.tp_apl == 'Pedido':
+            if adj.tp_vlr1 == 'Percentual':
+                percent = adj.vlr1 or 0
+                if adj.tp_dctacr1 == 'Desconto':
+                    value -= value * (percent / 100)
+                elif adj.tp_dctacr1 == 'Acréscimo':
+                    value += value * (percent / 100)
+            elif adj.tp_vlr1 == 'Valor':
+                amount = adj.vlr1 or 0
+                if adj.tp_dctacr1 == 'Desconto':
+                    value -= amount
+                elif adj.tp_dctacr1 == 'Acréscimo':
+                    value += amount
+        elif adj.tp_apl == 'Itens':
+            if adj.tp_vlr1 == 'Valor':
+                amount = adj.vlr1 or 0
+                if adj.tp_dctacr1 == 'Desconto':
+                    value -= amount
+                elif adj.tp_dctacr1 == 'Acréscimo':
+                    value += amount
+
+    return value
