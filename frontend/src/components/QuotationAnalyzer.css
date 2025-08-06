@@ -1,28 +1,108 @@
-/* filepath: /home/talison/dev/flask-foccoerp-rest-api/frontend/src/components/QuotationExtractor.css */
 .quotation-extractor {
   padding-top: 24px;
   padding-bottom: 24px;
 }
 
-.file-list {
-  max-height: 200px;
-  overflow-y: auto;
-  border: 1px solid #eee;
-  border-radius: 4px;
-  padding: 8px;
-  margin-bottom: 16px;
+/* File upload dropzone */
+.dropzone {
+  border: 2px dashed #3f51b5;
+  border-radius: 8px;
+  padding: 30px;
+  text-align: center;
+  transition: all 0.3s ease;
+  background-color: rgba(63, 81, 181, 0.05);
+  margin-bottom: 20px;
+  cursor: pointer;
 }
 
-.match-confidence-high {
+.dropzone:hover {
+  border-color: #303f9f;
+  background-color: rgba(63, 81, 181, 0.1);
+}
+
+.dropzone-active {
+  border-color: #4caf50;
   background-color: rgba(76, 175, 80, 0.1);
 }
 
+.dropzone-icon {
+  font-size: 48px !important;
+  color: #3f51b5;
+  margin-bottom: 10px;
+}
+
+.file-list {
+  max-height: 250px;
+  overflow-y: auto;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 0;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background-color 0.2s;
+}
+
+.file-item:hover {
+  background-color: #f5f5f5;
+}
+
+.file-item:last-child {
+  border-bottom: none;
+}
+
+.file-icon {
+  margin-right: 12px;
+  color: #757575;
+}
+
+.file-type-pdf .file-icon {
+  color: #f44336;
+}
+
+.file-type-excel .file-icon {
+  color: #4caf50;
+}
+
+.file-type-image .file-icon {
+  color: #2196f3;
+}
+
+.file-info {
+  flex-grow: 1;
+}
+
+.file-name {
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
+.file-meta {
+  font-size: 12px;
+  color: #757575;
+}
+
+.file-remove {
+  color: #f44336 !important;
+}
+
+/* Price comparison styles */
+.match-confidence-high {
+  background-color: rgba(76, 175, 80, 0.15);
+}
+
 .match-confidence-medium {
-  background-color: rgba(255, 152, 0, 0.1);
+  background-color: rgba(255, 152, 0, 0.15);
 }
 
 .match-confidence-low {
-  background-color: rgba(244, 67, 54, 0.1);
+  background-color: rgba(244, 67, 54, 0.15);
 }
 
 .price-diff-lower {
@@ -41,4 +121,75 @@
   color: #ff9800;
   display: flex;
   align-items: center;
+}
+
+/* Section styles */
+.section-title {
+  margin-bottom: 16px;
+  color: #007bff; 
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+}
+
+.section-title-icon {
+  margin-right: 8px;
+}
+
+.section-card {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); /* Match UnifiedSearch shadow */
+  margin-bottom: 24px;
+}
+.section-content {
+  padding: 20px;
+}
+
+/* Table styles */
+.table-container {
+  margin-top: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
+}
+
+.table-header-cell {
+  font-weight: 600 !important;
+  white-space: nowrap;
+}
+
+.best-price-cell {
+  background-color: rgba(76, 175, 80, 0.15) !important;
+  font-weight: bold !important;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.fade-in {
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+.spinner-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+.order-header {
+  text-align: center;
+  background-color: #007bff;
+  font-weight: bold;
+  color: white;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+.table-container tbody tr:hover {
+  background-color: #f0f0f0 !important;
 }
