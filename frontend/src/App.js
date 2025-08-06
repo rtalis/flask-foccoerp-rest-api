@@ -51,7 +51,7 @@ const App = () => {
       <Routes>
         <Route path="/login" element={isAuthenticated ? <Navigate to="/search" /> : <Login onLogin={handleLogin} />} />
         <Route path="/register" element={isAuthenticated ? <Register /> : <Login />} />
-        <Route path="/quotation-analyzer" element={true ? <QuotationAnalyzer /> : <Navigate to="/login" />} />
+        <Route path="/quotation-analyzer" element={isAuthenticated ? <QuotationAnalyzer /> : <Navigate to="/login" />} />
 
 
         <Route

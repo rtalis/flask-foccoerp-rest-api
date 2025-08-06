@@ -481,11 +481,12 @@ const UnifiedSearch = ({ onLogout }) => {
 
   return (
     <div className="unified-search">
-      <Typography variant="h5" gutterBottom>
-        Pedidos de compras Ruah - atualizado em {lastUpdated} -
-        <Link to="/import" style={{ marginLeft: 8, textDecoration: 'none' }}> Atualizar</Link>
-      </Typography>
 
+<Typography variant="h5" gutterBottom>
+  Pedidos de compras Ruah - atualizado em {lastUpdated} -
+  <Link to="/import" style={{ marginLeft: 8, textDecoration: 'none'}}> Atualizar </Link>
+</Typography>
+  <Link to="/quotation-analyzer" style={{ marginLeft: 240, textDecoration: 'none', padding: 10, marginBottom: 8, alignContent: 'right' }}> Cotações </Link>
       <Box sx={{ display: 'flex', mb: 3, alignItems: 'center', gap: 2 }}>
         <TextField
           name="query"
