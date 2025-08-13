@@ -1523,3 +1523,180 @@ def get_danfe_pdf():
     
     except Exception as e:
         return jsonify({'error': f'Error: {str(e)}'}), 500
+    
+    
+@bp.route('/dashboard_summary', methods=['GET'])
+@login_required
+def dashboard_summary():
+    from sqlalchemy import func, extract
+    from datetime import datetime, timedelta
+
+    try:
+        months = int(request.args.get('months', 6))
+        top_limit = int(request.args.get('limit', 8))
+        end_date = datetime.now().date()
+        start_date = (end_date.replace(day=1) - timedelta(days=months * 31)).replace(day=1)
+
+        # Summary
+        total_orders = db.session.query(func.count()).select_from(PurchaseOrder).filter(
+            PurchaseOrder.dt_emis >= start_date
+        ).scalar() or 0
+
+        total_items = db.session.query(func.count()).select_from(PurchaseItem).join(
+            PurchaseOrder, PurchaseItem.purchase_order_id == PurchaseOrder.id
+        ).filter(PurchaseOrder.dt_emis >= start_date).scalar() or 0
+
+        total_value = db.session.query(func.coalesce(func.sum(PurchaseOrder.total_pedido_com_ipi), 0)).filter(
+            PurchaseOrder.dt_emis >= start_date
+        ).scalar() or 0.0
+
+        total_suppliers = db.session.query(func.count(func.distinct(PurchaseOrder.fornecedor_id))).filter(
+            PurchaseOrder.dt_emis >= start_date
+        ).scalar() or 0
+
+        avg_order_value = float(total_value) / total_orders if total_orders else 0.0
+
+        # Monthly totals (group by year/month)
+        monthly_rows = db.session.query(
+            extract('year', PurchaseOrder.dt_emis).label('y'),
+            extract('month', PurchaseOrder.dt_emis).label('m'),
+            func.count(PurchaseOrder.id).label('order_count'),
+            func.coalesce(func.sum(PurchaseOrder.total_pedido_com_ipi), 0).label('total_value')
+        ).filter(
+            PurchaseOrder.dt_emis >= start_date
+        ).group_by(
+            extract('year', PurchaseOrder.dt_emis),
+            extract('month', PurchaseOrder.dt_emis)
+        ).order_by(
+            extract('year', PurchaseOrder.dt_emis),
+            extract('month', PurchaseOrder.dt_emis)
+        ).all()
+
+        # Normalize monthly data for last N months (fill missing with zeros)
+        months_labels = []
+        monthly_map = {}
+        cur = end_date.replace(day=1)
+        for _ in range(months):
+            key = (cur.year, cur.month)
+            months_labels.append(f"{cur.strftime('%b')}/{str(cur.year)[-2:]}")
+            monthly_map[key] = {'order_count': 0, 'total_value': 0.0}
+            # go back one month safely
+            prev = (cur.replace(day=1) - timedelta(days=1)).replace(day=1)
+            cur = prev
+
+        # rows are ascending; map them
+        for r in monthly_rows:
+            k = (int(r.y), int(r.m))
+            if k in monthly_map:
+                monthly_map[k] = {
+                    'order_count': int(r.order_count or 0),
+                    'total_value': float(r.total_value or 0),
+                }
+
+        # Build monthly list in chronological order for charts
+        monthly_data = []
+        cur = (end_date.replace(day=1) - timedelta(days=(months - 1) * 31)).replace(day=1)
+        for _ in range(months):
+            k = (cur.year, cur.month)
+            label = f"{cur.strftime('%b')}/{str(cur.year)[-2:]}"
+            v = monthly_map.get(k, {'order_count': 0, 'total_value': 0.0})
+            monthly_data.append({
+                'month': label,
+                'order_count': v['order_count'],
+                'total_value': v['total_value'],
+            })
+            cur = (cur.replace(day=1) + timedelta(days=32)).replace(day=1)
+
+        # Top buyers
+        buyer_rows = db.session.query(
+            PurchaseOrder.func_nome.label('name'),
+            func.count(PurchaseOrder.id).label('order_count'),
+            func.coalesce(func.sum(PurchaseOrder.total_pedido_com_ipi), 0).label('total_value'),
+            func.coalesce(func.avg(PurchaseOrder.total_pedido_com_ipi), 0).label('avg_value')
+        ).filter(
+            PurchaseOrder.dt_emis >= start_date,
+            PurchaseOrder.func_nome.isnot(None)
+        ).group_by(
+            PurchaseOrder.func_nome
+        ).order_by(
+            func.coalesce(func.sum(PurchaseOrder.total_pedido_com_ipi), 0).desc()
+        ).limit(top_limit).all()
+
+        buyer_data = [{
+            'name': r.name or '—',
+            'order_count': int(r.order_count or 0),
+            'total_value': float(r.total_value or 0.0),
+            'avg_value': float(r.avg_value or 0.0)
+        } for r in buyer_rows]
+
+        # Top suppliers
+        supplier_rows = db.session.query(
+            PurchaseOrder.fornecedor_descricao.label('name'),
+            func.count(PurchaseOrder.id).label('order_count'),
+            func.coalesce(func.sum(PurchaseOrder.total_pedido_com_ipi), 0).label('total_value')
+        ).filter(
+            PurchaseOrder.dt_emis >= start_date,
+            PurchaseOrder.fornecedor_descricao.isnot(None)
+        ).group_by(
+            PurchaseOrder.fornecedor_descricao
+        ).order_by(
+            func.coalesce(func.sum(PurchaseOrder.total_pedido_com_ipi), 0).desc()
+        ).limit(top_limit).all()
+
+        supplier_data = [{
+            'name': r.name or '—',
+            'order_count': int(r.order_count or 0),
+            'total_value': float(r.total_value or 0.0)
+        } for r in supplier_rows]
+
+        # Top items by spend
+        item_rows = db.session.query(
+            PurchaseItem.item_id,
+            PurchaseItem.descricao,
+            func.coalesce(func.sum(PurchaseItem.total), 0).label('total_spend')
+        ).join(PurchaseOrder, PurchaseItem.purchase_order_id == PurchaseOrder.id).filter(
+            PurchaseOrder.dt_emis >= start_date
+        ).group_by(
+            PurchaseItem.item_id, PurchaseItem.descricao
+        ).order_by(
+            func.coalesce(func.sum(PurchaseItem.total), 0).desc()
+        ).limit(top_limit).all()
+
+        top_items = [{
+            'item_id': r.item_id,
+            'descricao': r.descricao,
+            'total_spend': float(r.total_spend or 0.0)
+        } for r in item_rows]
+
+        # Recent orders
+        recent_orders_q = db.session.query(PurchaseOrder).filter(
+            PurchaseOrder.dt_emis >= start_date
+        ).order_by(PurchaseOrder.dt_emis.desc()).limit(10).all()
+
+        recent_orders = [{
+            'cod_pedc': o.cod_pedc,
+            'dt_emis': o.dt_emis.isoformat() if o.dt_emis else None,
+            'fornecedor_descricao': o.fornecedor_descricao,
+            'func_nome': o.func_nome,
+            'total_value': float(o.total_pedido_com_ipi or 0.0)
+        } for o in recent_orders_q]
+        summary = jsonify({ 'summary': {
+                'total_orders': int(total_orders),
+                'total_items': int(total_items),
+                'total_value': float(total_value),
+                'avg_order_value': float(avg_order_value),
+                'total_suppliers': int(total_suppliers)
+            },
+            'monthly_data': monthly_data,
+            'buyer_data': buyer_data,
+            'supplier_data': supplier_data,
+            'top_items': top_items,
+            'recent_orders': recent_orders
+        })
+        return summary, 200
+ 
+        
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+

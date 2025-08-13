@@ -67,6 +67,11 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(150), unique=True, nullable=False)
     password = db.Column(db.String(256), nullable=False)
     login_history = db.relationship('LoginHistory', backref='user', lazy=True)
+    role = db.Column(db.String(50), nullable=False, default='viewer')  # 'admin' | 'viewer' | 'purchaser'
+    purchaser_name = db.Column(db.String(150), nullable=True)          # Links user to PurchaseOrder.func_nome
+    initial_screen = db.Column(db.String(100), nullable=False, default='/dashboard')
+    allowed_screens = db.Column(db.JSON, nullable=False, default=list)
+
 
 class LoginHistory(db.Model):
     id = db.Column(db.Integer, primary_key=True)

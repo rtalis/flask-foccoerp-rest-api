@@ -1,0 +1,44 @@
+.summary-card {
+  transition: all 0.25s ease;
+}
+
+.summary-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
+}
+
+.chart-container {
+  position: relative;
+  height: 400px;
+}
+
+.dashboard-paper {
+  padding: 24px;
+  margin-bottom: 24px;
+  border-radius: 16px;
+}
+
+.table-paper {
+  padding: 16px;
+}
+
+.navigation-drawer {
+  width: 280px;
+}
+
+.drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 16px;
+  min-height: 64px;
+}
+
+@media (max-width: 768px) {
+  .summary-card .MuiCardContent-root {
+    padding: 12px;
+  }
+  .chart-container {
+    height: 300px;
+  }
+}
