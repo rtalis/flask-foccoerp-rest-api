@@ -6,7 +6,7 @@ import Login from './components/Login';
 import ImportFile from './components/ImportFile';
 import Register from './components/Register';
 import QuotationAnalyzer from './components/QuotationAnalyzer';
-
+import Dashboard from './components/Dashboard';
 
 const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -20,7 +20,7 @@ const App = () => {
 
           // Automatically log out after 1 hour
           const logoutTimer = setTimeout(handleLogout, 3600000);
-          return () => clearTimeout(logoutTimer); // Cleanup timeout
+          return () => clearTimeout(logoutTimer);
         }
       } catch (error) {
         setIsAuthenticated(false);
@@ -32,7 +32,6 @@ const App = () => {
 
   const handleLogin = () => {
     setIsAuthenticated(true);
-
     setTimeout(handleLogout, 3600000);
   };
 
@@ -50,17 +49,12 @@ const App = () => {
     <Router>
       <Routes>
         <Route path="/login" element={isAuthenticated ? <Navigate to="/search" /> : <Login onLogin={handleLogin} />} />
-        <Route path="/register" element={isAuthenticated ? <Register /> : <Login />} />
+        <Route path="/register" element={isAuthenticated ? <Register /> : <Navigate to="/login" />} />
+        <Route path="/dashboard" element={isAuthenticated ? <Dashboard onLogout={handleLogout} /> : <Navigate to="/login" />} />
+        <Route path="/search" element={isAuthenticated ? <UnifiedSearch onLogout={handleLogout} /> : <Navigate to="/login" />} />
         <Route path="/quotation-analyzer" element={isAuthenticated ? <QuotationAnalyzer /> : <Navigate to="/login" />} />
-
-
-        <Route
-          path="/search"
-          element={isAuthenticated ? <UnifiedSearch onLogout={handleLogout} /> : <Navigate to="/login" />}
-        />
-        <Route path="/import" element={isAuthenticated ? <ImportFile /> :  <Navigate to="/login" />} />
+        <Route path="/import" element={isAuthenticated ? <ImportFile /> : <Navigate to="/login" />} />
         <Route path="*" element={<Navigate to={isAuthenticated ? "/search" : "/login"} />} />
-
       </Routes>
     </Router>
   );
