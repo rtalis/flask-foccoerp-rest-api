@@ -111,6 +111,7 @@ const ImportFile = () => {
     <div className="import-file-container">
       <form onSubmit={handleSubmit} className="import-file-form">
         <h2>Importar Arquivo</h2>
+          <p>Selecione um arquivo de relatório XML para importação:</p>
         <input 
           type="file" 
           onChange={handleFileChange} 

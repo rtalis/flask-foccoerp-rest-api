@@ -1,28 +1,61 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import ItemScreen from './ItemScreen';
 import './UnifiedSearch.css';
 
 import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TableFooter,
   Paper, Collapse, Box, Typography, IconButton, TextField, Button, Radio, RadioGroup,
-  FormControlLabel, FormControl, FormLabel, Checkbox, Select, MenuItem, InputAdornment
+  FormControlLabel, FormControl, FormLabel, Checkbox, Select, MenuItem, InputAdornment,
+  AppBar, Toolbar, Drawer, List, ListItemButton, ListItemIcon, ListItemText, Divider,
+  CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, Card, CardContent,
+  CardActions, Slide, useScrollTrigger
 } from '@mui/material';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import MenuIcon from '@mui/icons-material/Menu';
+import DashboardIcon from '@mui/icons-material/Dashboard';
+import CompareIcon from '@mui/icons-material/Compare';
+import UploadIcon from '@mui/icons-material/Upload';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import SearchIcon from '@mui/icons-material/Search';
 import LogoutIcon from '@mui/icons-material/Logout';
-import ReceiptIcon from '@mui/icons-material/Receipt';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
-import Dialog from '@mui/material/Dialog';
-import DialogTitle from '@mui/material/DialogTitle';
-import DialogContent from '@mui/material/DialogContent';
-import DialogActions from '@mui/material/DialogActions';
-import CircularProgress from '@mui/material/CircularProgress';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import CardActions from '@mui/material/CardActions';
+import ReceiptIcon from '@mui/icons-material/Receipt';
+
+
+const DRAWER_WIDTH_OPEN = 260;
+const DRAWER_WIDTH_COLLAPSED = 60;
+
+function HideOnScroll(props) {
+  const { children, threshold = 100 } = props;
+  const trigger = useScrollTrigger({
+    disableHysteresis: true,
+    threshold: threshold,
+  });
+
+  return (
+    <Slide appear={false} direction="down" in={!trigger}>
+      {children}
+    </Slide>
+  );
+}
+function HideSidebar(props) {
+  const { children, threshold = 100 } = props;
+  const trigger = useScrollTrigger({
+    disableHysteresis: true,
+    threshold: threshold,
+  });
+
+  return (
+    <Slide appear={false} direction="left" in={!trigger}>
+      {children}
+    </Slide>
+  );
+}
+
 
 function PurchaseRow(props) {
   const { purchase, formatDate, formatNumber, formatCurrency, getFirstWords, handleItemClick } = props;
@@ -39,7 +72,6 @@ function PurchaseRow(props) {
         withCredentials: true
       });
       setNfeData(response.data);
-      // Show the dialog immediately after fetching data
       setShowNfeDialog(true);
     } catch (error) {
       console.error('Error fetching NFE data:', error);
@@ -289,7 +321,6 @@ const UnifiedSearch = ({ onLogout }) => {
   const [results, setResults] = useState([]);
   const [selectedItemId, setSelectedItemId] = useState(null);
   const [funcNames, setFuncNames] = useState([]); // Estado para armazenar os nomes dos compradores
-  const [showAllItems, setShowAllItems] = useState({}); // Estado para controlar a exibição de todos os itens
   const [currentPage, setCurrentPage] = useState(1);
   const [noResults, setNoResults] = useState(0);
   const [perPage, setPerPage] = useState(200);
@@ -297,7 +328,101 @@ const UnifiedSearch = ({ onLogout }) => {
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState('');
   const [estimatedResults, setEstimatedResults] = useState(0);
+  const navigate = useNavigate();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const resultsRef = useRef(null);
+  const [scrollThreshold, setScrollThreshold] = useState(300);
+  const [sidebarVisible, setSidebarVisible] = useState(true);
 
+
+
+  const menuItems = React.useMemo(() => ([
+    { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
+    { text: 'Buscar Pedidos', icon: <SearchIcon />, path: '/search' },
+    { text: 'Analisar Cotações', icon: <CompareIcon />, path: '/quotation-analyzer' },
+    { text: 'Importar Dados', icon: <UploadIcon />, path: '/import' }
+  ]), []);
+
+  const handleDrawerToggle = () => setMobileOpen(!mobileOpen);
+  const handleSidebarCollapse = () => setSidebarOpen(v => !v);
+  const handleNav = (path) => { try { navigate(path); } catch { window.location.assign(path); } };
+  const handleLogoutTop = () => { onLogout(); try { navigate('/login', { replace: true }); } catch { window.location.replace('/login'); } };
+
+  const isScrolledToResults = useScrollTrigger({
+    disableHysteresis: true,
+    threshold: scrollThreshold,
+  });
+
+  // Set sidebar visibility based on scroll position
+  useEffect(() => {
+    setSidebarVisible(!isScrolledToResults);
+  }, [isScrolledToResults]);
+
+  const baseDrawerWidth = sidebarOpen ? DRAWER_WIDTH_OPEN : DRAWER_WIDTH_COLLAPSED;
+  const drawerWidth = sidebarVisible ? baseDrawerWidth : 0;
+
+  const drawerContent = (
+    <>
+      <Toolbar
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: sidebarOpen ? 'space-between' : 'center',
+          py: 1,
+          px: 2
+        }}
+      >
+        {sidebarOpen && (
+          <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+            Sistema de Compras
+          </Typography>
+        )}
+        <IconButton size="small" onClick={handleSidebarCollapse}>
+          {sidebarOpen ? <ChevronLeftIcon /> : <ChevronRightIcon />}
+        </IconButton>
+      </Toolbar>
+      <Divider />
+      <Box sx={{ py: 1 }}>
+        <List sx={{ px: sidebarOpen ? 1 : 0 }}>
+          {menuItems.map(item => (
+            <ListItemButton
+              key={item.text}
+              onClick={() => handleNav(item.path)}
+              sx={{
+                borderRadius: 2,
+                mx: sidebarOpen ? 1 : 0.5,
+                mb: 0.5,
+                minHeight: 44,
+                justifyContent: sidebarOpen ? 'flex-start' : 'center',
+                '&.Mui-selected': { bgcolor: 'primary.light', '&:hover': { bgcolor: 'primary.light' } },
+                '&:hover': { bgcolor: 'rgba(0,0,0,0.04)' }
+              }}
+              selected={item.path === '/search'}
+            >
+              <ListItemIcon
+                sx={{
+                  minWidth: 0,
+                  mr: sidebarOpen ? 2 : 'auto',
+                  color: item.path === '/search' ? 'primary.main' : 'inherit',
+                  justifyContent: 'center'
+                }}
+              >
+                {item.icon}
+              </ListItemIcon>
+              {sidebarOpen && <ListItemText primary={item.text} />}
+            </ListItemButton>
+          ))}
+        </List>
+      </Box>
+    </>
+  );
+  useEffect(() => {
+    if (resultsRef.current) {
+      const resultsPosition = resultsRef.current.offsetTop - 100;
+      setScrollThreshold(resultsPosition > 100 ? resultsPosition : 300);
+    }
+  }, [results.length]);
 
   useEffect(() => {
     // Buscar os nomes dos compradores do backend
@@ -468,269 +593,349 @@ const UnifiedSearch = ({ onLogout }) => {
     return text.split(' ').slice(0, numWords).join(' ');
   };
 
-  const toggleShowAllItems = (orderId) => {
-    setShowAllItems(prevState => ({
-      ...prevState,
-      [orderId]: !prevState[orderId]
-    }));
-  };
 
   const handlePageChange = (newPage) => {
     handleSearch(newPage);
   };
 
   return (
-    <div className="unified-search">
-
-<Typography variant="h5" gutterBottom>
-  Pedidos de compras Ruah - atualizado em {lastUpdated} -
-  <Link to="/import" style={{ marginLeft: 8, textDecoration: 'none'}}> Atualizar </Link>
-</Typography>
-  <Link to="/quotation-analyzer" style={{ marginLeft: 240, textDecoration: 'none', padding: 10, marginBottom: 8, alignContent: 'right' }}> Cotações </Link>
-      <Box sx={{ display: 'flex', mb: 3, alignItems: 'center', gap: 2 }}>
-        <TextField
-          name="query"
-          placeholder="Search..."
-          variant="outlined"
-          size="small"
-          fullWidth
-          value={searchParams.query}
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-
-        />
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={() => handleSearch(1)}
-          startIcon={<SearchIcon />}
+    <Box sx={{ display: 'flex' }}>
+      {/* AppBar */}
+      <HideOnScroll threshold={scrollThreshold}>
+        <AppBar
+          position="fixed"
+          elevation={0}
+          sx={{
+            width: { sm: `calc(100% - ${drawerWidth}px)` },
+            ml: { sm: `${drawerWidth}px` },
+            bgcolor: 'transparent',
+            color: 'text.primary',
+            backdropFilter: 'blur(6px)'
+          }}
         >
-          Buscar
-        </Button>
-        <Button
-          variant="outlined"
-          color="error"
-          onClick={onLogout}
-          startIcon={<LogoutIcon />}
+          <Toolbar>
+            <IconButton
+              color="inherit"
+              edge="start"
+              onClick={handleDrawerToggle}
+              sx={{ mr: 2, display: { sm: 'none' } }}
+            >
+              <MenuIcon />
+            </IconButton>
+            <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: 'bold' }}>Buscar Pedidos</Typography>
+            <Typography variant="body1" sx={{ flexGrow: 1, alignContent: 'left' }}>
+              Pedidos de compras Ruah - atualizado em {lastUpdated} -
+              <Link to="/import" style={{ marginLeft: 8, textDecoration: 'none' }}> Atualizar </Link>
+            </Typography>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleLogoutTop}
+              startIcon={<LogoutIcon />}
+              sx={{ borderRadius: 2, textTransform: 'none' }}
+            >
+              Logout
+            </Button>
+          </Toolbar>
+        </AppBar>
+      </HideOnScroll>
+
+      {/* Navigation drawers */}
+      <Box component="nav" sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}>
+        {/* Mobile temporary drawer or when sidebar is hidden */}
+        <Drawer
+          variant="temporary"
+          open={mobileOpen}
+          onClose={handleDrawerToggle}
+          ModalProps={{ keepMounted: true }}
+          sx={{
+            display: { xs: 'block', sm: sidebarVisible ? 'none' : 'block' },
+            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: DRAWER_WIDTH_OPEN }
+          }}
         >
-          Logout
-        </Button>
+          {drawerContent}
+        </Drawer>
+
+        {/* Desktop permanent drawer that hides on scroll */}
+        {sidebarVisible && (
+          <HideSidebar threshold={scrollThreshold}>
+            <Drawer
+              variant="permanent"
+              sx={{
+                display: { xs: 'none', sm: 'block' },
+                '& .MuiDrawer-paper': {
+                  boxSizing: 'border-box',
+                  width: baseDrawerWidth,
+                  transition: theme => theme.transitions.create('width', {
+                    easing: theme.transitions.easing.sharp,
+                    duration: theme.transitions.duration.shortest
+                  })
+                }
+              }}
+              open
+            >
+              {drawerContent}
+            </Drawer>
+          </HideSidebar>
+        )}
       </Box>
 
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 5, mb: 5 }}>
-        {/* Search fields section */}
-        <FormControl component="fieldset" sx={{ minWidth: '200px' }}>
-          <FormLabel component="legend">Pesquisar por...</FormLabel>
-          <FormControlLabel
-            control={
-              <Checkbox
-                name="searchByCodPedc"
-                checked={searchParams.searchByCodPedc}
-                onChange={handleChange}
-                disabled={searchParams.searchPrecision !== 'precisa'}
-              />
-            }
-            label="Código do Pedido de Compra"
-            sx={{ marginBottom: '-10px' }}
-          />
-          <FormControlLabel
-            control={
-              <Checkbox
-                name="searchByFornecedor"
-                checked={searchParams.searchByFornecedor}
-                onChange={handleChange}
-                disabled={searchParams.searchPrecision !== 'precisa'}
-              />
-            }
-            label="Nome do Fornecedor"
-            sx={{ marginBottom: '-10px' }}
-          />
-          <FormControlLabel
-            control={
-              <Checkbox
-                name="searchByObservacao"
-                checked={searchParams.searchByObservacao}
-                onChange={handleChange}
-              />
-            }
-            label="Observação do Pedido de Compra"
-            sx={{ marginBottom: '-10px' }}
-          />
-          <FormControlLabel
-            control={
-              <Checkbox
-                name="searchByItemId"
-                checked={searchParams.searchByItemId}
-                onChange={handleChange}
-                disabled={searchParams.searchPrecision !== 'precisa'}
-              />
-            }
-            label="Código do Item"
-            sx={{ marginBottom: '-10px' }}
-          />
-          <FormControlLabel
-            control={
-              <Checkbox
-                name="searchByDescricao"
-                checked={searchParams.searchByDescricao}
-                onChange={handleChange}
-              />
-            }
-            label="Descrição do Item"
-            sx={{ marginBottom: '-10px' }}
-          />
-        </FormControl>
-
-        {/* Search precision section */}
-        <FormControl component="fieldset" sx={{ minWidth: '200px' }}>
-          <FormLabel component="legend">Precisão da busca</FormLabel>
-          <RadioGroup
-            name="searchPrecision"
-            value={searchParams.searchPrecision}
-            onChange={handleChange}
-          >
-            <FormControlLabel
-              value="precisa"
-              control={<Radio />}
-              label="Precisa"
-              sx={{ marginBottom: '-10px' }}
-            />
-            <FormControlLabel
-              value="fuzzy"
-              control={<Radio />}
-              label="Busca com erro de digitação"
-              sx={{ marginBottom: '-10px' }}
-            />
-            <FormControlLabel
-              value="tentar_a_sorte"
-              control={<Radio />}
-              label="Estou sem sorte"
-              sx={{ marginBottom: '-10px' }}
-            />
-          </RadioGroup>
-        </FormControl>
-
-        {/* Purchaser section */}
-        <FormControl sx={{ minWidth: '200px' }}>
-          <FormLabel component="legend">Mostrar compradores</FormLabel>
-          <Select
-            name="selectedFuncName"
-            value={searchParams.selectedFuncName}
-            onChange={handleChange}
-            size="small"
-            fullWidth
-          >
-            <MenuItem value="todos">Todos os compradores</MenuItem>
-            {funcNames.map((funcName) => (
-              <MenuItem key={funcName} value={funcName}>
-                {funcName}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-
-        {/* Value filter section */}
-        <FormControl component="fieldset" sx={{ minWidth: '200px' }}>
-          <FormLabel component="legend">Filtrar por valor</FormLabel>
-          <RadioGroup
-            name="valueSearchType"
-            value={searchParams.valueSearchType}
-            onChange={handleChange}
-          >
-            <FormControlLabel
-              value="item"
-              control={<Radio />}
-              label="Valor do Item"
-              sx={{ marginBottom: '-10px' }}
-            />
-            <FormControlLabel
-              value="order"
-              control={<Radio />}
-              label="Valor do Pedido"
-              sx={{ marginBottom: '-10px' }}
-            />
-          </RadioGroup>
-
-          <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+      {/* Main content - adjust width based on drawer visibility */}
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          p: 3,
+          width: `calc(100% - ${drawerWidth}px)`,
+          minHeight: '100vh',
+          transition: theme => theme.transitions.create('width', {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.shortest
+          }),
+          bgcolor: 'linear-gradient(180deg, #f7f9fc 0%, #f2f4f7 100%)'
+        }}
+      >
+        <Toolbar />
+        <div className="unified-search">
+          <Box sx={{ display: 'flex', mb: 3, alignItems: 'center', gap: 2 }}>
             <TextField
-              label="Valor mínimo"
-              name="min_value"
-              type="number"
-              value={searchParams.min_value}
-              onChange={handleChange}
+              name="query"
+              placeholder="Search..."
+              variant="outlined"
               size="small"
-              InputProps={{
-                startAdornment: <InputAdornment position="start">R$</InputAdornment>,
-              }}
-            />
-            <TextField
-              label="Valor máximo"
-              name="max_value"
-              type="number"
-              value={searchParams.max_value}
+              fullWidth
+              value={searchParams.query}
               onChange={handleChange}
-              size="small"
-              InputProps={{
-                startAdornment: <InputAdornment position="start">R$</InputAdornment>,
-              }}
-            />
-          </Box>
-        </FormControl>
-      </Box>
+              onKeyDown={handleKeyDown}
 
-      {loading && (
-        <Box sx={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexDirection: 'column',
-          backgroundColor: 'rgba(255, 255, 255, 0.8)',
-          zIndex: 9999
-        }}>
-          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
-            <div className="spinner"></div>
+            />
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={() => handleSearch(1)}
+              startIcon={<SearchIcon />}
+            >
+              Buscar
+            </Button>
+
           </Box>
-          <Typography>
-            Buscando em aproximadamente {estimatedResults} resultados...
+
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 5, mb: 5 }}>
+            {/* Search fields section */}
+            <FormControl component="fieldset" sx={{ minWidth: '200px' }}>
+              <FormLabel component="legend">Pesquisar por...</FormLabel>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    name="searchByCodPedc"
+                    checked={searchParams.searchByCodPedc}
+                    onChange={handleChange}
+                    disabled={searchParams.searchPrecision !== 'precisa'}
+                  />
+                }
+                label="Código do Pedido de Compra"
+                sx={{ marginBottom: '-10px' }}
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    name="searchByFornecedor"
+                    checked={searchParams.searchByFornecedor}
+                    onChange={handleChange}
+                    disabled={searchParams.searchPrecision !== 'precisa'}
+                  />
+                }
+                label="Nome do Fornecedor"
+                sx={{ marginBottom: '-10px' }}
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    name="searchByObservacao"
+                    checked={searchParams.searchByObservacao}
+                    onChange={handleChange}
+                  />
+                }
+                label="Observação do Pedido de Compra"
+                sx={{ marginBottom: '-10px' }}
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    name="searchByItemId"
+                    checked={searchParams.searchByItemId}
+                    onChange={handleChange}
+                    disabled={searchParams.searchPrecision !== 'precisa'}
+                  />
+                }
+                label="Código do Item"
+                sx={{ marginBottom: '-10px' }}
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    name="searchByDescricao"
+                    checked={searchParams.searchByDescricao}
+                    onChange={handleChange}
+                  />
+                }
+                label="Descrição do Item"
+                sx={{ marginBottom: '-10px' }}
+              />
+            </FormControl>
+
+            {/* Search precision section */}
+            <FormControl component="fieldset" sx={{ minWidth: '200px' }}>
+              <FormLabel component="legend">Precisão da busca</FormLabel>
+              <RadioGroup
+                name="searchPrecision"
+                value={searchParams.searchPrecision}
+                onChange={handleChange}
+              >
+                <FormControlLabel
+                  value="precisa"
+                  control={<Radio />}
+                  label="Precisa"
+                  sx={{ marginBottom: '-10px' }}
+                />
+                <FormControlLabel
+                  value="fuzzy"
+                  control={<Radio />}
+                  label="Busca com erro de digitação"
+                  sx={{ marginBottom: '-10px' }}
+                />
+                <FormControlLabel
+                  value="tentar_a_sorte"
+                  control={<Radio />}
+                  label="Estou sem sorte"
+                  sx={{ marginBottom: '-10px' }}
+                />
+              </RadioGroup>
+            </FormControl>
+
+            {/* Purchaser section */}
+            <FormControl sx={{ minWidth: '200px' }}>
+              <FormLabel component="legend">Mostrar compradores</FormLabel>
+              <Select
+                name="selectedFuncName"
+                value={searchParams.selectedFuncName}
+                onChange={handleChange}
+                size="small"
+                fullWidth
+              >
+                <MenuItem value="todos">Todos os compradores</MenuItem>
+                {funcNames.map((funcName) => (
+                  <MenuItem key={funcName} value={funcName}>
+                    {funcName}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            {/* Value filter section */}
+            <FormControl component="fieldset" sx={{ minWidth: '200px' }}>
+              <FormLabel component="legend">Filtrar por valor</FormLabel>
+              <RadioGroup
+                name="valueSearchType"
+                value={searchParams.valueSearchType}
+                onChange={handleChange}
+              >
+                <FormControlLabel
+                  value="item"
+                  control={<Radio />}
+                  label="Valor do Item"
+                  sx={{ marginBottom: '-10px' }}
+                />
+                <FormControlLabel
+                  value="order"
+                  control={<Radio />}
+                  label="Valor do Pedido"
+                  sx={{ marginBottom: '-10px' }}
+                />
+              </RadioGroup>
+
+              <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+                <TextField
+                  label="Valor mínimo"
+                  name="min_value"
+                  type="number"
+                  value={searchParams.min_value}
+                  onChange={handleChange}
+                  size="small"
+                  InputProps={{
+                    startAdornment: <InputAdornment position="start">R$</InputAdornment>,
+                  }}
+                />
+                <TextField
+                  label="Valor máximo"
+                  name="max_value"
+                  type="number"
+                  value={searchParams.max_value}
+                  onChange={handleChange}
+                  size="small"
+                  InputProps={{
+                    startAdornment: <InputAdornment position="start">R$</InputAdornment>,
+                  }}
+                />
+              </Box>
+            </FormControl>
+          </Box>
+
+          {loading && (
+            <Box sx={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexDirection: 'column',
+              backgroundColor: 'rgba(255, 255, 255, 0.8)',
+              zIndex: 9999
+            }}>
+              <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+                <div className="spinner"></div>
+              </Box>
+              <Typography>
+                Buscando em aproximadamente {estimatedResults} resultados...
+              </Typography>
+            </Box>
+          )}
+
+          <Typography variant="h6" gutterBottom ref={resultsRef}>
+            Mostrando {noResults} resultados. Pagina {currentPage} de {totalPages}
           </Typography>
-        </Box>
-      )}
 
-      <Typography variant="h6" gutterBottom>
-        Mostrando {noResults} resultados. Pagina {currentPage} de {totalPages}
-      </Typography>
+          <TableContainer component={Paper}>
+            <Table aria-label="collapsible table">
+              <TableBody>
+                {results.map((purchase) => (
+                  <PurchaseRow
+                    key={purchase.order.cod_pedc}
+                    purchase={purchase}
+                    formatDate={formatDate}
+                    formatNumber={formatNumber}
+                    formatCurrency={formatCurrency}
+                    getFirstWords={getFirstWords}
+                    handleItemClick={handleItemClick}
+                  />
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
 
-      <TableContainer component={Paper}>
-        <Table aria-label="collapsible table">
-          <TableBody>
-            {results.map((purchase) => (
-              <PurchaseRow
-                key={purchase.order.cod_pedc}
-                purchase={purchase}
-                formatDate={formatDate}
-                formatNumber={formatNumber}
-                formatCurrency={formatCurrency}
-                getFirstWords={getFirstWords}
-                handleItemClick={handleItemClick}
-              />
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+          <div className="pagination">
+            <button onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1}>Anterior</button>
+            <span>Página {currentPage} de {totalPages}</span>
+            <button onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage === totalPages}>Próxima</button>
+          </div>
 
-      <div className="pagination">
-        <button onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1}>Anterior</button>
-        <span>Página {currentPage} de {totalPages}</span>
-        <button onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage === totalPages}>Próxima</button>
-      </div>
-
-      {selectedItemId && <ItemScreen itemId={selectedItemId} onClose={handleCloseItemScreen} />}
-    </div>
+          {selectedItemId && <ItemScreen itemId={selectedItemId} onClose={handleCloseItemScreen} />}
+        </div>
+      </Box>
+    </Box>
   );
 };
 
