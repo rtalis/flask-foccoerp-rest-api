@@ -11,19 +11,19 @@ import {
   Menu as MenuIcon, Dashboard as DashboardIcon, Search as SearchIcon,
   Compare as CompareIcon, Upload as UploadIcon, Logout as LogoutIcon,
   ShoppingCart as ShoppingCartIcon, Receipt as ReceiptIcon, Business as BusinessIcon,
-  TrendingUp as TrendingUpIcon
+  TrendingUp as TrendingUpIcon, ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon
 } from '@mui/icons-material';
 import {
   Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement,
   PointElement, Title, Tooltip, Legend, ArcElement
 } from 'chart.js';
 import { Line, Doughnut } from 'react-chartjs-2';
-
 import './Dashboard.css';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend, ArcElement);
 
-const DRAWER_WIDTH = 260;
+const DRAWER_WIDTH_OPEN = 260;
+const DRAWER_WIDTH_COLLAPSED = 80;
 
 const Dashboard = ({ onLogout }) => {
   const [data, setData] = useState(null);
@@ -31,6 +31,7 @@ const Dashboard = ({ onLogout }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const navigate = useNavigate();
 
   const menuItems = useMemo(() => ([
@@ -49,7 +50,6 @@ const Dashboard = ({ onLogout }) => {
         withCredentials: true
       });
       const d = res.data || {};
-      // Sanitize data to primitives
       setData({
         summary: {
           total_orders: Number(d?.summary?.total_orders ?? 0),
@@ -98,29 +98,30 @@ const Dashboard = ({ onLogout }) => {
   useEffect(() => { fetchData(months); }, [months]);
 
   const handleDrawerToggle = () => setMobileOpen(!mobileOpen);
+  const handleSidebarCollapse = () => setSidebarOpen(v => !v);
   const handleNav = (path) => { navigate(path); };
   const handleLogout = () => { onLogout(); navigate('/login'); };
 
   const fmtCurrency = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v || 0));
   const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString('pt-BR') : '—');
 
-  // Monthly line chart - focused on total values
+  // Monthly line (total value)
   const monthlyChart = useMemo(() => {
     const rows = Array.isArray(data?.monthly_data) ? data.monthly_data : [];
-    
     return {
       labels: rows.map(r => String(r?.month ?? '')),
       datasets: [
         {
           label: 'Valor Total (R$)',
           data: rows.map(r => Number(r?.total_value ?? 0)),
-          borderColor: 'rgba(66, 135, 245, 1)',
-          backgroundColor: 'rgba(66, 135, 245, 0.1)',
+          borderColor: '#5b8def',
+          backgroundColor: 'rgba(91, 141, 239, 0.15)',
           fill: true,
           tension: 0.4,
-          pointRadius: 4,
+          pointRadius: 3,
+          pointHoverRadius: 5,
           pointBackgroundColor: '#fff',
-          pointBorderColor: 'rgba(66, 135, 245, 1)',
+          pointBorderColor: '#5b8def',
           pointBorderWidth: 2
         }
       ]
@@ -130,13 +131,12 @@ const Dashboard = ({ onLogout }) => {
   const buyerChart = useMemo(() => {
     const rows = Array.isArray(data?.buyer_data) ? data.buyer_data : [];
     if (!rows.length) return null;
-
     return {
       labels: rows.map(r => String(r?.name ?? '')),
       datasets: [{
         label: 'Valor por Comprador',
         data: rows.map(r => Number(r?.total_value ?? 0)),
-        backgroundColor: ['#4285F5', '#63B3ED', '#4FD1C5', '#68D391', '#F6AD55', '#FC8181', '#B794F4', '#F687B3']
+        backgroundColor: ['#5b8def','#6dd3c2','#fad776','#c69df6','#ef7171','#68c2ff','#a5b0c2','#8fe3a6']
       }]
     };
   }, [data]);
@@ -150,43 +150,55 @@ const Dashboard = ({ onLogout }) => {
     try { return String(v); } catch { return '—'; }
   };
 
-  const drawer = (
+  const drawerContent = (
     <>
-      <Toolbar 
-        sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'center',
-          py: 1.5,
-          bgcolor: 'primary.main',
-          color: 'white'
+      <Toolbar
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: sidebarOpen ? 'space-between' : 'center',
+          py: 1,
+          px: 2
         }}
       >
-        <Typography variant="h6" sx={{ fontWeight: 'bold' }}>Sistema de Compras</Typography>
+        {sidebarOpen && (
+          <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+            Sistema de Compras
+          </Typography>
+        )}
+        <IconButton size="small" onClick={handleSidebarCollapse}>
+          {sidebarOpen ? <ChevronLeftIcon /> : <ChevronRightIcon />}
+        </IconButton>
       </Toolbar>
       <Divider />
-      <Box sx={{ py: 2 }}>
-        <List>
+      <Box sx={{ py: 1 }}>
+        <List sx={{ px: sidebarOpen ? 1 : 0 }}>
           {menuItems.map(item => (
-            <ListItemButton 
-              key={item.text} 
+            <ListItemButton
+              key={item.text}
               onClick={() => handleNav(item.path)}
-              sx={{ 
-                borderRadius: '0 24px 24px 0',
-                mx: 2,
-                mb: 1,
-                '&.Mui-selected': { 
-                  bgcolor: 'primary.light',
-                  '&:hover': { bgcolor: 'primary.light' }
-                },
-                '&:hover': { bgcolor: 'rgba(0,0,0,0.04)' } 
+              sx={{
+                borderRadius: 2,
+                mx: sidebarOpen ? 1 : 0.5,
+                mb: 0.5,
+                minHeight: 44,
+                justifyContent: sidebarOpen ? 'flex-start' : 'center',
+                '&.Mui-selected': { bgcolor: 'primary.light', '&:hover': { bgcolor: 'primary.light' } },
+                '&:hover': { bgcolor: 'rgba(0,0,0,0.04)' }
               }}
               selected={item.path === '/dashboard'}
             >
-              <ListItemIcon sx={{ color: item.path === '/dashboard' ? 'primary.main' : 'inherit' }}>
+              <ListItemIcon
+                sx={{
+                  minWidth: 0,
+                  mr: sidebarOpen ? 2 : 'auto',
+                  color: item.path === '/dashboard' ? 'primary.main' : 'inherit',
+                  justifyContent: 'center'
+                }}
+              >
                 {item.icon}
               </ListItemIcon>
-              <ListItemText primary={item.text} />
+              {sidebarOpen && <ListItemText primary={item.text} />}
             </ListItemButton>
           ))}
         </List>
@@ -195,26 +207,30 @@ const Dashboard = ({ onLogout }) => {
   );
 
   if (loading) {
-    return <Box sx={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center' }}>
-      <CircularProgress size={60} />
-    </Box>;
+    return (
+      <Box sx={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center' }}>
+        <CircularProgress size={60} />
+      </Box>
+    );
   }
   if (error) {
     return <Container><Alert severity="error" sx={{ mt: 2 }}>{error}</Alert></Container>;
   }
 
+  const drawerWidth = sidebarOpen ? DRAWER_WIDTH_OPEN : DRAWER_WIDTH_COLLAPSED;
+
   return (
     <Box sx={{ display: 'flex' }}>
       {/* AppBar */}
-      <AppBar 
-        position="fixed" 
-        sx={{ 
-          width: { sm: `calc(100% - ${DRAWER_WIDTH}px)` }, 
-          ml: { sm: `${DRAWER_WIDTH}px` },
-          boxShadow: 'none',
-          borderBottom: '1px solid rgba(0,0,0,0.1)',
-          bgcolor: 'white',
-          color: 'text.primary'
+      <AppBar
+        position="fixed"
+        elevation={0}
+        sx={{
+          width: { sm: `calc(100% - ${drawerWidth}px)` },
+          ml: { sm: `${drawerWidth}px` },
+          bgcolor: 'transparent',
+          color: 'text.primary',
+          backdropFilter: 'blur(6px)'
         }}
       >
         <Toolbar>
@@ -227,37 +243,33 @@ const Dashboard = ({ onLogout }) => {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: 'bold' }}>Dashboard</Typography>
-          {/* Period selector */}
           <FormControl size="small" sx={{ mr: 2, minWidth: 150 }}>
             <Select
               value={months}
               onChange={(e) => setMonths(Number(e.target.value))}
               displayEmpty
-              sx={{ borderRadius: 2 }}
+              sx={{ borderRadius: 2, bgcolor: 'white' }}
             >
               <MenuItem value={3}>Últimos 3 meses</MenuItem>
               <MenuItem value={6}>Últimos 6 meses</MenuItem>
               <MenuItem value={12}>Últimos 12 meses</MenuItem>
             </Select>
           </FormControl>
-          <Button 
-            variant="outlined" 
-            color="primary" 
-            onClick={handleLogout} 
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleLogout}
             startIcon={<LogoutIcon />}
-            sx={{ borderRadius: 2 }}
+            sx={{ borderRadius: 2, textTransform: 'none' }}
           >
             Logout
           </Button>
         </Toolbar>
       </AppBar>
 
-      {/* Permanent drawer */}
-      <Box
-        component="nav"
-        sx={{ width: { sm: DRAWER_WIDTH }, flexShrink: { sm: 0 } }}
-      >
-        {/* Mobile drawer */}
+      {/* Navigation drawers */}
+      <Box component="nav" sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}>
+        {/* Mobile temporary */}
         <Drawer
           variant="temporary"
           open={mobileOpen}
@@ -265,52 +277,72 @@ const Dashboard = ({ onLogout }) => {
           ModalProps={{ keepMounted: true }}
           sx={{
             display: { xs: 'block', sm: 'none' },
-            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: DRAWER_WIDTH },
+            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: DRAWER_WIDTH_OPEN }
           }}
         >
-          {drawer}
+          {drawerContent}
         </Drawer>
-        
-        {/* Desktop drawer - always visible */}
+
+        {/* Desktop permanent (retractible) */}
         <Drawer
           variant="permanent"
           sx={{
             display: { xs: 'none', sm: 'block' },
-            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: DRAWER_WIDTH },
+            '& .MuiDrawer-paper': {
+              boxSizing: 'border-box',
+              width: drawerWidth,
+              transition: theme => theme.transitions.create('width', {
+                easing: theme.transitions.easing.sharp,
+                duration: theme.transitions.duration.shortest
+              })
+            }
           }}
           open
         >
-          {drawer}
+          {drawerContent}
         </Drawer>
       </Box>
 
-      {/* Main content */}
-      <Box component="main" sx={{ 
-        flexGrow: 1, 
-        p: 3, 
-        width: { sm: `calc(100% - ${DRAWER_WIDTH}px)` },
-        bgcolor: '#f8f9fa',
-        minHeight: '100vh'
-      }}>
+      {/* Main */}
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          p: 3,
+          width: { sm: `calc(100% - ${drawerWidth}px)` },
+          minHeight: '100vh',
+          bgcolor: 'linear-gradient(180deg, #f7f9fc 0%, #f2f4f7 100%)'
+        }}
+      >
         <Toolbar />
-        <Container maxWidth="xl">
+        <Container maxWidth="xl" sx={{ px: { xs: 0, sm: 2 } }}>
+          {/* Hero strip */}
+          <Box
+            sx={{
+              mb: 3,
+              p: 3,
+              borderRadius: 3,
+              background: 'linear-gradient(135deg, #5b8def 0%, #6dd3c2 100%)',
+              color: 'white',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.12)'
+            }}
+          >
+            <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
+              Visão Geral de Compras
+            </Typography>
+            <Typography variant="body2" sx={{ opacity: 0.9 }}>
+              Acompanhe valores mensais, compradores e desempenho dos fornecedores.
+            </Typography>
+          </Box>
+
           {/* KPIs */}
-          <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid container spacing={3} sx={{ mb: 3 }}>
             <Grid item xs={12} sm={6} md={3}>
-              <Card sx={{ borderRadius: 3, boxShadow: '0 4px 20px 0 rgba(0,0,0,0.05)' }}>
+              <Card className="summary-card" sx={{ borderRadius: 3, p: 0.5 }}>
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <Box sx={{ 
-                      width: 56, 
-                      height: 56, 
-                      borderRadius: 2, 
-                      bgcolor: 'rgba(25, 118, 210, 0.1)', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center',
-                      mr: 2
-                    }}>
-                      <ShoppingCartIcon sx={{ fontSize: 28, color: '#1976d2' }} />
+                    <Box sx={{ width: 50, height: 50, borderRadius: 2, bgcolor: 'rgba(91,141,239,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', mr: 2 }}>
+                      <ShoppingCartIcon sx={{ color: '#5b8def' }} />
                     </Box>
                     <Box>
                       <Typography sx={{ color: 'text.secondary', fontWeight: 500 }} gutterBottom>Pedidos</Typography>
@@ -321,20 +353,11 @@ const Dashboard = ({ onLogout }) => {
               </Card>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
-              <Card sx={{ borderRadius: 3, boxShadow: '0 4px 20px 0 rgba(0,0,0,0.05)' }}>
+              <Card className="summary-card" sx={{ borderRadius: 3, p: 0.5 }}>
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <Box sx={{ 
-                      width: 56, 
-                      height: 56, 
-                      borderRadius: 2, 
-                      bgcolor: 'rgba(56, 142, 60, 0.1)', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center',
-                      mr: 2
-                    }}>
-                      <ReceiptIcon sx={{ fontSize: 28, color: '#388e3c' }} />
+                    <Box sx={{ width: 50, height: 50, borderRadius: 2, bgcolor: 'rgba(104,194,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', mr: 2 }}>
+                      <ReceiptIcon sx={{ color: '#68c2ff' }} />
                     </Box>
                     <Box>
                       <Typography sx={{ color: 'text.secondary', fontWeight: 500 }} gutterBottom>Itens</Typography>
@@ -345,20 +368,11 @@ const Dashboard = ({ onLogout }) => {
               </Card>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
-              <Card sx={{ borderRadius: 3, boxShadow: '0 4px 20px 0 rgba(0,0,0,0.05)' }}>
+              <Card className="summary-card" sx={{ borderRadius: 3, p: 0.5 }}>
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <Box sx={{ 
-                      width: 56, 
-                      height: 56, 
-                      borderRadius: 2, 
-                      bgcolor: 'rgba(245, 124, 0, 0.1)', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center',
-                      mr: 2
-                    }}>
-                      <TrendingUpIcon sx={{ fontSize: 28, color: '#f57c00' }} />
+                    <Box sx={{ width: 50, height: 50, borderRadius: 2, bgcolor: 'rgba(245,124,0,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', mr: 2 }}>
+                      <TrendingUpIcon sx={{ color: '#f57c00' }} />
                     </Box>
                     <Box>
                       <Typography sx={{ color: 'text.secondary', fontWeight: 500 }} gutterBottom>Total</Typography>
@@ -369,20 +383,11 @@ const Dashboard = ({ onLogout }) => {
               </Card>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
-              <Card sx={{ borderRadius: 3, boxShadow: '0 4px 20px 0 rgba(0,0,0,0.05)' }}>
+              <Card className="summary-card" sx={{ borderRadius: 3, p: 0.5 }}>
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <Box sx={{ 
-                      width: 56, 
-                      height: 56, 
-                      borderRadius: 2, 
-                      bgcolor: 'rgba(123, 31, 162, 0.1)', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center',
-                      mr: 2
-                    }}>
-                      <BusinessIcon sx={{ fontSize: 28, color: '#7b1fa2' }} />
+                    <Box sx={{ width: 50, height: 50, borderRadius: 2, bgcolor: 'rgba(123,31,162,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', mr: 2 }}>
+                      <BusinessIcon sx={{ color: '#7b1fa2' }} />
                     </Box>
                     <Box>
                       <Typography sx={{ color: 'text.secondary', fontWeight: 500 }} gutterBottom>Média Pedido</Typography>
@@ -395,9 +400,9 @@ const Dashboard = ({ onLogout }) => {
           </Grid>
 
           {/* Charts */}
-          <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid container spacing={3} sx={{ mb: 3 }}>
             <Grid item xs={12} lg={8}>
-              <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 4px 20px 0 rgba(0,0,0,0.05)' }}>
+              <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 8px 24px rgba(0,0,0,0.06)' }}>
                 <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>Total de Compras por Mês</Typography>
                 <Box sx={{ height: 350 }}>
                   {data?.monthly_data?.length > 0 ? (
@@ -406,7 +411,7 @@ const Dashboard = ({ onLogout }) => {
                       options={{
                         responsive: true,
                         maintainAspectRatio: false,
-                        plugins: { 
+                        plugins: {
                           legend: { position: 'top' },
                           tooltip: {
                             backgroundColor: 'white',
@@ -418,26 +423,17 @@ const Dashboard = ({ onLogout }) => {
                             boxPadding: 6,
                             usePointStyle: true,
                             callbacks: {
-                              label: (context) => `R$ ${context.parsed.y.toLocaleString('pt-BR')}`
+                              label: (ctx) => `R$ ${ctx.parsed.y.toLocaleString('pt-BR')}`
                             }
                           }
                         },
                         scales: {
-                          y: { 
+                          y: {
                             beginAtZero: true,
-                            grid: {
-                              borderDash: [5, 5],
-                              color: 'rgba(0,0,0,0.06)'
-                            },
-                            ticks: {
-                              callback: (value) => `R$ ${value.toLocaleString('pt-BR')}`
-                            }
+                            grid: { borderDash: [5, 5], color: 'rgba(0,0,0,0.06)' },
+                            ticks: { callback: v => `R$ ${Number(v).toLocaleString('pt-BR')}` }
                           },
-                          x: {
-                            grid: {
-                              display: false
-                            }
-                          }
+                          x: { grid: { display: false } }
                         }
                       }}
                     />
@@ -450,7 +446,7 @@ const Dashboard = ({ onLogout }) => {
               </Paper>
             </Grid>
             <Grid item xs={12} lg={4}>
-              <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 4px 20px 0 rgba(0,0,0,0.05)' }}>
+              <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 8px 24px rgba(0,0,0,0.06)' }}>
                 <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>Compras por Comprador</Typography>
                 <Box sx={{ height: 350 }}>
                   {data?.buyer_data?.length > 0 ? (
@@ -459,14 +455,8 @@ const Dashboard = ({ onLogout }) => {
                       options={{
                         responsive: true,
                         maintainAspectRatio: false,
-                        plugins: { 
-                          legend: { 
-                            position: 'bottom',
-                            labels: {
-                              boxWidth: 12,
-                              padding: 15
-                            }
-                          }
+                        plugins: {
+                          legend: { position: 'bottom', labels: { boxWidth: 12, padding: 15 } }
                         },
                         cutout: '60%'
                       }}
@@ -481,10 +471,10 @@ const Dashboard = ({ onLogout }) => {
             </Grid>
           </Grid>
 
-          {/* Tables */}
+          {/* Tables - full width, stacked */}
           <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
-              <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 4px 20px 0 rgba(0,0,0,0.05)' }}>
+            <Grid item xs={12}>
+              <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 8px 24px rgba(0,0,0,0.06)' }}>
                 <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>Top Fornecedores</Typography>
                 <TableContainer>
                   <Table size="small">
@@ -496,8 +486,8 @@ const Dashboard = ({ onLogout }) => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {(data?.supplier_data || []).slice(0, 6).map((s, i) => (
-                        <TableRow key={i}>
+                      {(data?.supplier_data || []).map((s, i) => (
+                        <TableRow key={i} hover>
                           <TableCell>{safeText(s.name)}</TableCell>
                           <TableCell align="right">{safeText(s.order_count)}</TableCell>
                           <TableCell align="right">{fmtCurrency(s.total_value)}</TableCell>
@@ -509,8 +499,8 @@ const Dashboard = ({ onLogout }) => {
               </Paper>
             </Grid>
 
-            <Grid item xs={12} md={6}>
-              <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 4px 20px 0 rgba(0,0,0,0.05)' }}>
+            <Grid item xs={12}>
+              <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 8px 24px rgba(0,0,0,0.06)' }}>
                 <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>Itens com Maior Gasto</Typography>
                 <TableContainer>
                   <Table size="small">
@@ -522,8 +512,8 @@ const Dashboard = ({ onLogout }) => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {(data?.top_items || []).slice(0, 6).map((it, idx) => (
-                        <TableRow key={idx}>
+                      {(data?.top_items || []).map((it, idx) => (
+                        <TableRow key={idx} hover>
                           <TableCell>{safeText(it.item_id)}</TableCell>
                           <TableCell>{safeText(it.descricao)}</TableCell>
                           <TableCell align="right">{fmtCurrency(it.total_spend)}</TableCell>
