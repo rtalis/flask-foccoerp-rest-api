@@ -1576,7 +1576,7 @@ def dashboard_summary():
         months_labels = []
         monthly_map = {}
         cur = end_date.replace(day=1)
-        for _ in range(months):
+        for _ in range(months + 1):  # +1 to include the first month
             key = (cur.year, cur.month)
             months_labels.append(f"{cur.strftime('%b')}/{str(cur.year)[-2:]}")
             monthly_map[key] = {'order_count': 0, 'total_value': 0.0}
@@ -1612,7 +1612,16 @@ def dashboard_summary():
             PurchaseOrder.func_nome.label('name'),
             func.count(PurchaseOrder.id).label('order_count'),
             func.coalesce(func.sum(PurchaseOrder.total_pedido_com_ipi), 0).label('total_value'),
-            func.coalesce(func.avg(PurchaseOrder.total_pedido_com_ipi), 0).label('avg_value')
+            func.coalesce(func.avg(PurchaseOrder.total_pedido_com_ipi), 0).label('avg_value'),
+            # Add this subquery to count items per buyer
+            func.coalesce(
+                func.sum(
+                    db.session.query(func.count(PurchaseItem.id))
+                    .filter(PurchaseItem.purchase_order_id == PurchaseOrder.id)
+                    .correlate(PurchaseOrder)
+                    .scalar_subquery()
+                ), 0
+            ).label('item_count')
         ).filter(
             PurchaseOrder.dt_emis >= start_date,
             PurchaseOrder.func_nome.isnot(None)
@@ -1626,7 +1635,8 @@ def dashboard_summary():
             'name': r.name or '—',
             'order_count': int(r.order_count or 0),
             'total_value': float(r.total_value or 0.0),
-            'avg_value': float(r.avg_value or 0.0)
+            'avg_value': float(r.avg_value or 0.0),
+            'item_count': int(r.item_count or 0)  # Add the item count here
         } for r in buyer_rows]
 
         # Top suppliers

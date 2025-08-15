@@ -17,7 +17,7 @@ import {
   Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement,
   PointElement, Title, Tooltip, Legend, ArcElement
 } from 'chart.js';
-import { Line, Doughnut } from 'react-chartjs-2';
+import { Line, Doughnut, Bar } from 'react-chartjs-2';
 import './Dashboard.css';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend, ArcElement);
@@ -46,7 +46,7 @@ const Dashboard = ({ onLogout }) => {
       setLoading(true);
       setError('');
       const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/dashboard_summary`, {
-        params: { months: m, limit: 8 },
+        params: { months: m, limit: m + 2 },
         withCredentials: true
       });
       const d = res.data || {};
@@ -68,6 +68,7 @@ const Dashboard = ({ onLogout }) => {
           order_count: Number(x?.order_count ?? 0),
           total_value: Number(x?.total_value ?? 0),
           avg_value: Number(x?.avg_value ?? 0),
+          item_count: Number(x?.item_count ?? 0), // Add this line
         })) : [],
         supplier_data: Array.isArray(d?.supplier_data) ? d.supplier_data.map(x => ({
           name: String(x?.name ?? ''),
@@ -127,6 +128,35 @@ const Dashboard = ({ onLogout }) => {
       ]
     };
   }, [data]);
+  // Buyer purchases chart data
+  const buyerPurchasesChart = useMemo(() => {
+    const rows = Array.isArray(data?.buyer_data) ? data.buyer_data : [];
+    if (!rows.length) return null;
+    return {
+      labels: rows.map(r => String(r?.name ?? '')),
+      datasets: [{
+        label: 'Número de Pedidos',
+        data: rows.map(r => Number(r?.order_count ?? 0)),
+        backgroundColor: ['#5b8def', '#68c2ff', '#f57c00', '#7b1fa2', '#ef7171', '#a5b0c2', '#fad776', '#8fe3a6'],
+        borderWidth: 1
+      }]
+    };
+  }, [data]);
+
+  // buyer Items Chart data
+  const buyerItemsChart = useMemo(() => {
+    const rows = Array.isArray(data?.buyer_data) ? data.buyer_data : [];
+    if (!rows.length) return null;
+    return {
+      labels: rows.map(r => String(r?.name ?? '')),
+      datasets: [{
+        label: 'Quantidade de Itens',
+        data: rows.map(r => Number(r?.item_count ?? 0)),
+        backgroundColor: ['#6dd3c2', '#5b8def', '#fad776', '#c69df6', '#ef7171', '#68c2ff', '#a5b0c2', '#8fe3a6'],
+        borderWidth: 1
+      }]
+    };
+  }, [data]);
 
   const buyerChart = useMemo(() => {
     const rows = Array.isArray(data?.buyer_data) ? data.buyer_data : [];
@@ -136,7 +166,7 @@ const Dashboard = ({ onLogout }) => {
       datasets: [{
         label: 'Valor por Comprador',
         data: rows.map(r => Number(r?.total_value ?? 0)),
-        backgroundColor: ['#5b8def','#6dd3c2','#fad776','#c69df6','#ef7171','#68c2ff','#a5b0c2','#8fe3a6']
+        backgroundColor: ['#5b8def', '#6dd3c2', '#fad776', '#c69df6', '#ef7171', '#68c2ff', '#a5b0c2', '#8fe3a6']
       }]
     };
   }, [data]);
@@ -401,16 +431,144 @@ const Dashboard = ({ onLogout }) => {
 
           {/* Charts */}
           <Grid container spacing={3} sx={{ mb: 3 }}>
-            <Grid item xs={12} lg={8}>
+            <Grid item xs={12} lg={4}>
               <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 8px 24px rgba(0,0,0,0.06)' }}>
-                <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>Total de Compras por Mês</Typography>
+                <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
+                  Valor total dos pedidos por Comprador
+                </Typography>
                 <Box sx={{ height: 350 }}>
+                  {data?.buyer_data?.length > 0 ? (
+                    <Doughnut
+                      data={buyerChart}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                          legend: { position: 'bottom', labels: { boxWidth: 12, padding: 15 } },
+                          tooltip: {
+                            backgroundColor: 'white',
+                            titleColor: '#222',
+                            bodyColor: '#222',
+                            borderColor: '#e1e1e1',
+                            borderWidth: 1,
+                            padding: 12,
+                            callbacks: {
+                              label: (ctx) => `R$ ${ctx.raw.toLocaleString('pt-BR')}`
+                            }
+                          }
+                        },
+                        cutout: '60%'
+                      }}
+                    />
+                  ) : (
+                    <Typography variant="body2" sx={{ color: 'text.secondary', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      Sem dados para exibir.
+                    </Typography>
+                  )}
+                </Box>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12} lg={4}>
+              <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 8px 24px rgba(0,0,0,0.06)' }}>
+                <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
+                  Quantidade de Pedidos por Comprador
+                </Typography>
+                <Box sx={{ height: 350 }}>
+                  {data?.buyer_data?.length > 0 ? (
+                    <Doughnut
+                      data={buyerPurchasesChart}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                          legend: { position: 'bottom', labels: { boxWidth: 12, padding: 15 } },
+                          tooltip: {
+                            backgroundColor: 'white',
+                            titleColor: '#222',
+                            bodyColor: '#222',
+                            borderColor: '#e1e1e1',
+                            borderWidth: 1,
+                            padding: 12
+                          }
+                        },
+                        cutout: '60%'
+                      }}
+                    />
+                  ) : (
+                    <Typography variant="body2" sx={{ color: 'text.secondary', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      Sem dados para o período.
+                    </Typography>
+                  )}
+                </Box>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12} lg={4}>
+              <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 8px 24px rgba(0,0,0,0.06)' }}>
+                <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
+                  Quantidade de Itens por Comprador
+                </Typography>
+                <Box sx={{ height: 350 }}>
+                  {data?.buyer_data?.length > 0 ? (
+                    <Doughnut
+                      data={buyerItemsChart}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                          legend: { position: 'bottom', labels: { boxWidth: 12, padding: 15 } },
+                          tooltip: {
+                            backgroundColor: 'white',
+                            titleColor: '#222',
+                            bodyColor: '#222',
+                            borderColor: '#e1e1e1',
+                            borderWidth: 1,
+                            padding: 12
+                          }
+                        },
+                        cutout: '60%'
+                      }}
+                    />
+                  ) : (
+                    <Typography variant="body2" sx={{ color: 'text.secondary', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      Sem dados para o período.
+                    </Typography>
+                  )}
+                </Box>
+              </Paper>
+            </Grid>
+          </Grid>
+
+          {/* Monthly Chart */}
+          <Grid container spacing={3} sx={{ mb: 3 }}>
+            <Grid item xs={12}>
+              <Paper
+                sx={{
+                  p: 3,
+                  borderRadius: 3,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.06)',
+                  width: '96%',
+                  maxWidth: '100%'
+                }}
+              >
+                <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
+                  Total de Compras por Mês
+                </Typography>
+                <Box
+                  sx={{
+                    height: { xs: 350, md: 400 },
+                    width: '100%',
+                    mx: 'auto'
+                  }}
+                >
                   {data?.monthly_data?.length > 0 ? (
                     <Line
                       data={monthlyChart}
                       options={{
                         responsive: true,
                         maintainAspectRatio: false,
+                        resizeDelay: 100,
                         plugins: {
                           legend: { position: 'top' },
                           tooltip: {
@@ -440,30 +598,6 @@ const Dashboard = ({ onLogout }) => {
                   ) : (
                     <Typography variant="body2" sx={{ color: 'text.secondary', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       Sem dados para o período.
-                    </Typography>
-                  )}
-                </Box>
-              </Paper>
-            </Grid>
-            <Grid item xs={12} lg={4}>
-              <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 8px 24px rgba(0,0,0,0.06)' }}>
-                <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>Compras por Comprador</Typography>
-                <Box sx={{ height: 350 }}>
-                  {data?.buyer_data?.length > 0 ? (
-                    <Doughnut
-                      data={buyerChart}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                          legend: { position: 'bottom', labels: { boxWidth: 12, padding: 15 } }
-                        },
-                        cutout: '60%'
-                      }}
-                    />
-                  ) : (
-                    <Typography variant="body2" sx={{ color: 'text.secondary', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      Sem dados para exibir.
                     </Typography>
                   )}
                 </Box>
