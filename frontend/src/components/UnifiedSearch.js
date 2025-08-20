@@ -80,24 +80,110 @@ function PurchaseRow(props) {
     }
   };
 
+  /** Inicial implementationm, TODO a more robust version  */
+
   const handleNfeClick = async (nfe) => {
     try {
       const newWindow = window.open('', '_blank');
-      newWindow.document.write('Carregando DANFE...');
+      if (!newWindow) {
+        alert('Pop-up bloqueado pelo navegador. Por favor, permita pop-ups para este site.');
+        return;
+      }
+      newWindow.document.write(`
+      <html>
+        <head>
+          <title>Visualizando DANFE</title>
+          <style>
+            body { 
+              font-family: Arial, sans-serif; 
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              height: 100vh;
+              margin: 0;
+              flex-direction: column;
+            }
+            .loading { margin-bottom: 20px; }
+          </style>
+        </head>
+        <body>
+          <div class="loading">Carregando DANFE...</div>
+                          <div className="spinner"></div>
 
+        </body>
+      </html>
+    `);
+      newWindow.document.close();
+
+      // First ensure the NFE data is stored in the database
+      await axios.get(`${process.env.REACT_APP_API_URL}/api/get_nfe_data`, {
+        params: { xmlKey: nfe.chave },
+        withCredentials: true
+      });
+
+      // Then get the PDF
       const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/get_danfe_pdf`, {
         params: { xmlKey: nfe.chave },
         withCredentials: true
       });
 
-      if (response.data && response.data.arquivo) {
-        newWindow.location.href = `data:application/pdf;base64,${response.data.arquivo}`;
-      } else {
-        newWindow.document.write('Erro ao carregar o PDF. Por favor tente novamente.');
-        console.error('Invalid PDF data received');
+      if (!response.data) {
+        newWindow.document.body.innerHTML = '<div style="color:red;">Erro ao carregar o PDF. Dados inválidos recebidos.</div>';
+        return;
       }
+      let pdfBase64;
+      if (typeof response.data === 'string') {
+        pdfBase64 = response.data;
+      } else if (response.data.arquivo) {
+        pdfBase64 = response.data.arquivo;
+      } else if (response.data.pdf) {
+        pdfBase64 = response.data.pdf;
+      } else if (response.data.content) {
+        pdfBase64 = response.data.content;
+      } else {
+        const possibleBase64 = Object.entries(response.data)
+          .filter(([key, value]) => typeof value === 'string' && value.length > 100)
+          .sort((a, b) => b[1].length - a[1].length)[0];
+
+        if (possibleBase64) {
+          pdfBase64 = possibleBase64[1];
+        } else {
+          newWindow.document.body.innerHTML = '<div style="color:red;">Erro ao carregar o PDF. Formato de resposta não reconhecido.</div>';
+          return;
+        }
+      }
+      const byteCharacters = atob(pdfBase64);
+      const byteArrays = [];
+      for (let i = 0; i < byteCharacters.length; i += 512) {
+        const slice = byteCharacters.slice(i, i + 512);
+        const byteNumbers = new Array(slice.length);
+        for (let j = 0; j < slice.length; j++) {
+          byteNumbers[j] = slice.charCodeAt(j);
+        }
+        byteArrays.push(new Uint8Array(byteNumbers));
+      }
+      const blob = new Blob(byteArrays, { type: 'application/pdf' });
+
+      const blobUrl = URL.createObjectURL(blob);
+
+      newWindow.document.write(`
+      <html>
+        <head>
+          <title>DANFE - ${nfe.numero || nfe.chave}</title>
+          <style>
+            body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+            #pdf-viewer { width: 100%; height: 100%; }
+          </style>
+        </head>
+        <body>
+          <embed id="pdf-viewer" src="${blobUrl}" type="application/pdf" width="100%" height="100%">
+        </body>
+      </html>
+    `);
+      newWindow.document.close();
+
     } catch (error) {
-      console.error('Error fetching DaNFe PDF:', error);
+      console.error('Error fetching DANFE PDF:', error);
     }
   };
 

@@ -6,7 +6,6 @@ from sqlalchemy import and_, or_
 from flask_login import login_user, logout_user, login_required, current_user
 from app.models import NFEntry, PurchaseOrder, PurchaseItem, Quotation, User
 from app.utils import  apply_adjustments, fuzzy_search, import_rcot0300, import_rfor0302, import_rpdc0250c, import_ruah
-from werkzeug.utils import secure_filename
 from app import db
 import tempfile
 import os
@@ -952,7 +951,8 @@ def get_nfe_by_purchase():
     import xml.etree.ElementTree as ET
     from datetime import datetime, timedelta
     from dateutil.relativedelta import relativedelta
-    from app.models import Supplier
+    from app.models import Supplier, NFEData
+    from app.utils import parse_and_store_nfe_xml
     
     cod_pedc = request.args.get('cod_pedc')
     if not cod_pedc:
@@ -998,7 +998,7 @@ def get_nfe_by_purchase():
     }
     try:
         response = requests.post(
-            'https://api.sieg.com/BaixarXmlsV2?api_key={}'.format(Config.SIEG_API_KEY),
+            f'https://api.sieg.com/BaixarXmlsV2?api_key={Config.SIEG_API_KEY}',
             json=sieg_request_data,
             headers={'Content-Type': 'application/json', 'Accept': 'application/json'}
         )
@@ -1016,7 +1016,7 @@ def get_nfe_by_purchase():
                 retry_request_data["DataEmissaoInicio"] = retry_start_date_str
 
                 retry_response = requests.post(
-                    'https://api.sieg.com/BaixarXmlsV2?api_key={}'.format(Config.SIEG_API_KEY),
+                    f'https://api.sieg.com/BaixarXmlsV2?api_key={Config.SIEG_API_KEY}',
                     json=retry_request_data,
                     headers={'Content-Type': 'application/json', 'Accept': 'application/json'}
                 )
@@ -1038,22 +1038,32 @@ def get_nfe_by_purchase():
             try:
                 xml_content = base64.b64decode(xml_base64).decode('utf-8')
                 root = ET.fromstring(xml_content)
-                # Extract NFE data
-                chave_acesso = root.find('.//nfe:protNFe/nfe:infProt/nfe:chNFe', ns)
+                
+                # Extract chave (access key) to check if NFE already exists in database
+                chave_acesso_elem = root.find('.//nfe:protNFe/nfe:infProt/nfe:chNFe', ns)
+                if chave_acesso_elem is None or not chave_acesso_elem.text:
+                    # Skip invalid XML or NFe without access key
+                    continue
+                
+                chave_acesso = chave_acesso_elem.text
+
+                # Store NFE in the database
+                parse_and_store_nfe_xml(xml_content)
+                
                 numero_nota = root.find('.//nfe:NFe/nfe:infNFe/nfe:ide/nfe:nNF', ns)
                 data_emissao = root.find('.//nfe:NFe/nfe:infNFe/nfe:ide/nfe:dhEmi', ns)
                 nome_fornecedor = root.find('.//nfe:NFe/nfe:infNFe/nfe:emit/nfe:xNome', ns)
                 valor_total = root.find('.//nfe:NFe/nfe:infNFe/nfe:total/nfe:ICMSTot/nfe:vNF', ns)
 
-                if chave_acesso.text != "":
-                    nfe_data.append({
-                        'chave': chave_acesso.text,
-                        'numero': numero_nota.text,
-                        'data_emissao': data_emissao.text,
-                        'fornecedor': nome_fornecedor.text,
-                        'valor': valor_total.text,
-                        'xml_content': xml_content
-                    })
+                nfe_data.append({
+                    'chave': chave_acesso,
+                    'numero': numero_nota.text if numero_nota is not None else '',
+                    'data_emissao': data_emissao.text if data_emissao is not None else '',
+                    'fornecedor': nome_fornecedor.text if nome_fornecedor is not None else '',
+                    'valor': valor_total.text if valor_total is not None else '',
+                    'xml_content': xml_content,
+                    'stored_in_database': True
+                })
             except Exception as e:
                 # Log the error and continue with next XML
                 print(f"Error processing XML: {str(e)}")
@@ -1506,20 +1516,54 @@ def extract_quotation_data():
 @bp.route('/get_danfe_pdf', methods=['GET'])
 @login_required
 def get_danfe_pdf():
+    from app.models import NFEData
+    from app.utils import parse_and_store_nfe_xml
+    import xml.etree.ElementTree as ET
+    
     xml_key = request.args.get('xmlKey')
     if not xml_key:
         return jsonify({'error': 'xmlKey is required'}), 400
     
     try:
-        response = requests.get(
+        # Check if NFE already exists in the database
+        existing_nfe = NFEData.query.filter_by(chave=xml_key).first()
+        
+        if existing_nfe:
+            # Just return NFE details if requested
+            if request.args.get('details', 'false').lower() == 'true':
+                return jsonify({
+                    'source': 'database',
+                    'nfe': {
+                        'chave': existing_nfe.chave,
+                        'numero': existing_nfe.numero,
+                        'serie': existing_nfe.serie,
+                        'data_emissao': existing_nfe.data_emissao.isoformat() if existing_nfe.data_emissao else None,
+                        'natureza_operacao': existing_nfe.natureza_operacao,
+                        'emitente': {
+                            'nome': existing_nfe.emitente.nome if existing_nfe.emitente else '',
+                            'cnpj': existing_nfe.emitente.cnpj if existing_nfe.emitente else '',
+                            'inscricao_estadual': existing_nfe.emitente.inscricao_estadual if existing_nfe.emitente else '',
+                        },
+                        'destinatario': {
+                            'nome': existing_nfe.destinatario.nome if existing_nfe.destinatario else '',
+                            'cnpj': existing_nfe.destinatario.cnpj if existing_nfe.destinatario else '',
+                            'inscricao_estadual': existing_nfe.destinatario.inscricao_estadual if existing_nfe.destinatario else '',
+                        },
+                        'valor_total': existing_nfe.valor_total,
+                        'status': existing_nfe.status_motivo
+                    }
+                }), 200
+
+        pdf_response = requests.get(
             f'https://api.sieg.com/api/Arquivos/GerarDanfeViaChave?xmlKey={xml_key}&api_key={Config.SIEG_API_KEY}',
             headers={'Accept': 'application/json'}
         )
         
-        if response.status_code == 200:
-            return jsonify(response.json()), 200
+        if pdf_response.status_code != 200:
+            return jsonify({'error': f'Error fetching DaNFe: {pdf_response.status_code} - {pdf_response.text}'}), pdf_response.status_code
+        
         else:
-            return jsonify({'error': f'Error fetching DaNFe: {response.status_code} - {response.text}'}), response.status_code
+            return jsonify(pdf_response.json()), 200
     
     except Exception as e:
         return jsonify({'error': f'Error: {str(e)}'}), 500
@@ -1709,4 +1753,144 @@ def dashboard_summary():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+
+@bp.route('/get_nfe_data', methods=['GET'])
+@login_required
+def get_nfe_data():
+    from app.models import NFEData
+    from app.utils import parse_and_store_nfe_xml
+    
+    xml_key = request.args.get('xmlKey')
+    if not xml_key:
+        return jsonify({'error': 'xmlKey is required'}), 400
+    
+    try:
+        existing_nfe = NFEData.query.filter_by(chave=xml_key).first()
+        
+        if existing_nfe:
+            items_data = []
+            for item in existing_nfe.itens:
+                items_data.append({
+                    'numero_item': item.numero_item,
+                    'codigo': item.codigo,
+                    'descricao': item.descricao,
+                    'ncm': item.ncm,
+                    'cfop': item.cfop,
+                    'unidade': item.unidade_comercial,
+                    'quantidade': item.quantidade_comercial,
+                    'valor_unitario': item.valor_unitario_comercial,
+                    'valor_total': item.valor_total_bruto,
+                    'icms_valor': item.icms_vicms,
+                    'icms_aliquota': item.icms_picms,
+                    'pis_valor': item.pis_vpis,
+                    'pis_aliquota': item.pis_ppis,
+                    'cofins_valor': item.cofins_vcofins,
+                    'cofins_aliquota': item.cofins_pcofins
+                })
+            
+            result = {
+                'source': 'database',
+                'chave': existing_nfe.chave,
+                'numero': existing_nfe.numero,
+                'serie': existing_nfe.serie,
+                'data_emissao': existing_nfe.data_emissao.isoformat() if existing_nfe.data_emissao else None,
+                'natureza_operacao': existing_nfe.natureza_operacao,
+                'status': existing_nfe.status_motivo,
+                'protocolo': existing_nfe.protocolo,
+                'valor_total': existing_nfe.valor_total,
+                'valor_produtos': existing_nfe.valor_produtos,
+                'valor_impostos': existing_nfe.valor_imposto,
+                
+                'emitente': {
+                    'nome': existing_nfe.emitente.nome if existing_nfe.emitente else '',
+                    'cnpj': existing_nfe.emitente.cnpj if existing_nfe.emitente else '',
+                    'inscricao_estadual': existing_nfe.emitente.inscricao_estadual if existing_nfe.emitente else '',
+                    'endereco': {
+                        'logradouro': existing_nfe.emitente.logradouro if existing_nfe.emitente else '',
+                        'numero': existing_nfe.emitente.numero if existing_nfe.emitente else '',
+                        'complemento': existing_nfe.emitente.complemento if existing_nfe.emitente else '',
+                        'bairro': existing_nfe.emitente.bairro if existing_nfe.emitente else '',
+                        'municipio': existing_nfe.emitente.municipio if existing_nfe.emitente else '',
+                        'uf': existing_nfe.emitente.uf if existing_nfe.emitente else '',
+                        'cep': existing_nfe.emitente.cep if existing_nfe.emitente else '',
+                        'telefone': existing_nfe.emitente.telefone if existing_nfe.emitente else '',
+                    }
+                },
+                
+                'destinatario': {
+                    'nome': existing_nfe.destinatario.nome if existing_nfe.destinatario else '',
+                    'cnpj': existing_nfe.destinatario.cnpj if existing_nfe.destinatario else '',
+                    'cpf': existing_nfe.destinatario.cpf if existing_nfe.destinatario else '',
+                    'inscricao_estadual': existing_nfe.destinatario.inscricao_estadual if existing_nfe.destinatario else '',
+                    'email': existing_nfe.destinatario.email if existing_nfe.destinatario else '',
+                    'endereco': {
+                        'logradouro': existing_nfe.destinatario.logradouro if existing_nfe.destinatario else '',
+                        'numero': existing_nfe.destinatario.numero if existing_nfe.destinatario else '',
+                        'complemento': existing_nfe.destinatario.complemento if existing_nfe.destinatario else '',
+                        'bairro': existing_nfe.destinatario.bairro if existing_nfe.destinatario else '',
+                        'municipio': existing_nfe.destinatario.municipio if existing_nfe.destinatario else '',
+                        'uf': existing_nfe.destinatario.uf if existing_nfe.destinatario else '',
+                        'cep': existing_nfe.destinatario.cep if existing_nfe.destinatario else '',
+                        'telefone': existing_nfe.destinatario.telefone if existing_nfe.destinatario else '',
+                    }
+                },
+                
+                'transporte': {
+                    'modalidade': existing_nfe.modalidade_frete,
+                    'transportadora': {
+                        'nome': existing_nfe.transportadora.nome if existing_nfe.transportadora else '',
+                        'cnpj': existing_nfe.transportadora.cnpj if existing_nfe.transportadora else '',
+                        'inscricao_estadual': existing_nfe.transportadora.inscricao_estadual if existing_nfe.transportadora else '',
+                        'endereco': existing_nfe.transportadora.endereco if existing_nfe.transportadora else '',
+                        'municipio': existing_nfe.transportadora.municipio if existing_nfe.transportadora else '',
+                        'uf': existing_nfe.transportadora.uf if existing_nfe.transportadora else '',
+                        'placa': existing_nfe.transportadora.placa if existing_nfe.transportadora else '',
+                    },
+                    'volumes': [{
+                        'quantidade': vol.quantidade,
+                        'especie': vol.especie,
+                        'peso_bruto': vol.peso_bruto,
+                        'peso_liquido': vol.peso_liquido
+                    } for vol in existing_nfe.volumes] if existing_nfe.volumes else []
+                },
+                
+                'pagamento': [{
+                    'tipo': pag.tipo,
+                    'valor': pag.valor
+                } for pag in existing_nfe.pagamentos] if existing_nfe.pagamentos else [],
+                
+     
+                'duplicatas': [{
+                    'numero': dup.numero,
+                    'vencimento': dup.data_vencimento.isoformat() if dup.data_vencimento else None,
+                    'valor': dup.valor
+                } for dup in existing_nfe.duplicatas] if existing_nfe.duplicatas else [],
+                
+                'itens': items_data,
+                
+                'informacoes_adicionais': existing_nfe.informacoes_adicionais,
+                'informacoes_fisco': existing_nfe.informacoes_fisco,
+                
+                'xml_content': existing_nfe.xml_content
+            }
+            
+            return jsonify(result), 200
+
+        xml_response = requests.post(
+            f'https://api.sieg.com/BaixarXml?xmlType=1&downloadEvent=true&api_key={Config.SIEG_API_KEY}',
+            data=xml_key, 
+            headers={'Content-Type': 'application/json', 'Accept': 'application/json'}
+        )   
+        
+        if xml_response.status_code != 200:
+            return jsonify({'error': f'Error fetching NFe XML: {xml_response.status_code}'}), xml_response.status_code
+        
+        xml_content = xml_response.text
+        nfe_data = parse_and_store_nfe_xml(xml_content)
+        
+        return get_nfe_data()
+        
+    except Exception as e:
+        return jsonify({'error': f'Error: {str(e)}'}), 500
 

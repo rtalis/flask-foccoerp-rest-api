@@ -499,3 +499,333 @@ def apply_adjustments(base_value, adjustments):
                     value += amount
 
     return value
+
+# Add this new function to your utils.py file
+
+def parse_and_store_nfe_xml(xml_content):
+    """
+    Parse NFE XML content and store all data in the database
+    Returns the NFEData object
+    """
+    import xml.etree.ElementTree as ET
+    from datetime import datetime
+    from app.models import (
+        NFEData, NFEEmitente, NFEDestinatario, NFEItem, 
+        NFETransportadora, NFEVolume, NFEPagamento, NFEDuplicata
+    )
+    from app import db
+    
+    # Parse XML
+    ns = {'nfe': 'http://www.portalfiscal.inf.br/nfe'}
+    root = ET.fromstring(xml_content)
+    
+    # First check if we're dealing with nfeProc or NFe
+    if root.tag.endswith('nfeProc'):
+        nfe_elem = root.find('.//nfe:NFe', ns)
+        inf_nfe = nfe_elem.find('.//nfe:infNFe', ns)
+        prot_nfe = root.find('.//nfe:protNFe', ns)
+    else:
+        nfe_elem = root
+        inf_nfe = nfe_elem.find('.//nfe:infNFe', ns)
+        prot_nfe = None
+    
+    # Extract chave from ID (format: "NFe12345...")
+    chave = inf_nfe.attrib.get('Id', '')[3:] if 'Id' in inf_nfe.attrib else ''
+    
+    # Check if NFE already exists
+    existing_nfe = NFEData.query.filter_by(chave=chave).first()
+    if existing_nfe:
+        return existing_nfe
+    
+    # Extract basic NFE data
+    ide = inf_nfe.find('.//nfe:ide', ns)
+    emit = inf_nfe.find('.//nfe:emit', ns)
+    dest = inf_nfe.find('.//nfe:dest', ns)
+    total = inf_nfe.find('.//nfe:total/nfe:ICMSTot', ns)
+    transp = inf_nfe.find('.//nfe:transp', ns)
+    transp_info = transp.find('.//nfe:transporta', ns) if transp is not None else None
+    infAdic = inf_nfe.find('.//nfe:infAdic', ns)
+    
+    # Format dates
+    def parse_date(date_str):
+        if not date_str:
+            return None
+        try:
+            # Handle different date formats
+            if 'T' in date_str:
+                date_part = date_str.split('T')[0] if 'T' in date_str else date_str
+                time_part = date_str.split('T')[1].split('-')[0] if 'T' in date_str else '00:00:00'
+                return datetime.strptime(f"{date_part} {time_part}", '%Y-%m-%d %H:%M:%S')
+            else:
+                return datetime.strptime(date_str, '%Y-%m-%d')
+        except:
+            return None
+    
+    # Get decimal values safely
+    def safe_float(elem, xpath):
+        try:
+            val = elem.find(xpath, ns)
+            return float(val.text) if val is not None and val.text else 0.0
+        except:
+            return 0.0
+    
+    # Get text values safely
+    def safe_text(elem, xpath):
+        try:
+            val = elem.find(xpath, ns)
+            return val.text if val is not None else ''
+        except:
+            return ''
+    
+    # Create NFE main record
+    nfe_data = NFEData(
+        chave=chave,
+        xml_content=xml_content,
+        versao=inf_nfe.attrib.get('versao', ''),
+        modelo=safe_text(ide, './/nfe:mod'),
+        numero=safe_text(ide, './/nfe:nNF'),
+        serie=safe_text(ide, './/nfe:serie'),
+        data_emissao=parse_date(safe_text(ide, './/nfe:dhEmi')),
+        data_saida=parse_date(safe_text(ide, './/nfe:dhSaiEnt')),
+        natureza_operacao=safe_text(ide, './/nfe:natOp'),
+        tipo_operacao=safe_text(ide, './/nfe:tpNF'),
+        finalidade=safe_text(ide, './/nfe:finNFe'),
+        uf_emitente=safe_text(ide, './/nfe:cUF'),
+        codigo_municipio=safe_text(ide, './/nfe:cMunFG'),
+        ambiente=safe_text(ide, './/nfe:tpAmb'),
+        
+        # Values from total
+        valor_total=safe_float(total, './/nfe:vNF'),
+        valor_produtos=safe_float(total, './/nfe:vProd'),
+        valor_frete=safe_float(total, './/nfe:vFrete'),
+        valor_seguro=safe_float(total, './/nfe:vSeg'),
+        valor_desconto=safe_float(total, './/nfe:vDesc'),
+        valor_imposto=safe_float(total, './/nfe:vTotTrib'),
+        valor_icms=safe_float(total, './/nfe:vICMS'),
+        valor_icms_st=safe_float(total, './/nfe:vST'),
+        valor_ipi=safe_float(total, './/nfe:vIPI'),
+        valor_pis=safe_float(total, './/nfe:vPIS'),
+        valor_cofins=safe_float(total, './/nfe:vCOFINS'),
+        valor_outros=safe_float(total, './/nfe:vOutro'),
+        
+        # Additional info
+        informacoes_adicionais=safe_text(infAdic, './/nfe:infCpl') if infAdic is not None else '',
+        informacoes_fisco=safe_text(infAdic, './/nfe:infAdFisco') if infAdic is not None else '',
+        
+        # Transport
+        modalidade_frete=safe_text(transp, './/nfe:modFrete') if transp is not None else '',
+        
+        # Protocol data
+        status_code=safe_text(prot_nfe, './/nfe:infProt/nfe:cStat') if prot_nfe is not None else '',
+        status_motivo=safe_text(prot_nfe, './/nfe:infProt/nfe:xMotivo') if prot_nfe is not None else '',
+        protocolo=safe_text(prot_nfe, './/nfe:infProt/nfe:nProt') if prot_nfe is not None else '',
+        data_autorizacao=parse_date(safe_text(prot_nfe, './/nfe:infProt/nfe:dhRecbto')) if prot_nfe is not None else None
+    )
+    
+    # Create emitter record
+    if emit is not None:
+        ender_emit = emit.find('.//nfe:enderEmit', ns)
+        emitente = NFEEmitente(
+            nfe=nfe_data,
+            cnpj=safe_text(emit, './/nfe:CNPJ'),
+            cpf=safe_text(emit, './/nfe:CPF'),
+            nome=safe_text(emit, './/nfe:xNome'),
+            nome_fantasia=safe_text(emit, './/nfe:xFant'),
+            inscricao_estadual=safe_text(emit, './/nfe:IE'),
+            inscricao_municipal=safe_text(emit, './/nfe:IM'),
+            codigo_regime_tributario=safe_text(emit, './/nfe:CRT'),
+            
+            # Address fields if present
+            logradouro=safe_text(ender_emit, './/nfe:xLgr') if ender_emit is not None else '',
+            numero=safe_text(ender_emit, './/nfe:nro') if ender_emit is not None else '',
+            complemento=safe_text(ender_emit, './/nfe:xCpl') if ender_emit is not None else '',
+            bairro=safe_text(ender_emit, './/nfe:xBairro') if ender_emit is not None else '',
+            codigo_municipio=safe_text(ender_emit, './/nfe:cMun') if ender_emit is not None else '',
+            municipio=safe_text(ender_emit, './/nfe:xMun') if ender_emit is not None else '',
+            uf=safe_text(ender_emit, './/nfe:UF') if ender_emit is not None else '',
+            cep=safe_text(ender_emit, './/nfe:CEP') if ender_emit is not None else '',
+            pais=safe_text(ender_emit, './/nfe:xPais') if ender_emit is not None else '',
+            codigo_pais=safe_text(ender_emit, './/nfe:cPais') if ender_emit is not None else '',
+            telefone=safe_text(ender_emit, './/nfe:fone') if ender_emit is not None else ''
+        )
+        db.session.add(emitente)
+    
+    # Create recipient record
+    if dest is not None:
+        ender_dest = dest.find('.//nfe:enderDest', ns)
+        destinatario = NFEDestinatario(
+            nfe=nfe_data,
+            cnpj=safe_text(dest, './/nfe:CNPJ'),
+            cpf=safe_text(dest, './/nfe:CPF'),
+            id_estrangeiro=safe_text(dest, './/nfe:idEstrangeiro'),
+            nome=safe_text(dest, './/nfe:xNome'),
+            indicador_ie=safe_text(dest, './/nfe:indIEDest'),
+            inscricao_estadual=safe_text(dest, './/nfe:IE'),
+            inscricao_suframa=safe_text(dest, './/nfe:ISUF'),
+            email=safe_text(dest, './/nfe:email'),
+            
+            # Address fields if present
+            logradouro=safe_text(ender_dest, './/nfe:xLgr') if ender_dest is not None else '',
+            numero=safe_text(ender_dest, './/nfe:nro') if ender_dest is not None else '',
+            complemento=safe_text(ender_dest, './/nfe:xCpl') if ender_dest is not None else '',
+            bairro=safe_text(ender_dest, './/nfe:xBairro') if ender_dest is not None else '',
+            codigo_municipio=safe_text(ender_dest, './/nfe:cMun') if ender_dest is not None else '',
+            municipio=safe_text(ender_dest, './/nfe:xMun') if ender_dest is not None else '',
+            uf=safe_text(ender_dest, './/nfe:UF') if ender_dest is not None else '',
+            cep=safe_text(ender_dest, './/nfe:CEP') if ender_dest is not None else '',
+            pais=safe_text(ender_dest, './/nfe:xPais') if ender_dest is not None else '',
+            codigo_pais=safe_text(ender_dest, './/nfe:cPais') if ender_dest is not None else '',
+            telefone=safe_text(ender_dest, './/nfe:fone') if ender_dest is not None else ''
+        )
+        db.session.add(destinatario)
+    
+    # Process all items
+    itens = inf_nfe.findall('.//nfe:det', ns)
+    for item_elem in itens:
+        num_item = int(item_elem.attrib.get('nItem', '0'))
+        prod = item_elem.find('.//nfe:prod', ns)
+        imposto = item_elem.find('.//nfe:imposto', ns)
+        
+        icms_elem = imposto.find('.//nfe:ICMS', ns) if imposto is not None else None
+        icms_type = None
+        if icms_elem is not None:
+            for icms_type_elem in icms_elem:
+                if icms_type_elem.tag.split('}')[-1].startswith('ICMS'):
+                    icms_type = icms_type_elem
+                    break
+        
+        ipi_elem = imposto.find('.//nfe:IPI', ns) if imposto is not None else None
+        ipi_type = None
+        if ipi_elem is not None:
+            for ipi_type_tag in ['IPITrib', 'IPINT']:
+                ipi_type_elem = ipi_elem.find(f'.//nfe:{ipi_type_tag}', ns)
+                if ipi_type_elem is not None:
+                    ipi_type = ipi_type_elem
+                    break
+        
+        pis_elem = imposto.find('.//nfe:PIS/nfe:PISAliq', ns) if imposto is not None else None
+        cofins_elem = imposto.find('.//nfe:COFINS/nfe:COFINSAliq', ns) if imposto is not None else None
+        
+        # Special elements for fuels, medicines, vehicles, etc.
+        comb_elem = prod.find('.//nfe:comb', ns) if prod is not None else None
+        
+        item = NFEItem(
+            nfe=nfe_data,
+            numero_item=num_item,
+            codigo=safe_text(prod, './/nfe:cProd') if prod is not None else '',
+            codigo_ean=safe_text(prod, './/nfe:cEAN') if prod is not None else '',
+            descricao=safe_text(prod, './/nfe:xProd') if prod is not None else '',
+            ncm=safe_text(prod, './/nfe:NCM') if prod is not None else '',
+            cest=safe_text(prod, './/nfe:CEST') if prod is not None else '',
+            cfop=safe_text(prod, './/nfe:CFOP') if prod is not None else '',
+            unidade_comercial=safe_text(prod, './/nfe:uCom') if prod is not None else '',
+            quantidade_comercial=safe_float(prod, './/nfe:qCom') if prod is not None else 0,
+            valor_unitario_comercial=safe_float(prod, './/nfe:vUnCom') if prod is not None else 0,
+            valor_total_bruto=safe_float(prod, './/nfe:vProd') if prod is not None else 0,
+            codigo_ean_tributario=safe_text(prod, './/nfe:cEANTrib') if prod is not None else '',
+            unidade_tributavel=safe_text(prod, './/nfe:uTrib') if prod is not None else '',
+            quantidade_tributavel=safe_float(prod, './/nfe:qTrib') if prod is not None else 0,
+            valor_unitario_tributavel=safe_float(prod, './/nfe:vUnTrib') if prod is not None else 0,
+            ind_total=safe_text(prod, './/nfe:indTot') if prod is not None else '',
+            
+            # ANP data for fuels and lubricants
+            codigo_prod_anp=safe_text(comb_elem, './/nfe:cProdANP') if comb_elem is not None else '',
+            descricao_anp=safe_text(comb_elem, './/nfe:descANP') if comb_elem is not None else '',
+            uf_consumo=safe_text(comb_elem, './/nfe:UFCons') if comb_elem is not None else '',
+            
+            # Tax data
+            valor_total_tributos=safe_float(imposto, './/nfe:vTotTrib') if imposto is not None else 0,
+            
+            # ICMS data
+            icms_origem=safe_text(icms_type, './/nfe:orig') if icms_type is not None else '',
+            icms_cst=safe_text(icms_type, './/nfe:CST') if icms_type is not None else '',
+            icms_modbc=safe_text(icms_type, './/nfe:modBC') if icms_type is not None else '',
+            icms_vbc=safe_float(icms_type, './/nfe:vBC') if icms_type is not None else 0,
+            icms_picms=safe_float(icms_type, './/nfe:pICMS') if icms_type is not None else 0,
+            icms_vicms=safe_float(icms_type, './/nfe:vICMS') if icms_type is not None else 0,
+            
+            # IPI data
+            ipi_cenq=safe_text(ipi_elem, './/nfe:cEnq') if ipi_elem is not None else '',
+            ipi_cst=safe_text(ipi_type, './/nfe:CST') if ipi_type is not None else '',
+            
+            # PIS data
+            pis_cst=safe_text(pis_elem, './/nfe:CST') if pis_elem is not None else '',
+            pis_vbc=safe_float(pis_elem, './/nfe:vBC') if pis_elem is not None else 0,
+            pis_ppis=safe_float(pis_elem, './/nfe:pPIS') if pis_elem is not None else 0,
+            pis_vpis=safe_float(pis_elem, './/nfe:vPIS') if pis_elem is not None else 0,
+            
+            # COFINS data
+            cofins_cst=safe_text(cofins_elem, './/nfe:CST') if cofins_elem is not None else '',
+            cofins_vbc=safe_float(cofins_elem, './/nfe:vBC') if cofins_elem is not None else 0,
+            cofins_pcofins=safe_float(cofins_elem, './/nfe:pCOFINS') if cofins_elem is not None else 0,
+            cofins_vcofins=safe_float(cofins_elem, './/nfe:vCOFINS') if cofins_elem is not None else 0,
+            
+            # Additional info
+            inf_ad_prod=safe_text(item_elem, './/nfe:infAdProd')
+        )
+        db.session.add(item)
+    
+    # Create transportadora record if present
+    if transp_info is not None:
+        transportadora = NFETransportadora(
+            nfe=nfe_data,
+            cnpj=safe_text(transp_info, './/nfe:CNPJ'),
+            cpf=safe_text(transp_info, './/nfe:CPF'),
+            nome=safe_text(transp_info, './/nfe:xNome'),
+            inscricao_estadual=safe_text(transp_info, './/nfe:IE'),
+            endereco=safe_text(transp_info, './/nfe:xEnder'),
+            municipio=safe_text(transp_info, './/nfe:xMun'),
+            uf=safe_text(transp_info, './/nfe:UF')
+        )
+        db.session.add(transportadora)
+        
+        # Add vehicle information if present
+        veic_transp = transp.find('.//nfe:veicTransp', ns)
+        if veic_transp is not None:
+            transportadora.placa = safe_text(veic_transp, './/nfe:placa')
+            transportadora.uf_veiculo = safe_text(veic_transp, './/nfe:UF')
+            transportadora.rntc = safe_text(veic_transp, './/nfe:RNTC')
+    
+    # Add volume information if present
+    vol_elems = transp.findall('.//nfe:vol', ns) if transp is not None else []
+    for vol_elem in vol_elems:
+        volume = NFEVolume(
+            nfe=nfe_data,
+            quantidade=int(safe_text(vol_elem, './/nfe:qVol')) if safe_text(vol_elem, './/nfe:qVol') else 0,
+            especie=safe_text(vol_elem, './/nfe:esp'),
+            marca=safe_text(vol_elem, './/nfe:marca'),
+            numeracao=safe_text(vol_elem, './/nfe:nVol'),
+            peso_liquido=safe_float(vol_elem, './/nfe:pesoL'),
+            peso_bruto=safe_float(vol_elem, './/nfe:pesoB')
+        )
+        db.session.add(volume)
+    
+    # Add payment information
+    pag_elem = inf_nfe.find('.//nfe:pag', ns)
+    if pag_elem is not None:
+        for det_pag in pag_elem.findall('.//nfe:detPag', ns):
+            pagamento = NFEPagamento(
+                nfe=nfe_data,
+                indicador=safe_text(det_pag, './/nfe:indPag'),
+                tipo=safe_text(det_pag, './/nfe:tPag'),
+                valor=safe_float(det_pag, './/nfe:vPag')
+            )
+            db.session.add(pagamento)
+    
+    # Add installment information (duplicatas)
+    cobr_elem = inf_nfe.find('.//nfe:cobr', ns)
+    if cobr_elem is not None:
+        for dup_elem in cobr_elem.findall('.//nfe:dup', ns):
+            duplicata = NFEDuplicata(
+                nfe=nfe_data,
+                numero=safe_text(dup_elem, './/nfe:nDup'),
+                data_vencimento=parse_date(safe_text(dup_elem, './/nfe:dVenc')),
+                valor=safe_float(dup_elem, './/nfe:vDup')
+            )
+            db.session.add(duplicata)
+    
+    # Add to database
+    db.session.add(nfe_data)
+    db.session.commit()
+    
+    return nfe_data

@@ -128,3 +128,245 @@ class PurchaseAdjustment(db.Model):
     cod_pedc = db.Column(db.String(50), nullable=True)
     
     purchase_order = db.relationship('PurchaseOrder', backref=db.backref('adjustments', lazy=True))
+
+
+# Add these new models to your existing models.py file
+
+class NFEData(db.Model):
+    __tablename__ = 'nfe_data'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    
+    # Main NFE identification
+    chave = db.Column(db.String(44), unique=True, nullable=False, index=True)
+    xml_content = db.Column(db.Text, nullable=False)  # Full XML content for exact reconstruction
+    
+    # NFE Document Info
+    versao = db.Column(db.String(10))
+    modelo = db.Column(db.String(2))  # 55 for NFe, 65 for NFCe, etc.
+    
+    # Basic NFE data
+    numero = db.Column(db.String(20))
+    serie = db.Column(db.String(10))
+    data_emissao = db.Column(db.DateTime)
+    data_saida = db.Column(db.DateTime)
+    
+    # Nature of operation
+    natureza_operacao = db.Column(db.String(255))
+    tipo_operacao = db.Column(db.String(2))  # 0-entrada, 1-saída
+    finalidade = db.Column(db.String(2))  # 1-normal, 2-complementar, etc.
+    
+    # Status info
+    status_code = db.Column(db.String(10))  # cStat from protocol
+    status_motivo = db.Column(db.String(255))  # xMotivo from protocol
+    protocolo = db.Column(db.String(20))
+    data_autorizacao = db.Column(db.DateTime)
+    ambiente = db.Column(db.String(2))  # 1-production, 2-test
+    
+    # UF and city codes
+    uf_emitente = db.Column(db.String(2))
+    codigo_uf = db.Column(db.String(2))
+    codigo_municipio = db.Column(db.String(10))
+    
+    # Values
+    valor_total = db.Column(db.Float)
+    valor_produtos = db.Column(db.Float)
+    valor_frete = db.Column(db.Float)
+    valor_seguro = db.Column(db.Float)
+    valor_desconto = db.Column(db.Float)
+    valor_imposto = db.Column(db.Float)
+    valor_icms = db.Column(db.Float)
+    valor_icms_st = db.Column(db.Float)
+    valor_ipi = db.Column(db.Float)
+    valor_pis = db.Column(db.Float)
+    valor_cofins = db.Column(db.Float)
+    valor_outros = db.Column(db.Float)
+    
+    # Additional info
+    informacoes_adicionais = db.Column(db.Text)
+    informacoes_fisco = db.Column(db.Text)
+    
+    # Payment info
+    forma_pagamento = db.Column(db.String(10))
+    valor_pagamento = db.Column(db.Float)
+    
+    # Transport
+    modalidade_frete = db.Column(db.String(2))
+    
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    
+    # Relationships
+    emitente = db.relationship('NFEEmitente', backref='nfe', uselist=False, cascade="all, delete-orphan")
+    destinatario = db.relationship('NFEDestinatario', backref='nfe', uselist=False, cascade="all, delete-orphan")
+    itens = db.relationship('NFEItem', backref='nfe', cascade="all, delete-orphan")
+    transportadora = db.relationship('NFETransportadora', backref='nfe', uselist=False, cascade="all, delete-orphan")
+    volumes = db.relationship('NFEVolume', backref='nfe', cascade="all, delete-orphan")
+    pagamentos = db.relationship('NFEPagamento', backref='nfe', cascade="all, delete-orphan")
+    duplicatas = db.relationship('NFEDuplicata', backref='nfe', cascade="all, delete-orphan")
+
+class NFEEmitente(db.Model):
+    __tablename__ = 'nfe_emitentes'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    nfe_id = db.Column(db.Integer, db.ForeignKey('nfe_data.id'), nullable=False)
+    
+    cpf = db.Column(db.String(11))
+    cnpj = db.Column(db.String(14))
+    nome = db.Column(db.String(255), nullable=False)
+    nome_fantasia = db.Column(db.String(255))
+    inscricao_estadual = db.Column(db.String(50))
+    inscricao_municipal = db.Column(db.String(50))
+    codigo_regime_tributario = db.Column(db.String(2))  # CRT
+    
+    # Address fields
+    logradouro = db.Column(db.String(255))
+    numero = db.Column(db.String(20))
+    complemento = db.Column(db.String(255))
+    bairro = db.Column(db.String(100))
+    codigo_municipio = db.Column(db.String(10))
+    municipio = db.Column(db.String(100))
+    uf = db.Column(db.String(2))
+    cep = db.Column(db.String(10))
+    pais = db.Column(db.String(100))
+    codigo_pais = db.Column(db.String(10))
+    telefone = db.Column(db.String(20))
+    email = db.Column(db.String(255))
+
+class NFEDestinatario(db.Model):
+    __tablename__ = 'nfe_destinatarios'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    nfe_id = db.Column(db.Integer, db.ForeignKey('nfe_data.id'), nullable=False)
+    
+    cpf = db.Column(db.String(11))
+    cnpj = db.Column(db.String(14))
+    id_estrangeiro = db.Column(db.String(50))
+    nome = db.Column(db.String(255), nullable=False)
+    indicador_ie = db.Column(db.String(2))  # indIEDest
+    inscricao_estadual = db.Column(db.String(50))
+    inscricao_suframa = db.Column(db.String(50))
+    
+    # Address fields
+    logradouro = db.Column(db.String(255))
+    numero = db.Column(db.String(20))
+    complemento = db.Column(db.String(255))
+    bairro = db.Column(db.String(100))
+    codigo_municipio = db.Column(db.String(10))
+    municipio = db.Column(db.String(100))
+    uf = db.Column(db.String(2))
+    cep = db.Column(db.String(10))
+    pais = db.Column(db.String(100))
+    codigo_pais = db.Column(db.String(10))
+    telefone = db.Column(db.String(20))
+    email = db.Column(db.String(255))
+
+class NFEItem(db.Model):
+    __tablename__ = 'nfe_itens'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    nfe_id = db.Column(db.Integer, db.ForeignKey('nfe_data.id'), nullable=False)
+    
+    numero_item = db.Column(db.Integer, nullable=False)
+    codigo = db.Column(db.String(60))
+    codigo_ean = db.Column(db.String(20))  # cEAN
+    codigo_ean_tributario = db.Column(db.String(20))  # cEANTrib
+    descricao = db.Column(db.String(255))
+    ncm = db.Column(db.String(10))
+    cest = db.Column(db.String(10))
+    cfop = db.Column(db.String(5))
+    unidade_comercial = db.Column(db.String(10))
+    quantidade_comercial = db.Column(db.Float)
+    valor_unitario_comercial = db.Column(db.Float)
+    valor_total_bruto = db.Column(db.Float)
+    unidade_tributavel = db.Column(db.String(10))
+    quantidade_tributavel = db.Column(db.Float)
+    valor_unitario_tributavel = db.Column(db.Float)
+    ind_total = db.Column(db.String(2))
+    
+    # ANP data for fuels and lubricants
+    codigo_prod_anp = db.Column(db.String(20))
+    descricao_anp = db.Column(db.String(255))
+    uf_consumo = db.Column(db.String(2))
+    
+    # Tax data
+    valor_total_tributos = db.Column(db.Float)
+    
+    # ICMS data
+    icms_origem = db.Column(db.String(2))
+    icms_cst = db.Column(db.String(3))
+    icms_modbc = db.Column(db.String(2))
+    icms_vbc = db.Column(db.Float)
+    icms_picms = db.Column(db.Float)
+    icms_vicms = db.Column(db.Float)
+    
+    # IPI data
+    ipi_cenq = db.Column(db.String(5))
+    ipi_cst = db.Column(db.String(3))
+    
+    # PIS data
+    pis_cst = db.Column(db.String(3))
+    pis_vbc = db.Column(db.Float)
+    pis_ppis = db.Column(db.Float)
+    pis_vpis = db.Column(db.Float)
+    
+    # COFINS data
+    cofins_cst = db.Column(db.String(3))
+    cofins_vbc = db.Column(db.Float)
+    cofins_pcofins = db.Column(db.Float)
+    cofins_vcofins = db.Column(db.Float)
+    
+    # Additional product info
+    inf_ad_prod = db.Column(db.Text)
+
+class NFETransportadora(db.Model):
+    __tablename__ = 'nfe_transportadoras'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    nfe_id = db.Column(db.Integer, db.ForeignKey('nfe_data.id'), nullable=False)
+    
+    cpf = db.Column(db.String(11))
+    cnpj = db.Column(db.String(14))
+    nome = db.Column(db.String(255))
+    inscricao_estadual = db.Column(db.String(50))
+    endereco = db.Column(db.String(255))
+    municipio = db.Column(db.String(100))
+    uf = db.Column(db.String(2))
+
+    placa = db.Column(db.String(10))
+    uf_veiculo = db.Column(db.String(2))
+    rntc = db.Column(db.String(50))
+
+class NFEVolume(db.Model):
+    __tablename__ = 'nfe_volumes'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    nfe_id = db.Column(db.Integer, db.ForeignKey('nfe_data.id'), nullable=False)
+    
+    quantidade = db.Column(db.Integer)
+    especie = db.Column(db.String(100))
+    marca = db.Column(db.String(100))
+    numeracao = db.Column(db.String(100))
+    peso_liquido = db.Column(db.Float)
+    peso_bruto = db.Column(db.Float)
+
+class NFEPagamento(db.Model):
+    __tablename__ = 'nfe_pagamentos'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    nfe_id = db.Column(db.Integer, db.ForeignKey('nfe_data.id'), nullable=False)
+    
+    indicador = db.Column(db.String(2))  # indPag
+    tipo = db.Column(db.String(3))  # tPag
+    valor = db.Column(db.Float)  # vPag
+
+class NFEDuplicata(db.Model):
+    __tablename__ = 'nfe_duplicatas'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    nfe_id = db.Column(db.Integer, db.ForeignKey('nfe_data.id'), nullable=False)
+    
+    numero = db.Column(db.String(50))  # nDup
+    data_vencimento = db.Column(db.Date)  # dVenc
+    valor = db.Column(db.Float)  # vDup
