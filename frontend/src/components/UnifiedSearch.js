@@ -263,15 +263,22 @@ function PurchaseRow(props) {
                       <TableCell>{formatNumber(item.qtde_atendida)} {item.unidade_medida}</TableCell>
                       <TableCell>
                         {purchase.order.nfes.map(nf => (
-                          <div key={nf.id}>{nf.dt_ent ? formatDate(nf.dt_ent) : ''}</div>
+                          <div key={nf.id}>
+                            {nf.linha == item.linha && (
+                              <>
+                                {nf.dt_ent ? formatDate(nf.dt_ent) : ''}
+                                {nf.qtde ? ` (${formatNumber(nf.qtde)} ${item.unidade_medida})` : ''}
+                              </>
+                            )}
+                          </div>
                         ))}
-
                       </TableCell>
-                      <TableCell>
+                      <TableCell>                        
                         {purchase.order.nfes.map(nf => (
+                          nf.linha == item.linha && nf.num_nf ? (
                           <div key={nf.id}>{nf.num_nf}</div>
+                          ) : null
                         ))}
-
                       </TableCell>
                       <TableCell>
                         {true ? (
