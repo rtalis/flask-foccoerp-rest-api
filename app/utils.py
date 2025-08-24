@@ -149,6 +149,45 @@ def format_for_db_rpdc0250c(xml_data):
         for cgg_tpedc_item in g_cod_emp1.findall('.//CGG_TPEDC_ITEM'):
             cod_pedc = cgg_tpedc_item.find('CODIGO_PEDIDO').text
             linha = cgg_tpedc_item.find('LINHA1').text
+            
+            for g_nfe in cgg_tpedc_item.findall('.//G_NFE'):
+                num_nf = g_nfe.find('NUM_NF').text if g_nfe.find('NUM_NF') is not None else None
+                dt_ent = g_nfe.find('DT_ENT').text if g_nfe.find('DT_ENT') is not None else None
+                qtde = g_nfe.find('QTDE1').text if g_nfe.find('QTDE1') is not None else None
+                
+                if not num_nf or not num_nf.strip():
+                    continue
+                    
+                if dt_ent:
+                    try:
+                        dt_ent = datetime.strptime(dt_ent, '%d/%m/%y').date()
+                    except ValueError:
+                        dt_ent = None
+                
+                if qtde:
+                    try:
+                        qtde = float(qtde.replace(',', '.'))
+                    except (ValueError, AttributeError):
+                        qtde = None
+                
+                formatted_items.append({
+                    'cod_emp1': cod_emp1,
+                    'cod_pedc': cod_pedc,
+                    'linha': linha,
+                    'num_nf': num_nf,
+                    'dt_ent': dt_ent,
+                    'qtde': qtde  
+                })
+    return formatted_items
+    formatted_items = []
+    import xml.etree.ElementTree as ET
+
+    data = ET.fromstring(xml_data)
+    for g_cod_emp1 in data.findall('.//G_COD_EMP1'):
+        cod_emp1 = g_cod_emp1.find('COD_EMP').text
+        for cgg_tpedc_item in g_cod_emp1.findall('.//CGG_TPEDC_ITEM'):
+            cod_pedc = cgg_tpedc_item.find('CODIGO_PEDIDO').text
+            linha = cgg_tpedc_item.find('LINHA1').text
             for g_nfe in cgg_tpedc_item.findall('.//G_NFE'):
                 num_nf = g_nfe.find('NUM_NF').text if g_nfe.find('NUM_NF') is not None else None
                 dt_ent = g_nfe.find('DT_ENT').text if g_nfe.find('DT_ENT') is not None else None
@@ -235,6 +274,7 @@ def import_ruah(file_content):
                 )
                 itemcount += 1
                 db.session.add(item)
+                
 
         
         for adj_data in formatted_adjustments:
@@ -251,6 +291,9 @@ def import_ruah(file_content):
                         order_index=adj_data['order_index']
                     )
                     db.session.add(adjustment)
+
+        order.is_fulfilled = check_order_fulfillment(order.id)
+            
                 
         
     db.session.commit()
@@ -260,33 +303,50 @@ def import_rpdc0250c(file_content):
     formatted_items = format_for_db_rpdc0250c(file_content) 
     itemcount = 0
     updated = 0
-
+    
+    unique_combinations = {}
     for item_data in formatted_items:
+        if item_data and item_data['num_nf']:
+            key = (item_data['cod_emp1'], item_data['cod_pedc'], item_data['linha'], item_data['num_nf'])
+            if key not in unique_combinations:
+                unique_combinations[key] = item_data
+
+    for key, item_data in unique_combinations.items():
         if item_data:
             existing_entry = NFEntry.query.filter_by(
                 cod_emp1=item_data['cod_emp1'],
                 cod_pedc=item_data['cod_pedc'],
-                linha=item_data['linha']
-                
+                linha=item_data['linha'],
+                num_nf=item_data['num_nf']
             ).first()
 
             if existing_entry:
-                db.session.delete(existing_entry)
-                db.session.commit()
-                updated += 1
-
-            nf_entry = NFEntry(
-                cod_emp1=item_data['cod_emp1'],
-                cod_pedc=item_data['cod_pedc'],
-                linha=item_data['linha'],
-                num_nf=item_data['num_nf'],
-                dt_ent=item_data.get('dt_ent', ''),
-            )
-            itemcount += 1
-            db.session.add(nf_entry)
+                has_changes = False
+                if existing_entry.dt_ent != item_data.get('dt_ent'):
+                    existing_entry.dt_ent = item_data.get('dt_ent', '')
+                    has_changes = True
+                    
+                if hasattr(existing_entry, 'qtde') and existing_entry.qtde != item_data.get('qtde'):
+                    existing_entry.qtde = item_data.get('qtde')
+                    has_changes = True
+                
+                if has_changes:
+                    db.session.commit()
+                    updated += 1
+            else:
+                nf_entry = NFEntry(
+                    cod_emp1=item_data['cod_emp1'],
+                    cod_pedc=item_data['cod_pedc'],
+                    linha=item_data['linha'],
+                    num_nf=item_data['num_nf'],
+                    dt_ent=item_data.get('dt_ent', ''),
+                    qtde=item_data.get('qtde')  
+                )
+                itemcount += 1
+                db.session.add(nf_entry)
 
     db.session.commit()
-    return jsonify({'message': 'Data imported successfully items {}, updated {}'.format(itemcount, updated)}), 201
+    return jsonify({'message': f'Data imported successfully: {itemcount} new entries, {updated} updated'}), 201
 
 def parse_rcot0300(xml_data):
     import xml.etree.ElementTree as ET
@@ -829,3 +889,17 @@ def parse_and_store_nfe_xml(xml_content):
     db.session.commit()
     
     return nfe_data
+
+def check_order_fulfillment(order_id):
+    """Check if all items in a purchase order are fully fulfilled."""
+    items = PurchaseItem.query.filter_by(purchase_order_id=order_id).all()
+    if not items:
+        return False
+    
+    for item in items:
+        if item.qtde_atendida is None or item.quantidade is None:
+            return False
+        if float(item.qtde_atendida) < float(item.quantidade):
+            return False
+    
+    return True

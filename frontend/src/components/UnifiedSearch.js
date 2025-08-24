@@ -194,10 +194,11 @@ function PurchaseRow(props) {
   return (
     <React.Fragment>
       {/* Purchase header row */}
+      {console.log(purchase.order.is_fulfilled)}
       <TableRow sx={{
         '& > *': { borderBottom: 'unset' },
-        backgroundColor: '#64a176ff',
-        '&:hover': { backgroundColor: '#5d836cff' }
+        backgroundColor: purchase.order.is_fulfilled ? '#38be26ff' : '#64a176ff', 
+        '&:hover': { backgroundColor: purchase.order.is_fulfilled ? '#7cb342' : '#5d836cff' }
       }}>
         <TableCell style={{ padding: 0 }}>
           <IconButton size="small" onClick={() => setOpen(!open)}>
@@ -205,7 +206,10 @@ function PurchaseRow(props) {
           </IconButton>
         </TableCell>
         <TableCell colSpan={9} align="center" sx={{ fontWeight: 'bold', fontSize: '1.05rem' }}  >
-          Pedido de Compra: {purchase.order.cod_pedc} ~ {purchase.order.fornecedor_id} {getFirstWords(purchase.order.fornecedor_descricao, 4)} - {formatCurrency(purchase.order.adjusted_total)} ~ Comprador: {purchase.order.func_nome}. Empresa: {purchase.order.cod_emp1}
+          Pedido de Compra: {purchase.order.cod_pedc}
+          ~ {purchase.order.fornecedor_id} {getFirstWords(purchase.order.fornecedor_descricao, 4)} - {formatCurrency(purchase.order.adjusted_total)} ~ Comprador: {purchase.order.func_nome}. Empresa: {purchase.order.cod_emp1}
+                  {purchase.order.is_fulfilled && <span style={{ marginLeft: '8px', color: '#2e7d32' }}>✓ Atendido</span>}
+
         </TableCell>
       </TableRow>
 
@@ -273,10 +277,10 @@ function PurchaseRow(props) {
                           </div>
                         ))}
                       </TableCell>
-                      <TableCell>                        
+                      <TableCell>
                         {purchase.order.nfes.map(nf => (
                           nf.linha == item.linha && nf.num_nf ? (
-                          <div key={nf.id}>{nf.num_nf}</div>
+                            <div key={nf.id}>{nf.num_nf}</div>
                           ) : null
                         ))}
                       </TableCell>

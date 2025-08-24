@@ -592,7 +592,6 @@ def search_combined():
             filters.append(PurchaseItem.item_id.ilike(f'%{query}%'))
         if search_by_descricao:
             filters.append(PurchaseItem.descricao.ilike(f'%{query}%'))
-            #filters.append(remove_accents(PurchaseItem.descricao).contains(query))
         if not any([search_by_cod_pedc, search_by_fornecedor, search_by_observacao, search_by_item_id, search_by_descricao]):
             filters.append(or_(
                 PurchaseItem.descricao.ilike(f'%{query}%'),
@@ -657,17 +656,24 @@ def search_combined():
                     'contato': item.purchase_order.contato,
                     'func_nome': item.purchase_order.func_nome,
                     'cf_pgto': item.purchase_order.cf_pgto,
+                    'is_fulfilled': item.purchase_order.is_fulfilled,
                     'cod_emp1': item.purchase_order.cod_emp1,
                     
                     'nfes': [
                         {
-                            'num_nf': nf_entry.num_nf,
-                            'id': nf_entry.id,
-                            'dt_ent': nf_entry.dt_ent
-                        } for nf_entry in NFEntry.query.filter_by(cod_emp1=item.purchase_order.cod_emp1, cod_pedc=item.cod_pedc, linha=item.linha).all()]
-                },
-                'items': []
-            }
+                        'num_nf': nf_entry.num_nf,
+                        'id': nf_entry.id,
+                        'dt_ent': nf_entry.dt_ent,
+                        'qtde': nf_entry.qtde,
+                        'linha': nf_entry.linha
+                        } for nf_entry in NFEntry.query.filter_by(
+                            cod_emp1=item.purchase_order.cod_emp1, 
+                            cod_pedc=item.cod_pedc, 
+                            ).all()
+                            ]
+                        },
+                        'items': []
+                        }
         item_data = {
             'id': item.id,
             'item_id': item.item_id,
@@ -676,6 +682,7 @@ def search_combined():
             'preco_unitario': item.preco_unitario,
             'total': item.total,
             'unidade_medida': item.unidade_medida,
+            'linha': item.linha,
             'dt_entrega': item.dt_entrega,
             'perc_ipi': item.perc_ipi,
             'tot_liquido_ipi': item.tot_liquido_ipi,
@@ -943,151 +950,6 @@ def get_purchase_by_nf():
 
 
 
-@bp.route('/nfe_by_purchase', methods=['GET'])
-@login_required
-def get_nfe_by_purchase():
-    import requests
-    import base64
-    import xml.etree.ElementTree as ET
-    from datetime import datetime, timedelta
-    from dateutil.relativedelta import relativedelta
-    from app.models import Supplier, NFEData
-    from app.utils import parse_and_store_nfe_xml
-    
-    cod_pedc = request.args.get('cod_pedc')
-    if not cod_pedc:
-        return jsonify({'error': 'cod_pedc is required'}), 400
-    
-    purchase_order = PurchaseOrder.query.filter_by(cod_pedc=cod_pedc).first()
-    if not purchase_order:
-        return jsonify({'error': 'Purchase order not found'}), 404  
-
-    if purchase_order.fornecedor_id:
-        supplier = Supplier.query.filter( 
-        (Supplier.cod_for == str(purchase_order.fornecedor_id))
-        ).first()
-    else:
-        return jsonify({'error': 'Fornecedor ID not found in purchase order'}), 400
-    
-    if supplier and supplier.nvl_forn_cnpj_forn_cpf:
-        fornecedor_cnpj = supplier.nvl_forn_cnpj_forn_cpf
-    else:
-        return jsonify({'error': 'Valid fornecedor CNPJ not found in database'}), 400
-
-    fornecedor_cnpj = ''.join(filter(str.isdigit, str(fornecedor_cnpj)))
-    
-    start_date = purchase_order.dt_emis
-    end_date = datetime.now()
-    
-    start_date_str = start_date.strftime('%Y-%m-%dT00:00:00.000Z')
-    end_date_str = end_date.strftime('%Y-%m-%dT23:59:59.999Z')
-    
-    sieg_request_data = {
-        "XmlType": 1,
-        "Take": 0,
-        "Skip": 0,
-        "DataEmissaoInicio": start_date_str,
-        "DataEmissaoFim": end_date_str,
-        "CnpjEmit": fornecedor_cnpj,
-        "CnpjDest": "",
-        "CnpjRem": "",
-        "CnpjTom": "",
-        "Tag": "",
-        "Downloadevent": True,
-        "TypeEvent": 0
-    }
-    try:
-        response = requests.post(
-            f'https://api.sieg.com/BaixarXmlsV2?api_key={Config.SIEG_API_KEY}',
-            json=sieg_request_data,
-            headers={'Content-Type': 'application/json', 'Accept': 'application/json'}
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            if 'xmls' not in result or not result['xmls']:
-                return jsonify({'message': 'No NFE data found for this purchase order'}), 404
-        else:
-            if response.status_code == 404:
-                # Retry with a date range of one month before the start date, for after receive order purchase generation
-                retry_start_date = start_date - relativedelta(months=1)
-                retry_start_date_str = retry_start_date.strftime('%Y-%m-%dT00:00:00.000Z')
-                retry_request_data = sieg_request_data.copy()
-                retry_request_data["DataEmissaoInicio"] = retry_start_date_str
-
-                retry_response = requests.post(
-                    f'https://api.sieg.com/BaixarXmlsV2?api_key={Config.SIEG_API_KEY}',
-                    json=retry_request_data,
-                    headers={'Content-Type': 'application/json', 'Accept': 'application/json'}
-                )
-
-                if retry_response.status_code != 200:
-                    return jsonify({'error': 'No NFE data found for this purchase order after retry'}), 404
-
-                result = retry_response.json()
-                if 'xmls' not in result or not result['xmls']:
-                    return jsonify({'message': 'No NFE data found for this purchase order after retry'}), 404
-
-            else:
-                return jsonify({'error': f'Error fetching NFE data: {response.status_code} - {response.text}'}), response.status_code
-           
-        ns = {'nfe': 'http://www.portalfiscal.inf.br/nfe'}
-
-        nfe_data = []
-        for xml_base64 in result['xmls']:
-            try:
-                xml_content = base64.b64decode(xml_base64).decode('utf-8')
-                root = ET.fromstring(xml_content)
-                
-                # Extract chave (access key) to check if NFE already exists in database
-                chave_acesso_elem = root.find('.//nfe:protNFe/nfe:infProt/nfe:chNFe', ns)
-                if chave_acesso_elem is None or not chave_acesso_elem.text:
-                    # Skip invalid XML or NFe without access key
-                    continue
-                
-                chave_acesso = chave_acesso_elem.text
-
-                # Store NFE in the database
-                parse_and_store_nfe_xml(xml_content)
-                
-                numero_nota = root.find('.//nfe:NFe/nfe:infNFe/nfe:ide/nfe:nNF', ns)
-                data_emissao = root.find('.//nfe:NFe/nfe:infNFe/nfe:ide/nfe:dhEmi', ns)
-                nome_fornecedor = root.find('.//nfe:NFe/nfe:infNFe/nfe:emit/nfe:xNome', ns)
-                valor_total = root.find('.//nfe:NFe/nfe:infNFe/nfe:total/nfe:ICMSTot/nfe:vNF', ns)
-
-                nfe_data.append({
-                    'chave': chave_acesso,
-                    'numero': numero_nota.text if numero_nota is not None else '',
-                    'data_emissao': data_emissao.text if data_emissao is not None else '',
-                    'fornecedor': nome_fornecedor.text if nome_fornecedor is not None else '',
-                    'valor': valor_total.text if valor_total is not None else '',
-                    'xml_content': xml_content,
-                    'stored_in_database': True
-                })
-            except Exception as e:
-                # Log the error and continue with next XML
-                print(f"Error processing XML: {str(e)}")
-                continue
-        
-        return jsonify({
-            'purchase_order': cod_pedc,
-            'fornecedor': purchase_order.fornecedor_descricao,
-            'valor': valor_total.text if valor_total is not None else '',
-            'data_emissao': data_emissao.text if data_emissao is not None else '',
-            'numero_nota': numero_nota.text if numero_nota is not None else '',
-            'nfe_data': nfe_data
-        }), 200
-        
-    except Exception as e:
-        return jsonify({'error': f'Error: {str(e)}'}), 500
-
-def extract_xml_value(root, xpath):
-    try:
-        element = root.find(xpath)
-        return element.text if element is not None else ''
-    except:
-        return ''
-    
 @bp.route('/quotation_items', methods=['GET'])
 @login_required
 def get_quotation_items():
@@ -1512,6 +1374,154 @@ def extract_quotation_data():
                 pass
         
         return jsonify({'error': f'Error extracting data: {str(e)}'}), 500
+    
+
+
+@bp.route('/nfe_by_purchase', methods=['GET'])
+@login_required
+def get_nfe_by_purchase():
+    import requests
+    import base64
+    import xml.etree.ElementTree as ET
+    from datetime import datetime, timedelta
+    from dateutil.relativedelta import relativedelta
+    from app.models import Supplier, NFEData
+    from app.utils import parse_and_store_nfe_xml
+    
+    cod_pedc = request.args.get('cod_pedc')
+    if not cod_pedc:
+        return jsonify({'error': 'cod_pedc is required'}), 400
+    
+    purchase_order = PurchaseOrder.query.filter_by(cod_pedc=cod_pedc).first()
+    if not purchase_order:
+        return jsonify({'error': 'Purchase order not found'}), 404  
+
+    if purchase_order.fornecedor_id:
+        supplier = Supplier.query.filter( 
+        (Supplier.cod_for == str(purchase_order.fornecedor_id))
+        ).first()
+    else:
+        return jsonify({'error': 'Fornecedor ID not found in purchase order'}), 400
+    
+    if supplier and supplier.nvl_forn_cnpj_forn_cpf:
+        fornecedor_cnpj = supplier.nvl_forn_cnpj_forn_cpf
+    else:
+        return jsonify({'error': 'Valid fornecedor CNPJ not found in database'}), 400
+
+    fornecedor_cnpj = ''.join(filter(str.isdigit, str(fornecedor_cnpj)))
+    
+    start_date = purchase_order.dt_emis
+    end_date = datetime.now()
+    
+    start_date_str = start_date.strftime('%Y-%m-%dT00:00:00.000Z')
+    end_date_str = end_date.strftime('%Y-%m-%dT23:59:59.999Z')
+    
+    sieg_request_data = {
+        "XmlType": 1,
+        "Take": 0,
+        "Skip": 0,
+        "DataEmissaoInicio": start_date_str,
+        "DataEmissaoFim": end_date_str,
+        "CnpjEmit": fornecedor_cnpj,
+        "CnpjDest": "",
+        "CnpjRem": "",
+        "CnpjTom": "",
+        "Tag": "",
+        "Downloadevent": True,
+        "TypeEvent": 0
+    }
+    try:
+        response = requests.post(
+            f'https://api.sieg.com/BaixarXmlsV2?api_key={Config.SIEG_API_KEY}',
+            json=sieg_request_data,
+            headers={'Content-Type': 'application/json', 'Accept': 'application/json'}
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            if 'xmls' not in result or not result['xmls']:
+                return jsonify({'message': 'No NFE data found for this purchase order'}), 404
+        else:
+            if response.status_code == 404:
+                # Retry with a date range of one month before the start date, for after receive order purchase generation
+                retry_start_date = start_date - relativedelta(months=1)
+                retry_start_date_str = retry_start_date.strftime('%Y-%m-%dT00:00:00.000Z')
+                retry_request_data = sieg_request_data.copy()
+                retry_request_data["DataEmissaoInicio"] = retry_start_date_str
+
+                retry_response = requests.post(
+                    f'https://api.sieg.com/BaixarXmlsV2?api_key={Config.SIEG_API_KEY}',
+                    json=retry_request_data,
+                    headers={'Content-Type': 'application/json', 'Accept': 'application/json'}
+                )
+
+                if retry_response.status_code != 200:
+                    return jsonify({'error': 'No NFE data found for this purchase order after retry'}), 404
+
+                result = retry_response.json()
+                if 'xmls' not in result or not result['xmls']:
+                    return jsonify({'message': 'No NFE data found for this purchase order after retry'}), 404
+
+            else:
+                return jsonify({'error': f'Error fetching NFE data: {response.status_code} - {response.text}'}), response.status_code
+           
+        ns = {'nfe': 'http://www.portalfiscal.inf.br/nfe'}
+
+        nfe_data = []
+        for xml_base64 in result['xmls']:
+            try:
+                xml_content = base64.b64decode(xml_base64).decode('utf-8')
+                root = ET.fromstring(xml_content)
+                
+                # Extract chave (access key) to check if NFE already exists in database
+                chave_acesso_elem = root.find('.//nfe:protNFe/nfe:infProt/nfe:chNFe', ns)
+                if chave_acesso_elem is None or not chave_acesso_elem.text:
+                    # Skip invalid XML or NFe without access key
+                    continue
+                
+                chave_acesso = chave_acesso_elem.text
+
+                # Store NFE in the database
+                parse_and_store_nfe_xml(xml_content)
+                
+                numero_nota = root.find('.//nfe:NFe/nfe:infNFe/nfe:ide/nfe:nNF', ns)
+                data_emissao = root.find('.//nfe:NFe/nfe:infNFe/nfe:ide/nfe:dhEmi', ns)
+                nome_fornecedor = root.find('.//nfe:NFe/nfe:infNFe/nfe:emit/nfe:xNome', ns)
+                valor_total = root.find('.//nfe:NFe/nfe:infNFe/nfe:total/nfe:ICMSTot/nfe:vNF', ns)
+
+                nfe_data.append({
+                    'chave': chave_acesso,
+                    'numero': numero_nota.text if numero_nota is not None else '',
+                    'data_emissao': data_emissao.text if data_emissao is not None else '',
+                    'fornecedor': nome_fornecedor.text if nome_fornecedor is not None else '',
+                    'valor': valor_total.text if valor_total is not None else '',
+                    'xml_content': xml_content,
+                    'stored_in_database': True
+                })
+            except Exception as e:
+                # Log the error and continue with next XML
+                print(f"Error processing XML: {str(e)}")
+                continue
+        
+        return jsonify({
+            'purchase_order': cod_pedc,
+            'fornecedor': purchase_order.fornecedor_descricao,
+            'valor': valor_total.text if valor_total is not None else '',
+            'data_emissao': data_emissao.text if data_emissao is not None else '',
+            'numero_nota': numero_nota.text if numero_nota is not None else '',
+            'nfe_data': nfe_data
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Error: {str(e)}'}), 500
+
+def extract_xml_value(root, xpath):
+    try:
+        element = root.find(xpath)
+        return element.text if element is not None else ''
+    except:
+        return ''
+    
     
 @bp.route('/get_danfe_pdf', methods=['GET'])
 @login_required

@@ -21,6 +21,8 @@ class PurchaseOrder(db.Model):
     cf_pgto = db.Column(db.String, nullable=True)
     cod_emp1 = db.Column(db.String, nullable=True)
     total_pedido_com_ipi = db.Column(db.Float, nullable=True)
+    is_fulfilled = db.Column(db.Boolean, default=False)
+
     items = db.relationship('PurchaseItem', backref='purchase_order', lazy=True)
 
 class PurchaseItem(db.Model):
@@ -51,14 +53,20 @@ class PurchaseItem(db.Model):
 
     
 class NFEntry(db.Model):
+    __tablename__ = 'nf_entries'
+    
     id = db.Column(db.Integer, primary_key=True)
-    cod_emp1 = db.Column(db.String(50), nullable=False)
-    cod_pedc = db.Column(db.String(50), nullable=False)
-    linha = db.Column(db.Integer, nullable=True)
-    num_nf = db.Column(db.String(50), nullable=False)
-    dt_ent = db.Column(db.Date, nullable=True)    #purchase_item_id = db.Column(db.Integer, db.ForeignKey('purchase_item.id'), nullable=False)
+    cod_emp1 = db.Column(db.String(10), nullable=False)
+    cod_pedc = db.Column(db.String(20), nullable=False)
+    linha = db.Column(db.String(10), nullable=False)
+    num_nf = db.Column(db.String(20), nullable=False)
+    dt_ent = db.Column(db.Date)
+    text_field = db.Column(db.Text)
+    qtde = db.Column(db.String(15))
 
-    #purchase_item = db.relationship('PurchaseItem', backref=db.backref('nf_entries', lazy=True))
+    __table_args__ = (
+        db.UniqueConstraint('cod_emp1', 'cod_pedc', 'linha', 'num_nf', name='uq_nf_entry'),
+    )
     
 
 class User(UserMixin, db.Model):
