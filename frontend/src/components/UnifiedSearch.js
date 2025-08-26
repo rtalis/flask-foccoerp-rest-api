@@ -197,7 +197,7 @@ function PurchaseRow(props) {
       {console.log(purchase.order.is_fulfilled)}
       <TableRow sx={{
         '& > *': { borderBottom: 'unset' },
-        backgroundColor: purchase.order.is_fulfilled ? '#38be26ff' : '#64a176ff', 
+        backgroundColor: purchase.order.is_fulfilled ? '#38be26ff' : '#64a176ff',
         '&:hover': { backgroundColor: purchase.order.is_fulfilled ? '#7cb342' : '#5d836cff' }
       }}>
         <TableCell style={{ padding: 0 }}>
@@ -208,7 +208,7 @@ function PurchaseRow(props) {
         <TableCell colSpan={9} align="center" sx={{ fontWeight: 'bold', fontSize: '1.05rem' }}  >
           Pedido de Compra: {purchase.order.cod_pedc}
           ~ {purchase.order.fornecedor_id} {getFirstWords(purchase.order.fornecedor_descricao, 4)} - {formatCurrency(purchase.order.adjusted_total)} ~ Comprador: {purchase.order.func_nome}. Empresa: {purchase.order.cod_emp1}
-                  {purchase.order.is_fulfilled && <span style={{ marginLeft: '8px', color: '#2e7d32' }}>✓ Atendido</span>}
+          {purchase.order.is_fulfilled && <span style={{ marginLeft: '8px', color: '#2e7d32' }}>✓ Atendido</span>}
 
         </TableCell>
       </TableRow>
@@ -676,10 +676,12 @@ const UnifiedSearch = ({ onLogout }) => {
     return new Date(dateString).toLocaleDateString('pt-BR', options);
   };
 
-  const formatNumber = (number) => {
-    return number.toFixed(2);
-  };
-
+const formatNumber = (number) => {
+  if (number === undefined || number === null || isNaN(parseFloat(number))) {
+    return '-'; 
+  }
+  return parseFloat(number).toFixed(2);
+};
   const formatCurrency = (number) => {
     if (number === undefined || number === null) return ''; // Verifica se o número é undefined ou null
     return number.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
