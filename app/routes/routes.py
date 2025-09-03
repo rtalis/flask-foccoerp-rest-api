@@ -553,6 +553,7 @@ def search_combined():
     search_by_observacao = request.args.get('searchByObservacao', 'false').lower() == 'true'
     search_by_item_id = request.args.get('searchByItemId', 'false').lower() == 'true'
     search_by_descricao = request.args.get('searchByDescricao', 'false').lower() == 'true'
+    search_by_num_nf = request.args.get('searchByNumNF', 'false').lower() == 'true' 
     search_by_func_nome = request.args.get('selectedFuncName')
     min_value = request.args.get('minValue', type=float)
     max_value = request.args.get('maxValue', type=float)
@@ -592,7 +593,19 @@ def search_combined():
             filters.append(PurchaseItem.item_id.ilike(f'%{query}%'))
         if search_by_descricao:
             filters.append(PurchaseItem.descricao.ilike(f'%{query}%'))
-        if not any([search_by_cod_pedc, search_by_fornecedor, search_by_observacao, search_by_item_id, search_by_descricao]):
+        if search_by_num_nf:
+            nf_entries = NFEntry.query.filter(NFEntry.num_nf.ilike(f'%{query}%')).all()
+            if nf_entries:
+                nf_filters = []
+                for nf in nf_entries:
+                    nf_filters.append(and_(
+                        PurchaseItem.cod_pedc == nf.cod_pedc,
+                        PurchaseItem.cod_emp1 == nf.cod_emp1
+                    ))
+                if nf_filters:
+                    filters.append(or_(*nf_filters))
+
+        if not any([search_by_cod_pedc, search_by_fornecedor, search_by_observacao, search_by_item_id, search_by_descricao, search_by_num_nf]):
             filters.append(or_(
                 PurchaseItem.descricao.ilike(f'%{query}%'),
                 PurchaseItem.item_id.ilike(f'%{query}%'),
@@ -732,6 +745,8 @@ def count_results():
     search_by_observacao = request.args.get('searchByObservacao', 'false').lower() == 'true'
     search_by_item_id = request.args.get('searchByItemId', 'false').lower() == 'true'
     search_by_descricao = request.args.get('searchByDescricao', 'false').lower() == 'true'
+    search_by_num_nf = request.args.get('searchByNumNF', 'false').lower() == 'true'  # Add this line
+
 
     count_query = db.session.query(db.func.count(db.distinct(PurchaseItem.cod_pedc))).\
         join(PurchaseOrder, PurchaseItem.purchase_order_id == PurchaseOrder.id)
@@ -746,11 +761,12 @@ def count_results():
         search_by_fornecedor,
         search_by_observacao,
         search_by_item_id,
-        search_by_descricao
+        search_by_descricao,
+        search_by_num_nf
     ])
     
     if multiplier == 0:
-        multiplier = 5
+        multiplier = 6
 
     estimated_count = base_count * multiplier
 

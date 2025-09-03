@@ -411,6 +411,7 @@ const UnifiedSearch = ({ onLogout }) => {
     searchByDescricao: true,
     searchByAtendido: false,
     searchByNaoAtendido: false,
+    searchByNumNF: false,
     min_value: '',
     max_value: '',
     valueSearchType: 'item'
@@ -607,6 +608,7 @@ const UnifiedSearch = ({ onLogout }) => {
           searchByFornecedor: searchParams.searchByFornecedor,
           searchByObservacao: searchParams.searchByObservacao,
           searchByItemId: searchParams.searchByItemId,
+              searchByNumNF: searchParams.searchByNumNF,
           searchByDescricao: searchParams.searchByDescricao,
           selectedFuncName: searchParams.selectedFuncName
         },
@@ -634,6 +636,7 @@ const UnifiedSearch = ({ onLogout }) => {
           searchByObservacao: searchParams.searchByObservacao,
           searchByItemId: searchParams.searchByItemId,
           searchByDescricao: searchParams.searchByDescricao,
+          searchByNumNF: searchParams.searchByNumNF,
           selectedFuncName: searchParams.selectedFuncName,
           minValue: searchParams.min_value,
           maxValue: searchParams.max_value
@@ -881,6 +884,17 @@ const formatNumber = (number) => {
                 label="Descrição do Item"
                 sx={{ marginBottom: '-10px' }}
               />
+              <FormControlLabel
+              control={
+                <Checkbox
+                  name="searchByNumNF"
+                  checked={searchParams.searchByNumNF}
+                  onChange={handleChange}
+                />
+              }
+              label="Número da Nota Fiscal"
+              sx={{ marginBottom: '-10px' }}
+            />
             </FormControl>
 
             {/* Search precision section */}
