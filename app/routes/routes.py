@@ -4,8 +4,8 @@ from flask import Blueprint, redirect, request, jsonify
 import requests
 from sqlalchemy import and_, or_
 from flask_login import login_user, logout_user, login_required, current_user
-from app.models import NFEntry, PurchaseOrder, PurchaseItem, Quotation, User
-from app.utils import  apply_adjustments, fuzzy_search, import_rcot0300, import_rfor0302, import_rpdc0250c, import_ruah
+from app.models import NFEData, NFEntry, PurchaseOrder, PurchaseItem, Quotation, User
+from app.utils import  apply_adjustments, check_order_fulfillment, fuzzy_search, import_rcot0300, import_rfor0302, import_rpdc0250c, import_ruah
 from app import db
 import tempfile
 import os
@@ -566,20 +566,19 @@ def search_combined():
             db.session.execute(text("CREATE EXTENSION IF NOT EXISTS unaccent"))
             remove_accents = lambda col: db.func.unaccent(col)
 
-    if min_value is not None or max_value is not None:
-        
+    if min_value is not None or max_value is not None:        
         if value_search_type == 'item':
             if min_value is not None:
-                value_filters.append(PurchaseItem.total >= min_value)
+                value_filters.append(PurchaseItem.preco_unitario >= min_value)
             if max_value is not None:
-                value_filters.append(PurchaseItem.total <= max_value)
+                value_filters.append(PurchaseItem.preco_unitario <= max_value)
         else:  #order
             if min_value is not None:
-                value_filters.append(PurchaseOrder.total_bruto >= min_value)
+                value_filters.append(PurchaseOrder.total_pedido_com_ipi >= min_value)
             if max_value is not None:
-                value_filters.append(PurchaseOrder.total_bruto <= max_value)
-        
-    
+                value_filters.append(PurchaseOrder.total_pedido_com_ipi <= max_value)
+
+
     filters = []
     if query:
         query = query.upper()
@@ -1920,3 +1919,228 @@ def get_nfe_data():
     except Exception as e:
         return jsonify({'error': f'Error: {str(e)}'}), 500
 
+@bp.route('/sync_nfe', methods=['POST'])
+@login_required
+def sync_nfe_api():
+    """API endpoint to manually trigger NFE sync"""
+    from app.tasks.sync_nfe import sync_nfe_for_yesterday
+    
+    try:
+        result = sync_nfe_for_yesterday()
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
+
+
+@bp.route('/match_purchase_nfe/<int:purchase_id>', methods=['GET'])
+@login_required
+def match_purchase_nfe(purchase_id):
+    """
+    Find NFEs that match a purchase order and score their similarity.
+    
+    Parameters:
+    - nfe_id (optional): If provided, only score that specific NFE
+    - max_results (optional): Maximum number of matches to return
+    """
+    from app.utils import score_purchase_nfe_match
+    
+    nfe_id = request.args.get('nfe_id', type=int)
+    max_results = request.args.get('max_results', default=5, type=int)
+    
+    results = score_purchase_nfe_match(purchase_id, nfe_id)
+    
+    # Handle error responses
+    if isinstance(results, dict) and 'error' in results:
+        return jsonify(results), 400
+        
+    # Limit results if needed
+    if max_results and len(results) > max_results:
+        results = results[:max_results]
+    
+    return jsonify({
+        'purchase_id': purchase_id,
+        'matches_found': len(results),
+        'results': results
+    }), 200
+
+# Add these endpoints
+
+@bp.route('/user_purchases', methods=['GET'])
+@login_required
+def get_user_purchases():
+    from datetime import datetime, timedelta
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    status = request.args.get('status', 'all')
+    username = request.args.get('username')
+    
+    # Convert string dates to datetime
+    if start_date:
+        start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+    else:
+        start_date = (datetime.now() - timedelta(days=30)).date()
+        
+    if end_date:
+        end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+    else:
+        end_date = datetime.now().date()
+    
+    # Get user info
+    user = User.query.filter_by(username=username).first()
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    
+    # Filter purchases by user role and name
+    query = PurchaseOrder.query.filter(
+        PurchaseOrder.dt_emis.between(start_date, end_date)
+    )
+    
+    # If user is not admin, filter by purchaser name
+    if user.role != 'admin' and user.system_name:
+        query = query.filter(PurchaseOrder.func_nome.ilike(f'%{user.system_name}%'))
+    
+    # Filter by status if requested
+    if status != 'all':
+        if status == 'pending':
+            query = query.filter(PurchaseOrder.is_fulfilled == False)
+        elif status == 'fulfilled':
+            query = query.filter(PurchaseOrder.is_fulfilled == True)
+        # 'partial' requires additional processing below
+    
+    # Execute query and sort by date (newest first)
+    purchase_orders = query.order_by(PurchaseOrder.dt_emis.desc()).all()
+    
+    result = []
+    for order in purchase_orders:
+        # Get items for this order
+        items = PurchaseItem.query.filter_by(purchase_order_id=order.id).all()
+        
+        # Calculate fulfillment status
+        total_items = len(items)
+        fulfilled_items = 0
+        partially_fulfilled_items = 0
+        
+        items_data = []
+        for item in items:
+            # Get NFEs linked to this item
+            nfes = NFEntry.query.filter_by(
+                cod_emp1=order.cod_emp1,
+                cod_pedc=item.cod_pedc,
+                linha=str(item.linha)
+            ).all()
+            
+            nfes_data = []
+            for nfe in nfes:
+                nfes_data.append({
+                    'id': nfe.id,
+                    'num_nf': nfe.num_nf,
+                    'dt_ent': nfe.dt_ent.isoformat() if nfe.dt_ent else None,
+                    'qtde': nfe.qtde
+                })
+            
+            # Determine item fulfillment status
+            if item.qtde_atendida and item.quantidade:
+                if float(item.qtde_atendida) >= float(item.quantidade):
+                    fulfilled_items += 1
+                elif float(item.qtde_atendida) > 0:
+                    partially_fulfilled_items += 1
+            
+            items_data.append({
+                'id': item.id,
+                'item_id': item.item_id,
+                'descricao': item.descricao,
+                'quantidade': item.quantidade,
+                'unidade_medida': item.unidade_medida,
+                'preco_unitario': item.preco_unitario,
+                'total': item.total,
+                'qtde_atendida': item.qtde_atendida,
+                'nfes': nfes_data
+            })
+        
+        # Determine order status
+        order_status = 'pending'
+        if fulfilled_items == total_items:
+            order_status = 'fulfilled'
+        elif partially_fulfilled_items > 0 or fulfilled_items > 0:
+            order_status = 'partial'
+        
+        # Skip if filtering by 'partial' and this isn't partial
+        if status == 'partial' and order_status != 'partial':
+            continue
+        
+        order_data = {
+            'id': order.id,
+            'cod_pedc': order.cod_pedc,
+            'dt_emis': order.dt_emis.isoformat() if order.dt_emis else None,
+            'fornecedor_descricao': order.fornecedor_descricao,
+            'fornecedor_id': order.fornecedor_id,
+            'total_pedido_com_ipi': order.total_pedido_com_ipi,
+            'status': order_status,
+            'is_fulfilled': order.is_fulfilled,
+            'expanded': False,  # For UI expansion
+            'items': items_data
+        }
+        
+        result.append(order_data)
+    
+    return jsonify(result), 200
+
+
+@bp.route('/assign_nfe_to_item', methods=['POST'])
+@login_required
+def assign_nfe_to_item():
+    data = request.json
+    
+    if not data or not all(k in data for k in ['purchase_id', 'item_id', 'nfe_id']):
+        return jsonify({'error': 'Missing required fields'}), 400
+    
+    purchase_id = data.get('purchase_id')
+    item_id = data.get('item_id')
+    nfe_id = data.get('nfe_id')
+    quantity = data.get('quantity', 0)
+    
+    try:
+        # Get purchase order
+        purchase = PurchaseOrder.query.get(purchase_id)
+        if not purchase:
+            return jsonify({'error': 'Purchase order not found'}), 404
+            
+        # Get purchase item
+        item = PurchaseItem.query.get(item_id)
+        if not item:
+            return jsonify({'error': 'Purchase item not found'}), 404
+            
+        # Get NFE
+        nfe = NFEData.query.get(nfe_id)
+        if not nfe:
+            return jsonify({'error': 'NFE not found'}), 404
+            
+        # Create NFEntry record to link them
+        nf_entry = NFEntry(
+            cod_emp1=purchase.cod_emp1,
+            cod_pedc=item.cod_pedc,
+            linha=item.linha,
+            num_nf=nfe.numero,
+            dt_ent=nfe.data_emissao,
+            qtde=str(quantity)
+        )
+        
+        db.session.add(nf_entry)
+        
+        # Update item's fulfilled quantity
+        if item.qtde_atendida is None:
+            item.qtde_atendida = quantity
+        else:
+            item.qtde_atendida += quantity
+            
+        # Check if order is now fulfilled
+        purchase.is_fulfilled = check_order_fulfillment(purchase.id)
+        
+        db.session.commit()
+        
+        return jsonify({'message': 'NFE successfully linked to purchase item'}), 200
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500

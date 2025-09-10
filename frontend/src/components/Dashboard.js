@@ -5,22 +5,31 @@ import {
   Box, Container, Grid, Paper, Typography, Card, CardContent, Table,
   TableBody, TableCell, TableContainer, TableHead, TableRow, AppBar,
   Toolbar, Button, Drawer, List, ListItemButton, ListItemIcon, ListItemText,
-  IconButton, Divider, CircularProgress, Alert, MenuItem, Select, FormControl
+  IconButton, Divider, CircularProgress, Alert, MenuItem, Select, FormControl, InputLabel,
+  Tabs, Tab, Chip, Dialog,
+  DialogTitle, DialogContent, DialogActions, Radio, RadioGroup, FormControlLabel
 } from '@mui/material';
 import {
   Menu as MenuIcon, Dashboard as DashboardIcon, Search as SearchIcon,
   Compare as CompareIcon, Upload as UploadIcon, Logout as LogoutIcon,
   ShoppingCart as ShoppingCartIcon, Receipt as ReceiptIcon, Business as BusinessIcon,
-  TrendingUp as TrendingUpIcon, ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon
+  TrendingUp as TrendingUpIcon, ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon,
+  FilterList as FilterIcon, Refresh as RefreshIcon, Link as LinkIcon,
+  CheckCircle as CheckCircleIcon, Error as ErrorIcon, Warning as WarningIcon,
+  AssignmentTurnedIn as AssignedIcon, DateRange as DateRangeIcon, KeyboardArrowUp as KeyboardArrowUpIcon, 
+  KeyboardArrowDown as KeyboardArrowDownIcon,
 } from '@mui/icons-material';
 import {
   Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement,
-  PointElement, Title, Tooltip, Legend, ArcElement
+  PointElement, Title, Tooltip as ChartTooltip, Legend, ArcElement
 } from 'chart.js';
 import { Line, Doughnut } from 'react-chartjs-2';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
+import { ptBR } from 'date-fns/locale';
 import './Dashboard.css';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend, ArcElement);
+ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, ChartTooltip, Legend, ArcElement);
 
 const DRAWER_WIDTH_OPEN = 260;
 const DRAWER_WIDTH_COLLAPSED = 80;
@@ -32,6 +41,22 @@ const Dashboard = ({ onLogout }) => {
   const [error, setError] = useState('');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [tabValue, setTabValue] = useState(0);
+  const [purchaseData, setPurchaseData] = useState([]);
+  const [purchaseLoading, setPurchaseLoading] = useState(false);
+  const [dateRange, setDateRange] = useState({
+    start: new Date(new Date().setMonth(new Date().getMonth() - 1)),
+    end: new Date()
+  });
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'pending', 'partial', 'complete'
+  const [matchDialogOpen, setMatchDialogOpen] = useState(false);
+  const [currentPurchase, setCurrentPurchase] = useState(null);
+  const [currentItem, setCurrentItem] = useState(null);
+  const [suggestedNFEs, setSuggestedNFEs] = useState([]);
+  const [selectedNFE, setSelectedNFE] = useState(null);
+  const [nfeLoading, setNfeLoading] = useState(false);
+  const [userInfo, setUserInfo] = useState(null);
+
   const navigate = useNavigate();
 
   const menuItems = useMemo(() => ([
@@ -68,7 +93,7 @@ const Dashboard = ({ onLogout }) => {
           order_count: Number(x?.order_count ?? 0),
           total_value: Number(x?.total_value ?? 0),
           avg_value: Number(x?.avg_value ?? 0),
-          item_count: Number(x?.item_count ?? 0), // Add this line
+          item_count: Number(x?.item_count ?? 0),
         })) : [],
         supplier_data: Array.isArray(d?.supplier_data) ? d.supplier_data.map(x => ({
           name: String(x?.name ?? ''),
@@ -96,12 +121,109 @@ const Dashboard = ({ onLogout }) => {
     }
   };
 
-  useEffect(() => { fetchData(months); }, [months]);
+  const fetchUserInfo = async () => {
+    try {
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/auth/me`, {
+        withCredentials: true
+      });
+      setUserInfo(response.data);
+    } catch (err) {
+      console.error('Error fetching user info:', err);
+    }
+  };
+
+  const fetchPurchases = async () => {
+    try {
+      setPurchaseLoading(true);
+      const startFormatted = dateRange.start.toISOString().split('T')[0];
+      const endFormatted = dateRange.end.toISOString().split('T')[0];
+
+      // This should be adapted to call your backend API to get user-specific purchases
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/user_purchases`, {
+        params: {
+          start_date: startFormatted,
+          end_date: endFormatted,
+          status: statusFilter,
+          username: userInfo?.username
+        },
+        withCredentials: true
+      });
+
+      setPurchaseData(response.data);
+    } catch (err) {
+      console.error('Error fetching purchases:', err);
+    } finally {
+      setPurchaseLoading(false);
+    }
+  };
+
+  const handleFindNFEMatches = async (purchaseId, itemId) => {
+    try {
+      setNfeLoading(true);
+      setMatchDialogOpen(true);
+
+      const purchase = purchaseData.find(p => p.id === purchaseId);
+      const item = purchase?.items.find(i => i.id === itemId);
+
+      setCurrentPurchase(purchase);
+      setCurrentItem(item);
+
+      // Call the API to get NFE match suggestions
+      const response = await axios.get(
+        `${process.env.REACT_APP_API_URL}/api/match_purchase_nfe/${purchase.cod_pedc}`,
+        { withCredentials: true }
+      );
+
+      setSuggestedNFEs(response.data.results || []);
+    } catch (err) {
+      console.error('Error finding NFE matches:', err);
+    } finally {
+      setNfeLoading(false);
+    }
+  };
+
+  const handleAssignNFE = async () => {
+    if (!selectedNFE || !currentPurchase || !currentItem) return;
+
+    try {
+      await axios.post(
+        `${process.env.REACT_APP_API_URL}/api/assign_nfe_to_item`,
+        {
+          purchase_id: currentPurchase.id,
+          item_id: currentItem.id,
+          nfe_id: selectedNFE.nfe.id,
+          quantity: currentItem.quantidade // You might want to allow partial fulfillment
+        },
+        { withCredentials: true }
+      );
+
+      setMatchDialogOpen(false);
+      setSelectedNFE(null);
+
+      // Refresh purchase data
+      fetchPurchases();
+
+    } catch (err) {
+      console.error('Error assigning NFE:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchData(months);
+    fetchUserInfo();
+  }, [months]);
+
+  useEffect(() => {
+    if (userInfo) {
+      fetchPurchases();
+    }
+  }, [userInfo, dateRange, statusFilter]);
 
   const handleDrawerToggle = () => setMobileOpen(!mobileOpen);
   const handleSidebarCollapse = () => setSidebarOpen(v => !v);
   const handleNav = (path) => { navigate(path); };
   const handleLogout = () => { onLogout(); navigate('/login'); };
+  const handleTabChange = (event, newValue) => setTabValue(newValue);
 
   const fmtCurrency = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v || 0));
   const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString('pt-BR') : '—');
@@ -128,6 +250,7 @@ const Dashboard = ({ onLogout }) => {
       ]
     };
   }, [data]);
+
   // Buyer purchases chart data
   const buyerPurchasesChart = useMemo(() => {
     const rows = Array.isArray(data?.buyer_data) ? data.buyer_data : [];
@@ -235,6 +358,36 @@ const Dashboard = ({ onLogout }) => {
       </Box>
     </>
   );
+
+  const getStatusChip = (status) => {
+    switch (status) {
+      case 'fulfilled':
+        return <Chip
+          icon={<CheckCircleIcon />}
+          label="Atendido"
+          color="success"
+          size="small"
+          variant="outlined"
+        />;
+      case 'partial':
+        return <Chip
+          icon={<WarningIcon />}
+          label="Parcial"
+          color="warning"
+          size="small"
+          variant="outlined"
+        />;
+      case 'pending':
+      default:
+        return <Chip
+          icon={<ErrorIcon />}
+          label="Pendente"
+          color="error"
+          size="small"
+          variant="outlined"
+        />;
+    }
+  };
 
   if (loading) {
     return (
@@ -361,7 +514,8 @@ const Dashboard = ({ onLogout }) => {
               Visão Geral de Compras
             </Typography>
             <Typography variant="body2" sx={{ opacity: 0.9 }}>
-              Acompanhe valores mensais, compradores e desempenho dos fornecedores.
+              {userInfo && `Olá, ${userInfo.username}. `}
+              Acompanhe seus pedidos e faturamentos ativos.
             </Typography>
           </Box>
 
@@ -605,60 +759,325 @@ const Dashboard = ({ onLogout }) => {
             </Grid>
           </Grid>
 
-          {/* Tables - full width, stacked */}
-          <Grid container spacing={3}>
-            <Grid item xs={12}>
-              <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 8px 24px rgba(0,0,0,0.06)' }}>
-                <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>Top Fornecedores</Typography>
-                <TableContainer>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Fornecedor</TableCell>
-                        <TableCell align="right">Pedidos</TableCell>
-                        <TableCell align="right">Valor Total</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {(data?.supplier_data || []).map((s, i) => (
-                        <TableRow key={i} hover>
-                          <TableCell>{safeText(s.name)}</TableCell>
-                          <TableCell align="right">{safeText(s.order_count)}</TableCell>
-                          <TableCell align="right">{fmtCurrency(s.total_value)}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </Paper>
-            </Grid>
+          {/* Purchase Tracking Section */}
+          <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 8px 24px rgba(0,0,0,0.06)', mb: 3 }}>
+            <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2 }}>
+              Acompanhamento de Pedidos
+            </Typography>
 
-            <Grid item xs={12}>
-              <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 8px 24px rgba(0,0,0,0.06)' }}>
-                <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>Itens com Maior Gasto</Typography>
-                <TableContainer>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Item</TableCell>
-                        <TableCell>Descrição</TableCell>
-                        <TableCell align="right">Gasto Total</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {(data?.top_items || []).map((it, idx) => (
-                        <TableRow key={idx} hover>
-                          <TableCell>{safeText(it.item_id)}</TableCell>
-                          <TableCell>{safeText(it.descricao)}</TableCell>
-                          <TableCell align="right">{fmtCurrency(it.total_spend)}</TableCell>
+            <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+              <Tabs value={tabValue} onChange={handleTabChange} aria-label="purchase tabs">
+                <Tab
+                  label={
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <ErrorIcon sx={{ mr: 1, fontSize: 20 }} />
+                      Pendentes
+                    </Box>
+                  }
+                />
+                <Tab
+                  label={
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <WarningIcon sx={{ mr: 1, fontSize: 20 }} />
+                      Parciais
+                    </Box>
+                  }
+                />
+                <Tab
+                  label={
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <CheckCircleIcon sx={{ mr: 1, fontSize: 20 }} />
+                      Atendidos
+                    </Box>
+                  }
+                />
+              </Tabs>
+            </Box>
+
+            {/* Filter controls */}
+            <Box sx={{ mb: 3, display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
+              <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ptBR}>
+                <DatePicker
+                  label="Data Inicial"
+                  value={dateRange.start}
+                  onChange={(newValue) => setDateRange(prev => ({ ...prev, start: newValue }))}
+                  slotProps={{ textField: { size: 'small', sx: { width: 180 } } }}
+                  format="dd/MM/yyyy"
+                />
+
+                <DatePicker
+                  label="Data Final"
+                  value={dateRange.end}
+                  onChange={(newValue) => setDateRange(prev => ({ ...prev, end: newValue }))}
+                  slotProps={{ textField: { size: 'small', sx: { width: 180 } } }}
+                  format="dd/MM/yyyy"
+                />
+              </LocalizationProvider>
+
+              <FormControl size="small" sx={{ minWidth: 180 }}>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  label="Status"
+                >
+                  <MenuItem value="all">Todos</MenuItem>
+                  <MenuItem value="pending">Pendentes</MenuItem>
+                  <MenuItem value="partial">Parciais</MenuItem>
+                  <MenuItem value="fulfilled">Atendidos</MenuItem>
+                </Select>
+              </FormControl>
+
+              <Button
+                variant="outlined"
+                startIcon={<RefreshIcon />}
+                onClick={fetchPurchases}
+                sx={{ height: 40 }}
+              >
+                Atualizar
+              </Button>
+            </Box>
+
+            {/* Purchases table */}
+            {purchaseLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : purchaseData.length > 0 ? (
+              <TableContainer>
+                <Table sx={{ minWidth: 650 }}>
+                  <TableHead>
+                    <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                      <TableCell>Nº Pedido</TableCell>
+                      <TableCell>Data</TableCell>
+                      <TableCell>Fornecedor</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Valor Total</TableCell>
+                      <TableCell>Ações</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {purchaseData.map((purchase) => (
+                      <React.Fragment key={purchase.id}>
+                        <TableRow hover>
+                          <TableCell>{purchase.cod_pedc}</TableCell>
+                          <TableCell>{fmtDate(purchase.dt_emis)}</TableCell>
+                          <TableCell>{purchase.fornecedor_descricao}</TableCell>
+                          <TableCell>
+                            {getStatusChip(purchase.status)}
+                          </TableCell>
+                          <TableCell>{fmtCurrency(purchase.total_pedido_com_ipi)}</TableCell>
+                          <TableCell>
+                            <IconButton
+                              size="small"
+                              onClick={() => {
+                                // Toggle expanded row
+                                const updatedData = purchaseData.map(p =>
+                                  p.id === purchase.id
+                                    ? { ...p, expanded: !p.expanded }
+                                    : p
+                                );
+                                setPurchaseData(updatedData);
+                              }}
+                            >
+                              {purchase.expanded ?
+                                <KeyboardArrowUpIcon /> :
+                                <KeyboardArrowDownIcon />
+                              }
+                            </IconButton>
+                          </TableCell>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </Paper>
-            </Grid>
-          </Grid>
+
+                        {/* Expanded row for items */}
+                        {purchase.expanded && (
+                          <TableRow>
+                            <TableCell colSpan={6} sx={{ py: 0 }}>
+                              <Box sx={{ margin: 1 }}>
+                                <Typography variant="subtitle2" gutterBottom component="div">
+                                  Itens do Pedido
+                                </Typography>
+                                <Table size="small" aria-label="items">
+                                  <TableHead>
+                                    <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                                      <TableCell>Item</TableCell>
+                                      <TableCell>Descrição</TableCell>
+                                      <TableCell>Quantidade</TableCell>
+                                      <TableCell>Qtd. Atendida</TableCell>
+                                      <TableCell>NFEs</TableCell>
+                                      <TableCell>Ações</TableCell>
+                                    </TableRow>
+                                  </TableHead>
+                                  <TableBody>
+                                    {purchase.items.map((item) => (
+                                      <TableRow key={item.id}>
+                                        <TableCell>{item.item_id}</TableCell>
+                                        <TableCell>{item.descricao}</TableCell>
+                                        <TableCell>{item.quantidade} {item.unidade_medida}</TableCell>
+                                        <TableCell>
+                                          {item.qtde_atendida || 0} {item.unidade_medida}
+                                          {' '}
+                                          ({Math.round((item.qtde_atendida || 0) / item.quantidade * 100)}%)
+                                        </TableCell>
+                                        <TableCell>
+                                          {item.nfes && item.nfes.length > 0 ? (
+                                            <Box>
+                                              {item.nfes.map(nfe => (
+                                                <Chip
+                                                  key={nfe.id}
+                                                  label={nfe.num_nf}
+                                                  size="small"
+                                                  sx={{ mr: 0.5, mb: 0.5 }}
+                                                  variant="outlined"
+                                                  onClick={() => {
+                                                    // View NFE details or PDF
+                                                  }}
+                                                />
+                                              ))}
+                                            </Box>
+                                          ) : (
+                                            "Sem NFEs vinculadas"
+                                          )}
+                                        </TableCell>
+                                        <TableCell>
+                                          <Button
+                                            variant="outlined"
+                                            color="primary"
+                                            size="small"
+                                            startIcon={<LinkIcon />}
+                                            onClick={() => handleFindNFEMatches(purchase.id, item.id)}
+                                          >
+                                            Vincular NFE
+                                          </Button>
+                                        </TableCell>
+                                      </TableRow>
+                                    ))}
+                                  </TableBody>
+                                </Table>
+                              </Box>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : (
+              <Box sx={{ p: 3, textAlign: 'center' }}>
+                <Typography variant="body1" color="text.secondary">
+                  Nenhum pedido encontrado para o período selecionado.
+                </Typography>
+              </Box>
+            )}
+          </Paper>
+
+          {/* NFE Matching Dialog */}
+          <Dialog
+            open={matchDialogOpen}
+            onClose={() => {
+              setMatchDialogOpen(false);
+              setSelectedNFE(null);
+            }}
+            maxWidth="md"
+            fullWidth
+          >
+            <DialogTitle>
+              Vincular NFE ao Item
+              {currentPurchase && currentItem && (
+                <Typography variant="subtitle2" color="text.secondary">
+                  Pedido: {currentPurchase.cod_pedc} | Item: {currentItem.item_id} - {currentItem.descricao}
+                </Typography>
+              )}
+            </DialogTitle>
+            <DialogContent>
+              {nfeLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+                  <CircularProgress />
+                </Box>
+              ) : suggestedNFEs.length > 0 ? (
+                <Box>
+                  <Typography variant="subtitle1" gutterBottom>
+                    Selecione uma NFE para vincular a este item:
+                  </Typography>
+                  <RadioGroup
+                    value={selectedNFE ? selectedNFE.nfe.id : ''}
+                    onChange={(e, value) => {
+                      const selected = suggestedNFEs.find(nfe => nfe.nfe.id === Number(value));
+                      setSelectedNFE(selected);
+                    }}
+                  >
+                    {suggestedNFEs.map((match) => (
+                      <Paper
+                        key={match.nfe.id}
+                        sx={{
+                          p: 2,
+                          mb: 2,
+                          border: '1px solid',
+                          borderColor: selectedNFE?.nfe.id === match.nfe.id ? 'primary.main' : 'divider',
+                          borderRadius: 2
+                        }}
+                      >
+                        <FormControlLabel
+                          value={match.nfe.id}
+                          control={<Radio />}
+                          label={
+                            <Box>
+                              <Typography variant="subtitle1">
+                                NFE {match.nfe.numero} (Série {match.nfe.serie})
+                              </Typography>
+                              <Typography variant="body2">
+                                Chave: {match.nfe.chave}
+                              </Typography>
+                              <Typography variant="body2">
+                                Emitente: {match.nfe.emitente}
+                              </Typography>
+                              <Typography variant="body2">
+                                Data: {fmtDate(match.nfe.data_emissao)}
+                              </Typography>
+                              <Typography variant="body2">
+                                Valor: {fmtCurrency(match.nfe.valor_total)}
+                              </Typography>
+                              <Box sx={{ mt: 1 }}>
+                                <Chip
+                                  label={`Pontuação: ${Math.round(match.score)}%`}
+                                  color={
+                                    match.score > 80 ? 'success' :
+                                      match.score > 50 ? 'warning' : 'error'
+                                  }
+                                  size="small"
+                                />
+                              </Box>
+                            </Box>
+                          }
+                        />
+                      </Paper>
+                    ))}
+                  </RadioGroup>
+                </Box>
+              ) : (
+                <Typography>
+                  Nenhuma NFE encontrada que corresponda a este item. Verifique se o fornecedor já emitiu a NFE.
+                </Typography>
+              )}
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => {
+                setMatchDialogOpen(false);
+                setSelectedNFE(null);
+              }}>
+                Cancelar
+              </Button>
+              <Button
+                variant="contained"
+                color="primary"
+                disabled={!selectedNFE}
+                onClick={handleAssignNFE}
+              >
+                Vincular NFE Selecionada
+              </Button>
+            </DialogActions>
+          </Dialog>
+
         </Container>
       </Box>
     </Box>

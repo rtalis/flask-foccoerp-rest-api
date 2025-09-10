@@ -1,52 +1,195 @@
-/* Register.css */
+/* Register.css - Responsive styles for user management */
 
-.register-container {
-    display: flex;
+/* Base container styling */
+.user-management-container {
+  transition: padding 0.3s ease;
+}
+
+/* Form card styling */
+.form-card {
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.form-card:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+/* Form section title */
+.section-title {
+  margin-bottom: 16px;
+  font-size: 1.25rem;
+  color: #333;
+  border-bottom: 2px solid #eaeaea;
+  padding-bottom: 8px;
+}
+
+/* Form grid layout */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+/* Form field styling */
+.form-field {
+  width: 100%;
+}
+
+/* Checkbox group container */
+.checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+  margin-bottom: 24px;
+}
+
+/* Button group styling */
+.button-group {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.button-group button {
+  min-width: 120px;
+}
+
+/* Primary action button */
+.primary-button {
+  background-color: #1976d2;
+  color: white;
+  transition: background-color 0.2s;
+}
+
+.primary-button:hover {
+  background-color: #1565c0;
+}
+
+/* Secondary action button */
+.secondary-button {
+  border: 1px solid #9e9e9e;
+  color: #424242;
+}
+
+.secondary-button:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+/* User table styling */
+.users-table-container {
+  margin-top: 40px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.table-header {
+  background-color: #f5f5f5;
+  font-weight: 600;
+}
+
+.table-row {
+  transition: background-color 0.2s;
+}
+
+.table-row:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+.table-row:nth-child(even) {
+  background-color: #fafafa;
+}
+
+.action-cell {
+  white-space: nowrap;
+}
+
+/* Alert notification styling */
+.notification {
+  border-radius: 4px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 960px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .button-group {
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100vh;
-    background-color: #f5f5f5;
+    width: 100%;
   }
   
-  form {
-    background: white;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-    width: 300px;
+  .button-group button {
+    width: 100%;
   }
-  
-  h2 {
-    margin-bottom: 20px;
-  }
-  
-  .error {
-    color: red;
-    margin-bottom: 10px;
-  }
-  
-  div {
-    margin-bottom: 15px;
-  }
-  
+}
 
-  .register-input {
-    width: 100%;
+@media (max-width: 600px) {
+  .user-management-container {
+    padding: 16px 8px;
+  }
+  
+  .form-card {
+    padding: 16px 12px;
+  }
+  
+  .section-title {
+    font-size: 1.1rem;
+  }
+  
+  /* Make table scrollable horizontally on mobile */
+  .users-table-container {
+    overflow-x: auto;
+  }
+  
+  .users-table {
+    min-width: 600px; /* Ensure table doesn't shrink too much */
+  }
+  
+  /* Stack form fields vertically */
+  .form-field {
+    margin-bottom: 12px;
+  }
+  
+  /* Adjust checkbox group for mobile */
+  .checkbox-group {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  /* Make checkboxes more tappable on mobile */
+  .checkbox-label {
+    padding: 8px 0;
+  }
+  
+  /* Larger action buttons for touch */
+  .action-button {
     padding: 8px;
-    box-sizing: border-box;
   }
   
-  .register-button {
-    width: 100%;
-    padding: 10px;
-    background-color: #007bff;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
+  .action-icon {
+    font-size: 1.2rem;
   }
-  
-  .register-button:hover {
-    background-color: #0056b3;
+}
+
+/* Animation for transitions */
+.fade-in {
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Accessibility improvements */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
   }
+}

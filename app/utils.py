@@ -903,3 +903,289 @@ def check_order_fulfillment(order_id):
             return False
     
     return True
+
+def score_purchase_nfe_match(purchase_order_id, nfe_id=None):
+    """
+    Calculate a matching score between a purchase order and an NFE.
+    If nfe_id is None, find and score all potential matches in the database.
+    
+    Returns a score from 0-100 with detailed breakdown of matching criteria.
+    """
+    from app.models import PurchaseOrder, PurchaseItem, NFEData, NFEItem, NFEEmitente, Supplier
+    from fuzzywuzzy import fuzz
+    from datetime import timedelta
+    import re
+    
+    # Get purchase order
+    purchase_order = PurchaseOrder.query.filter_by(cod_pedc=str(purchase_order_id)).first()
+    if not purchase_order:
+        return {"error": "Purchase order not found"}
+        
+    # Get purchase items
+    purchase_items = PurchaseItem.query.filter_by(purchase_order_id=purchase_order.id).all()
+    if not purchase_items:
+        return {"error": "No items found for this purchase order"}
+    
+    # Get supplier information
+    supplier = Supplier.query.filter_by(cod_for=str(purchase_order.fornecedor_id)).first()
+    supplier_cnpj = supplier.nvl_forn_cnpj_forn_cpf if supplier else None
+    if supplier_cnpj:
+        supplier_cnpj = ''.join(filter(str.isdigit, supplier_cnpj))
+    
+    nfe_candidates = []
+    
+    if nfe_id:
+        # If specific NFE ID provided, only score that one
+        nfe = NFEData.query.get(nfe_id)
+        if nfe:
+            nfe_candidates = [nfe]
+    else:
+        # Find NFEs by supplier CNPJ
+        if supplier_cnpj:
+            cnpj_root = supplier_cnpj[:8]  # Get the first 8 digits
+            cnpj_matches = NFEData.query.join(NFEEmitente).filter(
+                NFEEmitente.cnpj.like(f"{cnpj_root}%"),
+                NFEData.data_emissao.between(
+                    purchase_order.dt_emis - timedelta(days=30),
+                    purchase_order.dt_emis + timedelta(days=90)
+                )
+            ).all()
+            nfe_candidates.extend(cnpj_matches)
+
+        # Find NFEs by supplier name if no CNPJ matches
+        if not nfe_candidates:
+            # Get all NFEs in the relevant date range
+            date_range_nfes = NFEData.query.filter(
+                NFEData.data_emissao.between(
+                    purchase_order.dt_emis - timedelta(days=30),
+                    purchase_order.dt_emis + timedelta(days=90)
+                )
+            ).all()
+            
+            # Check supplier name similarity
+            for nfe in date_range_nfes:
+                if nfe.emitente and nfe.emitente.nome and purchase_order.fornecedor_descricao:
+                    name_similarity = fuzz.token_sort_ratio(
+                        purchase_order.fornecedor_descricao.lower(),
+                        nfe.emitente.nome.lower()
+                    )
+                    if name_similarity >= 70:  # 70% name similarity threshold
+                        nfe_candidates.append(nfe)
+    
+    # Calculate scores for each candidate
+    results = []
+    
+    for nfe in nfe_candidates:
+        # Initialize scoring components (total 100 points)
+        score_components = {
+            "supplier_match": 0,       # 20 points
+            "items_match": 0,          # 40 points
+            "total_value_match": 0,    # 30 points
+            "date_proximity": 0        # 10 points
+        }
+        
+        # 1. Supplier matching (20 points)
+        if supplier_cnpj and nfe.emitente and nfe.emitente.cnpj:
+            if supplier_cnpj == nfe.emitente.cnpj:
+                score_components["supplier_match"] = 20  # Perfect CNPJ match
+            else:
+                # Partial CNPJ match check (last 8 digits)
+                if len(supplier_cnpj) >= 8 and len(nfe.emitente.cnpj) >= 8:
+                    if supplier_cnpj[-8:] == nfe.emitente.cnpj[-8:]:
+                        score_components["supplier_match"] = 15
+        
+        # If no CNPJ match, try name matching
+        if score_components["supplier_match"] == 0 and nfe.emitente and nfe.emitente.nome:
+            name_similarity = fuzz.token_sort_ratio(
+                purchase_order.fornecedor_descricao.lower(),
+                nfe.emitente.nome.lower()
+            )
+            score_components["supplier_match"] = (name_similarity / 100) * 20
+        
+        # 2. Items matching (40 points)
+        matched_items = []
+        total_po_items = len(purchase_items)
+        
+        for po_item in purchase_items:
+            best_match = None
+            best_score = 0
+            
+            for nfe_item in nfe.itens:
+                # Description similarity (0-100)
+                desc_similarity = fuzz.token_set_ratio(
+                    po_item.descricao.lower(), 
+                    nfe_item.descricao.lower()
+                )
+                
+                # Extract key words for better matching
+                po_keywords = set(re.findall(r'\b\w{4,}\b', po_item.descricao.lower()))
+                nfe_keywords = set(re.findall(r'\b\w{4,}\b', nfe_item.descricao.lower()))
+                
+                # Calculate keyword overlap
+                if po_keywords and nfe_keywords:
+                    overlap = len(po_keywords.intersection(nfe_keywords)) / len(po_keywords.union(nfe_keywords))
+                    keyword_score = overlap * 100
+                else:
+                    keyword_score = 0
+                
+                # Final description score
+                final_desc_score = max(desc_similarity, keyword_score)
+                
+                # Quantity match (0-100)
+                qty_match = 0
+                if po_item.quantidade and nfe_item.quantidade_comercial:
+                    po_qty = float(po_item.quantidade)
+                    nfe_qty = float(nfe_item.quantidade_comercial)
+                    
+                    if po_qty > 0 and nfe_qty > 0:
+                        # Check if quantities are same or NFE qty is a subset of PO qty
+                        if abs(po_qty - nfe_qty) < 0.01:  # Same quantity
+                            qty_match = 100
+                        elif nfe_qty < po_qty:  # Partial delivery
+                            qty_match = (nfe_qty / po_qty) * 90  # Slightly penalize partial
+                        else:
+                            # NFE quantity is greater than PO
+                            ratio = po_qty / nfe_qty
+                            qty_match = ratio * 80  # More heavily penalize overdelivery
+                
+                # Price match (0-100)
+                price_match = 0
+                if po_item.preco_unitario and nfe_item.valor_unitario_comercial:
+                    po_price = float(po_item.preco_unitario)
+                    nfe_price = float(nfe_item.valor_unitario_comercial)
+                    
+                    if po_price > 0 and nfe_price > 0:
+                        # Calculate price difference percentage
+                        price_diff_pct = abs(po_price - nfe_price) / max(po_price, nfe_price)
+                        
+                        # Score based on how close prices are
+                        if price_diff_pct <= 0.01:  # Within 1%
+                            price_match = 100
+                        elif price_diff_pct <= 0.05:  # Within 5%
+                            price_match = 90
+                        elif price_diff_pct <= 0.10:  # Within 10%
+                            price_match = 75
+                        elif price_diff_pct <= 0.20:  # Within 20%
+                            price_match = 50
+                        else:
+                            price_match = max(0, 100 - (price_diff_pct * 500))  # Linear falloff
+                
+                # Combined item score (weighted: 60% description, 20% quantity, 20% price)
+                item_score = (final_desc_score * 0.6) + (qty_match * 0.2) + (price_match * 0.2)
+                
+                if item_score > best_score:
+                    best_score = item_score
+                    best_match = {
+                        "nfe_item": {
+                            "id": nfe_item.id,
+                            "description": nfe_item.descricao,
+                            "quantity": nfe_item.quantidade_comercial,
+                            "price": nfe_item.valor_unitario_comercial
+                        },
+                        "po_item": {
+                            "id": po_item.id,
+                            "description": po_item.descricao,
+                            "quantity": po_item.quantidade,
+                            "price": po_item.preco_unitario
+                        },
+                        "match_scores": {
+                            "description": final_desc_score,
+                            "quantity": qty_match,
+                            "price": price_match,
+                            "total": item_score
+                        }
+                    }
+            
+            # Only count matches that have a reasonable score
+            if best_score >= 50:
+                matched_items.append(best_match)
+        
+        # Calculate overall items score
+        if total_po_items > 0:
+            # Average score of matched items
+            avg_match_score = sum(m["match_scores"]["total"] for m in matched_items) / total_po_items if matched_items else 0
+            
+            # Percentage of items matched
+            match_coverage = len(matched_items) / total_po_items
+            
+            # Combined score (weighted by coverage)
+            score_components["items_match"] = (avg_match_score / 100) * match_coverage * 40
+        
+        # 3. Total value match (30 points)
+        if purchase_order.total_pedido_com_ipi and nfe.valor_total:
+            po_value = float(purchase_order.total_pedido_com_ipi)
+            nfe_value = float(nfe.valor_total)
+            
+            if po_value > 0 and nfe_value > 0:
+                # Calculate value difference percentage
+                value_diff_pct = abs(po_value - nfe_value) / max(po_value, nfe_value)
+                
+                # Score based on closeness of values
+                if value_diff_pct <= 0.01:  # Within 1%
+                    score_components["total_value_match"] = 30
+                elif value_diff_pct <= 0.05:  # Within 5%
+                    score_components["total_value_match"] = 25
+                elif value_diff_pct <= 0.10:  # Within 10%
+                    score_components["total_value_match"] = 20
+                elif value_diff_pct <= 0.20:  # Within 20%
+                    score_components["total_value_match"] = 15
+                else:
+                    # Partial NFE delivery - check if it's a subset of the PO value
+                    if nfe_value < po_value:
+                        # Calculate what percentage of the PO this NFE represents
+                        coverage_pct = nfe_value / po_value
+                        if coverage_pct >= 0.1:  # At least 10% of PO
+                            score_components["total_value_match"] = coverage_pct * 15
+        
+        # 4. Date proximity (10 points)
+        if purchase_order.dt_emis and nfe.data_emissao:
+            # Calculate days difference
+            days_diff = abs((nfe.data_emissao.date() - purchase_order.dt_emis).days)
+            
+            # Score based on date proximity
+            if days_diff <= 7:  # Within 1 week
+                score_components["date_proximity"] = 10
+            elif days_diff <= 14:  # Within 2 weeks
+                score_components["date_proximity"] = 8
+            elif days_diff <= 30:  # Within 1 month
+                score_components["date_proximity"] = 6
+            elif days_diff <= 60:  # Within 2 months
+                score_components["date_proximity"] = 4
+            elif days_diff <= 90:  # Within 3 months
+                score_components["date_proximity"] = 2
+        
+        # Calculate total score
+        total_score = sum(score_components.values())
+        
+        # Format result
+        result = {
+            "nfe": {
+                "id": nfe.id,
+                "chave": nfe.chave,
+                "numero": nfe.numero,
+                "serie": nfe.serie,
+                "emitente": nfe.emitente.nome if nfe.emitente else None,
+                "cnpj": nfe.emitente.cnpj if nfe.emitente else None,
+                "data_emissao": nfe.data_emissao.isoformat() if nfe.data_emissao else None,
+                "valor_total": nfe.valor_total
+            },
+            "purchase_order": {
+                "id": purchase_order.id,
+                "cod_pedc": purchase_order.cod_pedc,
+                "fornecedor": purchase_order.fornecedor_descricao,
+                "data_emissao": purchase_order.dt_emis.isoformat() if purchase_order.dt_emis else None,
+                "valor_total": purchase_order.total_pedido_com_ipi
+            },
+            "score": total_score,
+            "score_components": score_components,
+            "matched_items": matched_items,
+            "matched_items_count": len(matched_items),
+            "total_items_count": total_po_items
+        }
+        
+        results.append(result)
+    
+    # Sort results by score (descending)
+    results.sort(key=lambda x: x["score"], reverse=True)
+    
+    return results

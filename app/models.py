@@ -79,6 +79,36 @@ class User(UserMixin, db.Model):
     purchaser_name = db.Column(db.String(150), nullable=True)          # Links user to PurchaseOrder.func_nome
     initial_screen = db.Column(db.String(100), nullable=False, default='/dashboard')
     allowed_screens = db.Column(db.JSON, nullable=False, default=list)
+    system_name = db.Column(db.String(150), nullable= True)
+
+class Company(db.Model):
+    __tablename__ = 'companies'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    cod_emp1 = db.Column(db.String(20), unique=True, nullable=False, index=True)
+    name = db.Column(db.String(255), nullable=False)
+    cnpj = db.Column(db.String(18), nullable=True)
+    fantasy_name = db.Column(db.String(255), nullable=True)
+    address = db.Column(db.String(255), nullable=True)
+    neighborhood = db.Column(db.String(100), nullable=True)
+    city = db.Column(db.String(100), nullable=True)
+    state = db.Column(db.String(2), nullable=True)
+    zip_code = db.Column(db.String(10), nullable=True)
+    phone = db.Column(db.String(20), nullable=True)
+    email = db.Column(db.String(100), nullable=True)
+    logo_path = db.Column(db.String(255), nullable=True)
+    inscricao_estadual = db.Column(db.String(50), nullable=True)
+    
+    # Add timestamp fields
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    
+    # Define relationships with other tables
+    purchase_orders = db.relationship('PurchaseOrder', backref='company', lazy=True, 
+                                     primaryjoin="foreign(PurchaseOrder.cod_emp1) == Company.cod_emp1")
+    
+    def __repr__(self):
+        return f"<Company {self.name} ({self.cod_emp1})>" 
 
 
 class LoginHistory(db.Model):

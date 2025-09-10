@@ -158,3 +158,93 @@ def generate_jwt_token():
 @login_required
 def protected():
     return jsonify({'message': 'This is a protected route'}), 200
+
+
+@auth_bp.route('/users', methods=['GET'])
+@login_required
+def get_users():
+    # Only admins can view users
+    if getattr(current_user, 'role', 'viewer') != 'admin':
+        return jsonify({'error': 'Forbidden'}), 403
+        
+    users = User.query.all()
+    result = [{
+        'id': user.id,
+        'username': user.username,
+        'email': user.email,
+        'role': user.role,
+        'purchaser_name': user.purchaser_name,
+        'system_name': user.system_name,
+        'initial_screen': user.initial_screen,
+        'allowed_screens': user.allowed_screens
+    } for user in users]
+    
+    return jsonify(result), 200
+
+@auth_bp.route('/users/<int:user_id>', methods=['PUT'])
+@login_required
+def update_user(user_id):
+    # Only admins can update users
+    if getattr(current_user, 'role', 'viewer') != 'admin':
+        return jsonify({'error': 'Forbidden'}), 403
+        
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    
+    data = request.get_json() or {}
+    
+    # Update fields if provided
+    if 'username' in data and data['username']:
+        username = data['username'].lower()
+        existing = User.query.filter_by(username=username).first()
+        if existing and existing.id != user_id:
+            return jsonify({'error': 'Username already exists'}), 400
+        user.username = username
+        
+    if 'email' in data and data['email']:
+        email = data['email'].lower()
+        existing = User.query.filter_by(email=email).first()
+        if existing and existing.id != user_id:
+            return jsonify({'error': 'Email already exists'}), 400
+        user.email = email
+        
+    if 'password' in data and data['password']:
+        user.password = generate_password_hash(data['password'])
+        
+    if 'role' in data:
+        user.role = data['role']
+        
+    if 'purchaser_name' in data:
+        user.purchaser_name = data['purchaser_name']
+        
+    if 'system_name' in data:
+        user.system_name = data['system_name']
+        
+    if 'initial_screen' in data:
+        user.initial_screen = data['initial_screen']
+        
+    if 'allowed_screens' in data:
+        user.allowed_screens = data['allowed_screens']
+    
+    db.session.commit()
+    return jsonify({'message': 'User updated successfully'}), 200
+
+@auth_bp.route('/users/<int:user_id>', methods=['DELETE'])
+@login_required
+def delete_user(user_id):
+    # Only admins can delete users
+    if getattr(current_user, 'role', 'viewer') != 'admin':
+        return jsonify({'error': 'Forbidden'}), 403
+        
+    # Prevent deleting the main admin user
+    if user_id == 1000:
+        return jsonify({'error': 'Cannot delete the main administrator account'}), 403
+        
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify({'message': 'User deleted successfully'}), 200
