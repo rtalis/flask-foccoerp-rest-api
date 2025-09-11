@@ -6,8 +6,7 @@ import {
   TableBody, TableCell, TableContainer, TableHead, TableRow, AppBar,
   Toolbar, Button, Drawer, List, ListItemButton, ListItemIcon, ListItemText,
   IconButton, Divider, CircularProgress, Alert, MenuItem, Select, FormControl, InputLabel,
-  Tabs, Tab, Chip, Dialog,
-  DialogTitle, DialogContent, DialogActions, Radio, RadioGroup, FormControlLabel
+  Tabs, Tab, Chip, Dialog, DialogTitle, DialogContent, DialogActions, Radio, RadioGroup, FormControlLabel
 } from '@mui/material';
 import {
   Menu as MenuIcon, Dashboard as DashboardIcon, Search as SearchIcon,
@@ -16,7 +15,7 @@ import {
   TrendingUp as TrendingUpIcon, ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon,
   FilterList as FilterIcon, Refresh as RefreshIcon, Link as LinkIcon,
   CheckCircle as CheckCircleIcon, Error as ErrorIcon, Warning as WarningIcon,
-  AssignmentTurnedIn as AssignedIcon, DateRange as DateRangeIcon, KeyboardArrowUp as KeyboardArrowUpIcon, 
+  AssignmentTurnedIn as AssignedIcon, DateRange as DateRangeIcon, KeyboardArrowUp as KeyboardArrowUpIcon,
   KeyboardArrowDown as KeyboardArrowDownIcon,
 } from '@mui/icons-material';
 import {
@@ -36,8 +35,10 @@ const DRAWER_WIDTH_COLLAPSED = 80;
 
 const Dashboard = ({ onLogout }) => {
   const [data, setData] = useState(null);
+  const [monthlyData, setMonthlyData] = useState(null);
   const [months, setMonths] = useState(6);
   const [loading, setLoading] = useState(true);
+  const [monthlyChartLoading, setMonthlyChartLoading] = useState(false);
   const [error, setError] = useState('');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -56,6 +57,7 @@ const Dashboard = ({ onLogout }) => {
   const [selectedNFE, setSelectedNFE] = useState(null);
   const [nfeLoading, setNfeLoading] = useState(false);
   const [userInfo, setUserInfo] = useState(null);
+  const [showMonthlyChart, setShowMonthlyChart] = useState(false);
 
   const navigate = useNavigate();
 
@@ -83,11 +85,6 @@ const Dashboard = ({ onLogout }) => {
           avg_order_value: Number(d?.summary?.avg_order_value ?? 0),
           total_suppliers: Number(d?.summary?.total_suppliers ?? 0),
         },
-        monthly_data: Array.isArray(d?.monthly_data) ? d.monthly_data.map(x => ({
-          month: String(x?.month ?? ''),
-          order_count: Number(x?.order_count ?? 0),
-          total_value: Number(x?.total_value ?? 0),
-        })) : [],
         buyer_data: Array.isArray(d?.buyer_data) ? d.buyer_data.map(x => ({
           name: String(x?.name ?? ''),
           order_count: Number(x?.order_count ?? 0),
@@ -121,6 +118,31 @@ const Dashboard = ({ onLogout }) => {
     }
   };
 
+  const fetchMonthlyData = async () => {
+    try {
+      setMonthlyChartLoading(true);
+      const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/dashboard_summary`, {
+        params: {
+          months: Math.ceil((dateRange.end - dateRange.start) / (1000 * 60 * 60 * 24 * 30)),
+          start_date: dateRange.start.toISOString().split('T')[0],
+          end_date: dateRange.end.toISOString().split('T')[0]
+        },
+        withCredentials: true
+      });
+      const d = res.data || {};
+
+      setMonthlyData(Array.isArray(d?.monthly_data) ? d.monthly_data.map(x => ({
+        month: String(x?.month ?? ''),
+        order_count: Number(x?.order_count ?? 0),
+        total_value: Number(x?.total_value ?? 0),
+      })) : []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setMonthlyChartLoading(false);
+    }
+  };
+
   const fetchUserInfo = async () => {
     try {
       const response = await axios.get(`${process.env.REACT_APP_API_URL}/auth/me`, {
@@ -138,7 +160,6 @@ const Dashboard = ({ onLogout }) => {
       const startFormatted = dateRange.start.toISOString().split('T')[0];
       const endFormatted = dateRange.end.toISOString().split('T')[0];
 
-      // This should be adapted to call your backend API to get user-specific purchases
       const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/user_purchases`, {
         params: {
           start_date: startFormatted,
@@ -192,7 +213,7 @@ const Dashboard = ({ onLogout }) => {
           purchase_id: currentPurchase.id,
           item_id: currentItem.id,
           nfe_id: selectedNFE.nfe.id,
-          quantity: currentItem.quantidade // You might want to allow partial fulfillment
+          quantity: currentItem.quantidade
         },
         { withCredentials: true }
       );
@@ -202,7 +223,6 @@ const Dashboard = ({ onLogout }) => {
 
       // Refresh purchase data
       fetchPurchases();
-
     } catch (err) {
       console.error('Error assigning NFE:', err);
     }
@@ -219,18 +239,37 @@ const Dashboard = ({ onLogout }) => {
     }
   }, [userInfo, dateRange, statusFilter]);
 
+  // Handle date range change and load monthly chart
+  const handleDateRangeChange = (type, newValue) => {
+    setDateRange(prev => ({ ...prev, [type]: newValue }));
+  };
+
+  const handleLoadMonthlyChart = () => {
+    setShowMonthlyChart(true);
+    fetchMonthlyData();
+  };
+
   const handleDrawerToggle = () => setMobileOpen(!mobileOpen);
   const handleSidebarCollapse = () => setSidebarOpen(v => !v);
   const handleNav = (path) => { navigate(path); };
   const handleLogout = () => { onLogout(); navigate('/login'); };
-  const handleTabChange = (event, newValue) => setTabValue(newValue);
+  const handleTabChange = (event, newValue) => {
+    setTabValue(newValue);
+    const statusMap = {
+      0: 'pending',
+      1: 'partial',
+      2: 'fulfilled'
+    };
+
+    setStatusFilter(statusMap[newValue]);
+  };
 
   const fmtCurrency = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v || 0));
   const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString('pt-BR') : '—');
 
   // Monthly line (total value)
   const monthlyChart = useMemo(() => {
-    const rows = Array.isArray(data?.monthly_data) ? data.monthly_data : [];
+    const rows = Array.isArray(monthlyData) ? monthlyData : [];
     return {
       labels: rows.map(r => String(r?.month ?? '')),
       datasets: [
@@ -249,7 +288,7 @@ const Dashboard = ({ onLogout }) => {
         }
       ]
     };
-  }, [data]);
+  }, [monthlyData]);
 
   // Buyer purchases chart data
   const buyerPurchasesChart = useMemo(() => {
@@ -519,6 +558,307 @@ const Dashboard = ({ onLogout }) => {
             </Typography>
           </Box>
 
+          {/* Purchase Tracking */}
+          <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 8px 24px rgba(0,0,0,0.06)', mb: 3 }}>
+            <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2 }}>
+              Acompanhamento de Pedidos
+            </Typography>
+
+            <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+              <Tabs value={tabValue} onChange={handleTabChange} aria-label="purchase tabs">
+                <Tab
+                  label={
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <ErrorIcon sx={{ mr: 1, fontSize: 20 }} />
+                      Pendentes
+                    </Box>
+                  }
+                />
+                <Tab
+                  label={
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <WarningIcon sx={{ mr: 1, fontSize: 20 }} />
+                      Parciais
+                    </Box>
+                  }
+                />
+                <Tab
+                  label={
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <CheckCircleIcon sx={{ mr: 1, fontSize: 20 }} />
+                      Atendidos
+                    </Box>
+                  }
+                />
+              </Tabs>
+            </Box>
+
+            {/* Filter controls */}
+            <Box sx={{ mb: 3, display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
+              <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ptBR}>
+                <DatePicker
+                  label="Data Inicial"
+                  value={dateRange.start}
+                  onChange={(newValue) => handleDateRangeChange('start', newValue)}
+                  slotProps={{ textField: { size: 'small', sx: { width: 180 } } }}
+                  format="dd/MM/yyyy"
+                />
+
+                <DatePicker
+                  label="Data Final"
+                  value={dateRange.end}
+                  onChange={(newValue) => handleDateRangeChange('end', newValue)}
+                  slotProps={{ textField: { size: 'small', sx: { width: 180 } } }}
+                  format="dd/MM/yyyy"
+                />
+              </LocalizationProvider>
+
+              <FormControl size="small" sx={{ minWidth: 180 }}>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={statusFilter}
+                  onChange={(e) => {
+                    const newStatus = e.target.value;
+                    setStatusFilter(newStatus);
+                    if (newStatus === 'pending') setTabValue(0);
+                    else if (newStatus === 'partial') setTabValue(1);
+                    else if (newStatus === 'fulfilled') setTabValue(2);
+                    else setTabValue(0); // Default to first tab for 'all'
+                  }}
+                  label="Status"
+                >
+                  <MenuItem value="all">Todos</MenuItem>
+                  <MenuItem value="pending">Pendentes</MenuItem>
+                  <MenuItem value="partial">Parciais</MenuItem>
+                  <MenuItem value="fulfilled">Atendidos</MenuItem>
+                </Select>
+              </FormControl>
+
+              <Button
+                variant="outlined"
+                startIcon={<RefreshIcon />}
+                onClick={fetchPurchases}
+                sx={{ height: 40 }}
+              >
+                Atualizar
+              </Button>
+
+              {!showMonthlyChart && (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleLoadMonthlyChart}
+                  sx={{ height: 40, ml: 'auto' }}
+                >
+                  Visualizar Gráfico Mensal
+                </Button>
+              )}
+            </Box>
+
+            {/* Purchases table */}
+            {purchaseLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : purchaseData.length > 0 ? (
+              <TableContainer>
+                <Table sx={{ minWidth: 650 }}>
+                  <TableHead>
+                    <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                      <TableCell>Nº Pedido</TableCell>
+                      <TableCell>Data</TableCell>
+                      <TableCell>Fornecedor</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Valor Total</TableCell>
+                      <TableCell>Ações</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {purchaseData.map((purchase) => (
+                      <React.Fragment key={purchase.id}>
+                        <TableRow hover>
+                          <TableCell>{purchase.cod_pedc}</TableCell>
+                          <TableCell>{fmtDate(purchase.dt_emis)}</TableCell>
+                          <TableCell>{purchase.fornecedor_descricao}</TableCell>
+                          <TableCell>
+                            {getStatusChip(purchase.status)}
+                          </TableCell>
+                          <TableCell>{fmtCurrency(purchase.total_pedido_com_ipi)}</TableCell>
+                          <TableCell>
+                            <IconButton
+                              size="small"
+                              onClick={() => {
+                                // Toggle expanded row
+                                const updatedData = purchaseData.map(p =>
+                                  p.id === purchase.id
+                                    ? { ...p, expanded: !p.expanded }
+                                    : p
+                                );
+                                setPurchaseData(updatedData);
+                              }}
+                            >
+                              {purchase.expanded ?
+                                <KeyboardArrowUpIcon /> :
+                                <KeyboardArrowDownIcon />
+                              }
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+
+                        {/* Expanded row for items */}
+                        {purchase.expanded && (
+                          <TableRow>
+                            <TableCell colSpan={6} sx={{ py: 0 }}>
+                              <Box sx={{ margin: 1 }}>
+                                <Typography variant="subtitle2" gutterBottom component="div">
+                                  Itens do Pedido
+                                </Typography>
+                                <Table size="small" aria-label="items">
+                                  <TableHead>
+                                    <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                                      <TableCell>Item</TableCell>
+                                      <TableCell>Descrição</TableCell>
+                                      <TableCell>Quantidade</TableCell>
+                                      <TableCell>Qtd. Atendida</TableCell>
+                                      <TableCell>NFEs</TableCell>
+                                      <TableCell>Ações</TableCell>
+                                    </TableRow>
+                                  </TableHead>
+                                  <TableBody>
+                                    {purchase.items.map((item) => (
+                                      <TableRow key={item.id}>
+                                        <TableCell>{item.item_id}</TableCell>
+                                        <TableCell>{item.descricao}</TableCell>
+                                        <TableCell>{item.quantidade} {item.unidade_medida}</TableCell>
+                                        <TableCell>
+                                          {item.qtde_atendida || 0} {item.unidade_medida}
+                                          {' '}
+                                          ({Math.round((item.qtde_atendida || 0) / item.quantidade * 100)}%)
+                                        </TableCell>
+                                        <TableCell>
+                                          {item.nfes && item.nfes.length > 0 ? (
+                                            <Box>
+                                              {item.nfes.map(nfe => (
+                                                <Chip
+                                                  key={nfe.id}
+                                                  label={nfe.num_nf}
+                                                  size="small"
+                                                  sx={{ mr: 0.5, mb: 0.5 }}
+                                                  variant="outlined"
+                                                  onClick={() => {
+                                                    // View NFE details or PDF
+                                                  }}
+                                                />
+                                              ))}
+                                            </Box>
+                                          ) : (
+                                            "Sem NFEs vinculadas"
+                                          )}
+                                        </TableCell>
+                                        <TableCell>
+                                          <Button
+                                            variant="outlined"
+                                            color="primary"
+                                            size="small"
+                                            startIcon={<LinkIcon />}
+                                            onClick={() => handleFindNFEMatches(purchase.id, item.id)}
+                                          >
+                                            Vincular NFE
+                                          </Button>
+                                        </TableCell>
+                                      </TableRow>
+                                    ))}
+                                  </TableBody>
+                                </Table>
+                              </Box>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : (
+              <Box sx={{ p: 3, textAlign: 'center' }}>
+                <Typography variant="body1" color="text.secondary">
+                  Nenhum pedido encontrado para o período selecionado.
+                </Typography>
+              </Box>
+            )}
+          </Paper>
+
+          {/* Monthly Chart - Only shown after user requests it */}
+          {showMonthlyChart && (
+            <Grid container spacing={3} sx={{ mb: 3 }}>
+              <Grid item xs={12}>
+                <Paper
+                  sx={{
+                    p: 3,
+                    borderRadius: 3,
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.06)',
+                    width: '96%',
+                    maxWidth: '100%'
+                  }}
+                >
+                  <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
+                    Total de Compras por Mês
+                  </Typography>
+                  <Box
+                    sx={{
+                      height: { xs: 350, md: 400 },
+                      width: '100%',
+                      mx: 'auto'
+                    }}
+                  >
+                    {monthlyChartLoading ? (
+                      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                        <CircularProgress />
+                      </Box>
+                    ) : monthlyData?.length > 0 ? (
+                      <Line
+                        data={monthlyChart}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          resizeDelay: 100,
+                          plugins: {
+                            legend: { position: 'top' },
+                            tooltip: {
+                              backgroundColor: 'white',
+                              titleColor: '#222',
+                              bodyColor: '#222',
+                              borderColor: '#e1e1e1',
+                              borderWidth: 1,
+                              padding: 12,
+                              boxPadding: 6,
+                              usePointStyle: true,
+                              callbacks: {
+                                label: (ctx) => `R$ ${ctx.parsed.y.toLocaleString('pt-BR')}`
+                              }
+                            }
+                          },
+                          scales: {
+                            y: {
+                              beginAtZero: true,
+                              grid: { borderDash: [5, 5], color: 'rgba(0,0,0,0.06)' },
+                              ticks: { callback: v => `R$ ${Number(v).toLocaleString('pt-BR')}` }
+                            },
+                            x: { grid: { display: false } }
+                          }
+                        }}
+                      />
+                    ) : (
+                      <Typography variant="body2" sx={{ color: 'text.secondary', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        Sem dados para o período selecionado.
+                      </Typography>
+                    )}
+                  </Box>
+                </Paper>
+              </Grid>
+            </Grid>
+          )}
+
           {/* KPIs */}
           <Grid container spacing={3} sx={{ mb: 3 }}>
             <Grid item xs={12} sm={6} md={3}>
@@ -694,283 +1034,6 @@ const Dashboard = ({ onLogout }) => {
             </Grid>
           </Grid>
 
-          {/* Monthly Chart */}
-          <Grid container spacing={3} sx={{ mb: 3 }}>
-            <Grid item xs={12}>
-              <Paper
-                sx={{
-                  p: 3,
-                  borderRadius: 3,
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.06)',
-                  width: '96%',
-                  maxWidth: '100%'
-                }}
-              >
-                <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
-                  Total de Compras por Mês
-                </Typography>
-                <Box
-                  sx={{
-                    height: { xs: 350, md: 400 },
-                    width: '100%',
-                    mx: 'auto'
-                  }}
-                >
-                  {data?.monthly_data?.length > 0 ? (
-                    <Line
-                      data={monthlyChart}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        resizeDelay: 100,
-                        plugins: {
-                          legend: { position: 'top' },
-                          tooltip: {
-                            backgroundColor: 'white',
-                            titleColor: '#222',
-                            bodyColor: '#222',
-                            borderColor: '#e1e1e1',
-                            borderWidth: 1,
-                            padding: 12,
-                            boxPadding: 6,
-                            usePointStyle: true,
-                            callbacks: {
-                              label: (ctx) => `R$ ${ctx.parsed.y.toLocaleString('pt-BR')}`
-                            }
-                          }
-                        },
-                        scales: {
-                          y: {
-                            beginAtZero: true,
-                            grid: { borderDash: [5, 5], color: 'rgba(0,0,0,0.06)' },
-                            ticks: { callback: v => `R$ ${Number(v).toLocaleString('pt-BR')}` }
-                          },
-                          x: { grid: { display: false } }
-                        }
-                      }}
-                    />
-                  ) : (
-                    <Typography variant="body2" sx={{ color: 'text.secondary', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      Sem dados para o período.
-                    </Typography>
-                  )}
-                </Box>
-              </Paper>
-            </Grid>
-          </Grid>
-
-          {/* Purchase Tracking Section */}
-          <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 8px 24px rgba(0,0,0,0.06)', mb: 3 }}>
-            <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2 }}>
-              Acompanhamento de Pedidos
-            </Typography>
-
-            <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-              <Tabs value={tabValue} onChange={handleTabChange} aria-label="purchase tabs">
-                <Tab
-                  label={
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <ErrorIcon sx={{ mr: 1, fontSize: 20 }} />
-                      Pendentes
-                    </Box>
-                  }
-                />
-                <Tab
-                  label={
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <WarningIcon sx={{ mr: 1, fontSize: 20 }} />
-                      Parciais
-                    </Box>
-                  }
-                />
-                <Tab
-                  label={
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <CheckCircleIcon sx={{ mr: 1, fontSize: 20 }} />
-                      Atendidos
-                    </Box>
-                  }
-                />
-              </Tabs>
-            </Box>
-
-            {/* Filter controls */}
-            <Box sx={{ mb: 3, display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
-              <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ptBR}>
-                <DatePicker
-                  label="Data Inicial"
-                  value={dateRange.start}
-                  onChange={(newValue) => setDateRange(prev => ({ ...prev, start: newValue }))}
-                  slotProps={{ textField: { size: 'small', sx: { width: 180 } } }}
-                  format="dd/MM/yyyy"
-                />
-
-                <DatePicker
-                  label="Data Final"
-                  value={dateRange.end}
-                  onChange={(newValue) => setDateRange(prev => ({ ...prev, end: newValue }))}
-                  slotProps={{ textField: { size: 'small', sx: { width: 180 } } }}
-                  format="dd/MM/yyyy"
-                />
-              </LocalizationProvider>
-
-              <FormControl size="small" sx={{ minWidth: 180 }}>
-                <InputLabel>Status</InputLabel>
-                <Select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  label="Status"
-                >
-                  <MenuItem value="all">Todos</MenuItem>
-                  <MenuItem value="pending">Pendentes</MenuItem>
-                  <MenuItem value="partial">Parciais</MenuItem>
-                  <MenuItem value="fulfilled">Atendidos</MenuItem>
-                </Select>
-              </FormControl>
-
-              <Button
-                variant="outlined"
-                startIcon={<RefreshIcon />}
-                onClick={fetchPurchases}
-                sx={{ height: 40 }}
-              >
-                Atualizar
-              </Button>
-            </Box>
-
-            {/* Purchases table */}
-            {purchaseLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-                <CircularProgress />
-              </Box>
-            ) : purchaseData.length > 0 ? (
-              <TableContainer>
-                <Table sx={{ minWidth: 650 }}>
-                  <TableHead>
-                    <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
-                      <TableCell>Nº Pedido</TableCell>
-                      <TableCell>Data</TableCell>
-                      <TableCell>Fornecedor</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell>Valor Total</TableCell>
-                      <TableCell>Ações</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {purchaseData.map((purchase) => (
-                      <React.Fragment key={purchase.id}>
-                        <TableRow hover>
-                          <TableCell>{purchase.cod_pedc}</TableCell>
-                          <TableCell>{fmtDate(purchase.dt_emis)}</TableCell>
-                          <TableCell>{purchase.fornecedor_descricao}</TableCell>
-                          <TableCell>
-                            {getStatusChip(purchase.status)}
-                          </TableCell>
-                          <TableCell>{fmtCurrency(purchase.total_pedido_com_ipi)}</TableCell>
-                          <TableCell>
-                            <IconButton
-                              size="small"
-                              onClick={() => {
-                                // Toggle expanded row
-                                const updatedData = purchaseData.map(p =>
-                                  p.id === purchase.id
-                                    ? { ...p, expanded: !p.expanded }
-                                    : p
-                                );
-                                setPurchaseData(updatedData);
-                              }}
-                            >
-                              {purchase.expanded ?
-                                <KeyboardArrowUpIcon /> :
-                                <KeyboardArrowDownIcon />
-                              }
-                            </IconButton>
-                          </TableCell>
-                        </TableRow>
-
-                        {/* Expanded row for items */}
-                        {purchase.expanded && (
-                          <TableRow>
-                            <TableCell colSpan={6} sx={{ py: 0 }}>
-                              <Box sx={{ margin: 1 }}>
-                                <Typography variant="subtitle2" gutterBottom component="div">
-                                  Itens do Pedido
-                                </Typography>
-                                <Table size="small" aria-label="items">
-                                  <TableHead>
-                                    <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
-                                      <TableCell>Item</TableCell>
-                                      <TableCell>Descrição</TableCell>
-                                      <TableCell>Quantidade</TableCell>
-                                      <TableCell>Qtd. Atendida</TableCell>
-                                      <TableCell>NFEs</TableCell>
-                                      <TableCell>Ações</TableCell>
-                                    </TableRow>
-                                  </TableHead>
-                                  <TableBody>
-                                    {purchase.items.map((item) => (
-                                      <TableRow key={item.id}>
-                                        <TableCell>{item.item_id}</TableCell>
-                                        <TableCell>{item.descricao}</TableCell>
-                                        <TableCell>{item.quantidade} {item.unidade_medida}</TableCell>
-                                        <TableCell>
-                                          {item.qtde_atendida || 0} {item.unidade_medida}
-                                          {' '}
-                                          ({Math.round((item.qtde_atendida || 0) / item.quantidade * 100)}%)
-                                        </TableCell>
-                                        <TableCell>
-                                          {item.nfes && item.nfes.length > 0 ? (
-                                            <Box>
-                                              {item.nfes.map(nfe => (
-                                                <Chip
-                                                  key={nfe.id}
-                                                  label={nfe.num_nf}
-                                                  size="small"
-                                                  sx={{ mr: 0.5, mb: 0.5 }}
-                                                  variant="outlined"
-                                                  onClick={() => {
-                                                    // View NFE details or PDF
-                                                  }}
-                                                />
-                                              ))}
-                                            </Box>
-                                          ) : (
-                                            "Sem NFEs vinculadas"
-                                          )}
-                                        </TableCell>
-                                        <TableCell>
-                                          <Button
-                                            variant="outlined"
-                                            color="primary"
-                                            size="small"
-                                            startIcon={<LinkIcon />}
-                                            onClick={() => handleFindNFEMatches(purchase.id, item.id)}
-                                          >
-                                            Vincular NFE
-                                          </Button>
-                                        </TableCell>
-                                      </TableRow>
-                                    ))}
-                                  </TableBody>
-                                </Table>
-                              </Box>
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </React.Fragment>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            ) : (
-              <Box sx={{ p: 3, textAlign: 'center' }}>
-                <Typography variant="body1" color="text.secondary">
-                  Nenhum pedido encontrado para o período selecionado.
-                </Typography>
-              </Box>
-            )}
-          </Paper>
-
           {/* NFE Matching Dialog */}
           <Dialog
             open={matchDialogOpen}
@@ -1077,7 +1140,6 @@ const Dashboard = ({ onLogout }) => {
               </Button>
             </DialogActions>
           </Dialog>
-
         </Container>
       </Box>
     </Box>
