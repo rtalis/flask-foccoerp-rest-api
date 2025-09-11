@@ -39,7 +39,7 @@ def sync_nfe_for_yesterday():
         
         # Calculate date range for yesterday
         today = datetime.now().date()
-        yesterday = today - timedelta(days=90)
+        yesterday = today - timedelta(days=1)
         start_date_str = yesterday.strftime('%Y-%m-%dT00:00:00.000Z')
         end_date_str = yesterday.strftime('%Y-%m-%dT23:59:59.999Z')
         

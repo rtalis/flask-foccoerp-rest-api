@@ -1991,7 +1991,6 @@ def get_user_purchases():
     if not user:
         return jsonify({'error': 'User not found'}), 404
     
-    # Filter purchases by user role and name
     query = PurchaseOrder.query.filter(
         PurchaseOrder.dt_emis.between(start_date, end_date)
     )
@@ -2006,17 +2005,13 @@ def get_user_purchases():
             query = query.filter(PurchaseOrder.is_fulfilled == False)
         elif status == 'fulfilled':
             query = query.filter(PurchaseOrder.is_fulfilled == True)
-        # 'partial' requires additional processing below
     
-    # Execute query and sort by date (newest first)
     purchase_orders = query.order_by(PurchaseOrder.dt_emis.desc()).all()
     
     result = []
     for order in purchase_orders:
-        # Get items for this order
         items = PurchaseItem.query.filter_by(purchase_order_id=order.id).all()
         
-        # Calculate fulfillment status
         total_items = len(items)
         fulfilled_items = 0
         partially_fulfilled_items = 0
@@ -2058,7 +2053,6 @@ def get_user_purchases():
                 'nfes': nfes_data
             })
         
-        # Determine order status
         order_status = 'pending'
         if fulfilled_items == total_items:
             order_status = 'fulfilled'
@@ -2101,22 +2095,18 @@ def assign_nfe_to_item():
     quantity = data.get('quantity', 0)
     
     try:
-        # Get purchase order
         purchase = PurchaseOrder.query.get(purchase_id)
         if not purchase:
             return jsonify({'error': 'Purchase order not found'}), 404
             
-        # Get purchase item
         item = PurchaseItem.query.get(item_id)
         if not item:
             return jsonify({'error': 'Purchase item not found'}), 404
             
-        # Get NFE
         nfe = NFEData.query.get(nfe_id)
         if not nfe:
             return jsonify({'error': 'NFE not found'}), 404
             
-        # Create NFEntry record to link them
         nf_entry = NFEntry(
             cod_emp1=purchase.cod_emp1,
             cod_pedc=item.cod_pedc,

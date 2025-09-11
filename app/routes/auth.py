@@ -77,6 +77,7 @@ def register():
     role = data.get('role', 'viewer')
     initial_screen = data.get('initial_screen', '/dashboard')
     allowed_screens = data.get('allowed_screens', ['/dashboard'])
+    system_name = data.get('system_name', '')
 
     if not username or not email or not password:
         return jsonify({'error': 'Missing fields'}), 400
@@ -91,7 +92,8 @@ def register():
         role=role,
         purchaser_name=purchaser_name,
         initial_screen=initial_screen,
-        allowed_screens=allowed_screens
+        allowed_screens=allowed_screens,
+        system_name=system_name
     )
     db.session.add(new_user)
     db.session.commit()
@@ -226,7 +228,10 @@ def update_user(user_id):
         
     if 'allowed_screens' in data:
         user.allowed_screens = data['allowed_screens']
-    
+
+    if 'system_name' in data:
+        user.system_name = data['system_name']
+
     db.session.commit()
     return jsonify({'message': 'User updated successfully'}), 200
 
