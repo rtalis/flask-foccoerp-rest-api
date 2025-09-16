@@ -13,9 +13,9 @@ import {
   Compare as CompareIcon, Upload as UploadIcon, Logout as LogoutIcon,
   ShoppingCart as ShoppingCartIcon, Receipt as ReceiptIcon, Business as BusinessIcon,
   TrendingUp as TrendingUpIcon, ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon,
-  FilterList as FilterIcon, Refresh as RefreshIcon, Link as LinkIcon,
+ Refresh as RefreshIcon, Link as LinkIcon,
   CheckCircle as CheckCircleIcon, Error as ErrorIcon, Warning as WarningIcon,
-  AssignmentTurnedIn as AssignedIcon, DateRange as DateRangeIcon, KeyboardArrowUp as KeyboardArrowUpIcon,
+ KeyboardArrowUp as KeyboardArrowUpIcon,
   KeyboardArrowDown as KeyboardArrowDownIcon,
 } from '@mui/icons-material';
 import {
@@ -57,7 +57,6 @@ const Dashboard = ({ onLogout }) => {
   const [selectedNFE, setSelectedNFE] = useState(null);
   const [nfeLoading, setNfeLoading] = useState(false);
   const [userInfo, setUserInfo] = useState(null);
-  const [showMonthlyChart, setShowMonthlyChart] = useState(false);
 
   const navigate = useNavigate();
 
@@ -231,7 +230,8 @@ const Dashboard = ({ onLogout }) => {
   useEffect(() => {
     fetchData(months);
     fetchUserInfo();
-  }, [months]);
+    fetchMonthlyData();
+  }, [months], [fetchMonthlyData]);
 
   useEffect(() => {
     if (userInfo) {
@@ -244,10 +244,6 @@ const Dashboard = ({ onLogout }) => {
     setDateRange(prev => ({ ...prev, [type]: newValue }));
   };
 
-  const handleLoadMonthlyChart = () => {
-    setShowMonthlyChart(true);
-    fetchMonthlyData();
-  };
 
   const handleDrawerToggle = () => setMobileOpen(!mobileOpen);
   const handleSidebarCollapse = () => setSidebarOpen(v => !v);
@@ -643,16 +639,7 @@ const Dashboard = ({ onLogout }) => {
                 Atualizar
               </Button>
 
-              {!showMonthlyChart && (
-                <Button
-                  variant="contained"
-                  color="primary"
-                  onClick={handleLoadMonthlyChart}
-                  sx={{ height: 40, ml: 'auto' }}
-                >
-                  Visualizar Gráfico Mensal
-                </Button>
-              )}
+      
             </Box>
 
             {/* Purchases table */}
@@ -789,7 +776,7 @@ const Dashboard = ({ onLogout }) => {
           </Paper>
 
           {/* Monthly Chart - Only shown after user requests it */}
-          {showMonthlyChart && (
+
             <Grid container spacing={3} sx={{ mb: 3 }}>
               <Grid item xs={12}>
                 <Paper
@@ -857,7 +844,7 @@ const Dashboard = ({ onLogout }) => {
                 </Paper>
               </Grid>
             </Grid>
-          )}
+       
 
           {/* KPIs */}
           <Grid container spacing={3} sx={{ mb: 3 }}>
