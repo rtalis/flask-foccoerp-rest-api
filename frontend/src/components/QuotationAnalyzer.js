@@ -56,6 +56,12 @@ const QuotationAnalyzer = () => {
   const fileInputRef = useRef(null);
   const [dragActive, setDragActive] = useState(false);
   const quotationDataRef = useRef(null);
+  const [editingCell, setEditingCell] = useState(null);
+  const [editValue, setEditValue] = useState('');
+  const [editedCells, setEditedCells] = useState({});
+  const [referenceFile, setReferenceFile] = useState(null);
+  const [loadingReference, setLoadingReference] = useState(false);
+  const referenceFileInputRef = useRef(null);
 
   const resultsRef = useRef(null);
 
@@ -104,6 +110,95 @@ const QuotationAnalyzer = () => {
       setLoading(false);
     }
   };
+
+
+
+const processReferenceFile = async (fileToProcess) => {
+  const fileToUse = fileToProcess || referenceFile;
+  
+  console.log('Processing reference file:', fileToUse);
+  
+  if (!fileToUse) {
+    setSnackbar({
+      open: true,
+      message: 'Por favor, selecione um arquivo de referência',
+      severity: 'warning'
+    });
+    return;
+  }
+
+  // Continue with existing code, but replace all instances of referenceFile with fileToUse
+  setLoadingReference(true);
+  setError(null);
+
+  try {
+    let processingMessage = 'Processando arquivo de referência...';
+    if (fileToUse.type.includes('pdf')) {
+        processingMessage = 'Extraindo dados do PDF. Isso pode levar alguns instantes...';
+      } else if (fileToUse.type.includes('image')) {
+        processingMessage = 'Analisando imagem. Isso pode levar alguns instantes...';
+      }
+
+      setSnackbar({
+        open: true,
+        message: processingMessage,
+        severity: 'info'
+      });
+
+      const formData = new FormData();
+      formData.append('reference_file', fileToUse);
+
+      formData.append('file_type', fileToUse.type);
+
+      const response = await axios.post(
+        `${process.env.REACT_APP_API_URL}/api/extract_reference_data`,
+        formData,
+        {
+          withCredentials: true,
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          },
+          timeout: fileToUse.type.includes('pdf') || fileToUse.type.includes('image')
+            ? 60000
+            : 30000
+        }
+      );
+
+      setQuotationData(response.data);
+      setCodCotacao(response.data.cod_cot || codCotacao || 1);
+      setSnackbar({
+        open: true,
+        message: 'Dados de referência extraídos com sucesso!',
+        severity: 'success'
+      });
+
+      setTimeout(() => {
+        if (quotationDataRef.current) {
+          quotationDataRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 500);
+    } catch (err) {
+      console.error('Error processing file:', err);
+
+      let errorMessage = 'Erro ao processar arquivo de referência';
+      if (fileToUse.type.includes('pdf')) {
+        errorMessage = 'Erro ao extrair texto do PDF. Verifique se o arquivo não está protegido.';
+      } else if (fileToUse.type.includes('image')) {
+        errorMessage = 'Erro ao analisar imagem. Verifique se a imagem é legível.';
+      }
+
+      setError(err.response?.data?.error || errorMessage);
+      setSnackbar({
+        open: true,
+        message: err.response?.data?.error || errorMessage,
+        severity: 'error'
+      });
+    } finally {
+      setLoadingReference(false);
+    }
+  };
+
+
 
   const getFirstWords = (text, numWords) => {
     if (!text) return ''; // Verifica se o texto é undefined ou null
@@ -221,7 +316,7 @@ const QuotationAnalyzer = () => {
       if (result.success) {
         setSnackbar({
           open: true,
-          message: 'Exportação para Excel concluída!',
+          message: 'Exportação para Excel concluída com os valores editados!',
           severity: 'success'
         });
       } else {
@@ -250,6 +345,137 @@ const QuotationAnalyzer = () => {
     }).format(value);
   };
 
+  const handleCellClick = (itemIndex, supplierIndex, currentValue) => {
+    setEditingCell({ itemIndex, supplierIndex });
+    setEditValue(currentValue ? currentValue.toString() : '');
+  };
+
+  const handleCellChange = (e) => {
+    setEditValue(e.target.value);
+  };
+
+  const handleCellBlur = () => {
+    if (editingCell) {
+      applyPriceChange();
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      applyPriceChange();
+    } else if (e.key === 'Escape') {
+      setEditingCell(null);
+    }
+  };
+
+  const applyPriceChange = () => {
+    if (!editingCell) return;
+
+    const { itemIndex, supplierIndex } = editingCell;
+    const newValue = parseFloat(editValue);
+
+    if (isNaN(newValue)) {
+      setEditingCell(null);
+      return;
+    }
+
+    const updatedData = JSON.parse(JSON.stringify(extractedData));
+
+    // First, get the consolidated item from the table
+    // We need to reconstruct the uniqueItems map just like in the render function
+    const uniqueItems = new Map();
+
+    // Process all supplier data to find unique items
+    updatedData.existingItems.forEach(item => {
+      const key = item.descricao;
+      if (!uniqueItems.has(key)) {
+        uniqueItems.set(key, {
+          item_id: item.item_id,
+          description: item.descricao,
+          quantity: item.quantidade,
+          last_purchase: item.last_purchase,
+          supplier_prices: Array(updatedData.extractedData.length).fill(null)
+        });
+      }
+    });
+
+    // Add items from extracted data
+    updatedData.extractedData.forEach((supplier, spIndex) => {
+      supplier.items.forEach(item => {
+        const key = item.matchedItemDescription || item.description;
+
+        if (!uniqueItems.has(key)) {
+          uniqueItems.set(key, {
+            item_id: item.code,
+            description: key,
+            quantity: item.quantity,
+            manufacturer: item.manufacturer,
+            last_purchase: item.lastPurchase,
+            supplier_prices: Array(updatedData.extractedData.length).fill(null)
+          });
+        }
+
+        // Update supplier price info
+        const uniqueItem = uniqueItems.get(key);
+        uniqueItem.supplier_prices[spIndex] = {
+          price: item.unitPrice,
+          priceDiff: item.priceDifferencePercent,
+          confidence: item.matchConfidence
+        };
+      });
+    });
+
+    // Convert to array and sort as in the render function
+    const uniqueItemsArray = Array.from(uniqueItems.values())
+      .sort((a, b) => a.description.localeCompare(b.description));
+
+    // Get the description of the item being edited
+    const targetItem = uniqueItemsArray[itemIndex];
+    if (!targetItem) {
+      setEditingCell(null);
+      return;
+    }
+
+    // Now find the matching item in the supplier's items
+    const supplier = updatedData.extractedData[supplierIndex];
+    const itemToUpdate = supplier.items.find(item =>
+      item.matchedItemDescription === targetItem.description ||
+      item.description === targetItem.description
+    );
+
+    if (itemToUpdate) {
+      const originalValue = itemToUpdate.unitPrice;
+
+      // Only mark as edited if value actually changed
+      if (originalValue !== newValue) {
+        // Track edited cells with unique key
+        const cellKey = `${itemIndex}-${supplierIndex}`;
+        setEditedCells(prev => ({
+          ...prev,
+          [cellKey]: {
+            original: originalValue,
+            new: newValue
+          }
+        }));
+
+        // Update the data
+        itemToUpdate.unitPrice = newValue;
+
+        if (itemToUpdate.lastPurchase && itemToUpdate.lastPurchase.price) {
+          const lastPrice = itemToUpdate.lastPurchase.price;
+          itemToUpdate.priceDifferencePercent = ((newValue - lastPrice) / lastPrice) * 100;
+        }
+
+        // Also update the consolidatedItem's supplier price for consistency
+        if (targetItem.supplier_prices[supplierIndex]) {
+          targetItem.supplier_prices[supplierIndex].price = newValue;
+        }
+      }
+    }
+
+    setExtractedData(updatedData);
+    setEditingCell(null);
+  };
 
   return (
     <Container maxWidth="95%" className="quotation-extractor">
@@ -258,8 +484,13 @@ const QuotationAnalyzer = () => {
           Extração de Dados de Cotações
         </Typography>
 
-        <Grid container spacing={2}  alignItems="stretch" sx={{ mb: 3 }}>
-          <Grid item xs={12}>
+        <Typography variant="body1" gutterBottom sx={{ mb: 3 }}>
+          Para iniciar a extração de dados, você pode fornecer o código da cotação ou fazer upload de um arquivo de referência.
+        </Typography>
+
+        <Grid container spacing={2} alignItems="center" sx={{ mb: 3 }}>
+          {/* Quotation code input field */}
+          <Grid item xs={12} md={12}>
             <TextField
               fullWidth
               label="Código da Cotação"
@@ -285,21 +516,73 @@ const QuotationAnalyzer = () => {
             />
           </Grid>
 
-          <Grid item xs={12}>
+
+
+          {/* Buscar Cotação button */}
+          <Grid item xs={12} md={6}>
             <Button
               variant="contained"
               color="primary"
               startIcon={<SearchIcon />}
               onClick={fetchQuotationData}
-              disabled={loading}
+              disabled={loading || loadingReference || !codCotacao}
               fullWidth
               sx={{ height: '56px' }}
             >
               {loading ? <CircularProgress size={24} /> : 'Buscar Cotação'}
             </Button>
           </Grid>
-        </Grid>
 
+          {/* Reference file upload */}
+          <Grid item xs={12} md={6}>
+            <input
+              accept=".xls,.xlsx,.csv,.pdf,.jpg,.jpeg,.png"
+              style={{ display: 'none' }}
+              id="reference-file-button"
+              type="file"
+              ref={referenceFileInputRef}
+              onChange={(e) => {
+                if (e.target.files && e.target.files[0]) {
+                  const selectedFile = e.target.files[0];
+                  setReferenceFile(selectedFile);
+                  setTimeout(() => {
+                    processReferenceFile(selectedFile); 
+                  }, 100);
+                }
+              }}
+            />
+            <label htmlFor="reference-file-button" style={{ width: '100%', display: 'block' }}>
+              <Button
+                variant="outlined"
+                color="secondary"
+                component="span"
+                fullWidth
+                startIcon={
+                  loadingReference ? (
+                    <CircularProgress size={20} />
+                  ) : referenceFile ? (
+                    referenceFile.type.includes('pdf') ? (
+                      <PdfIcon color="error" />
+                    ) : referenceFile.type.includes('image') ? (
+                      <ImageIcon color="primary" />
+                    ) : (
+                      <DescriptionIcon color="success" />
+                    )
+                  ) : (
+                    <FileIcon />
+                  )
+                }
+                sx={{ height: '56px' }}
+              >
+                {loadingReference
+                  ? 'Processando Arquivo...'
+                  : referenceFile
+                    ? 'Arquivo selecionado: ' + referenceFile.name
+                    : 'Ou Importar de Arquivo (Beta)'}
+              </Button>
+            </label>
+          </Grid>
+        </Grid>
 
 
         {/* Display quotation data immediately after searching */}
@@ -496,7 +779,10 @@ const QuotationAnalyzer = () => {
 
             <Card className="section-card">
               <Box className="section-content">
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    <i>Dica: Clique nos valores para editar preços diretamente na tabela.</i>
+                  </Typography>
                   <Button
                     variant="contained"
                     color="success"
@@ -654,18 +940,51 @@ const QuotationAnalyzer = () => {
                                 {/* Render each supplier's price data in separate columns */}
                                 {item.supplier_prices.map((supplierPrice, spIndex) => {
                                   const isBestPrice = supplierPrice && supplierPrice.price === bestPrice && supplierPrice.price > 0;
+                                  const isEditing = editingCell &&
+                                    editingCell.itemIndex === index &&
+                                    editingCell.supplierIndex === spIndex;
+
+                                  const cellKey = `${index}-${spIndex}`;
+                                  const isEdited = cellKey in editedCells;
+
                                   return (
                                     <TableCell
                                       key={spIndex}
                                       align="center"
+                                      onClick={() => handleCellClick(index, spIndex, supplierPrice?.price)}
                                       sx={{
                                         backgroundColor: isBestPrice ? 'rgba(76, 175, 80, 0.15)' : 'inherit',
                                         fontWeight: isBestPrice ? 'bold' : 'normal',
                                         borderLeft: spIndex === 0 ? '2px solid #ccc' : '1px solid #ccc',
-                                        borderRight: '1px solid #ccc'
+                                        borderRight: '1px solid #ccc',
+                                        cursor: 'pointer',
+                                        '&:hover': {
+                                          backgroundColor: isEditing ? 'inherit' : 'rgba(0, 0, 0, 0.04)'
+                                        },
+                                        position: 'relative',
+                                        padding: isEditing ? '4px 8px' : undefined,
+                                        border: isEdited ? '2px solid #1976d2' : undefined
                                       }}
                                     >
-                                      {supplierPrice ? formatCurrency(supplierPrice.price) : '—'}
+                                      {isEditing ? (
+                                        <TextField
+                                          value={editValue}
+                                          onChange={handleCellChange}
+                                          onBlur={handleCellBlur}
+                                          onKeyDown={handleKeyDown}
+                                          autoFocus
+                                          size="small"
+                                          variant="outlined"
+                                          type="number"
+                                          inputProps={{
+                                            style: { padding: '6px', textAlign: 'center' },
+                                            step: '0.01'
+                                          }}
+                                          sx={{ width: '100%' }}
+                                        />
+                                      ) : (
+                                        supplierPrice ? formatCurrency(supplierPrice.price) : '—'
+                                      )}
                                     </TableCell>
                                   );
                                 })}

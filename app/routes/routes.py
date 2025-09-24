@@ -1,3 +1,4 @@
+from datetime import datetime
 from urllib import response
 from fuzzywuzzy import process, fuzz
 from flask import Blueprint, redirect, request, jsonify
@@ -1035,14 +1036,10 @@ def extract_quotation_data():
     import google.generativeai as genai
     from datetime import datetime
 
-    # Check if files were uploaded
     if not request.files:
         return jsonify({'error': 'No files uploaded'}), 400
     
-    # Get quotation reference number if provided
-    cod_cot = request.form.get('cod_cot', '')
     
-    # Setup Google Generative AI (Gemini)
     gemini_api_key = Config.GEMINI_API_KEY
     if not gemini_api_key:
         return jsonify({'error': 'GEMINI_API_KEY not set in environment'}), 500
@@ -1050,43 +1047,8 @@ def extract_quotation_data():
     genai.configure(api_key=gemini_api_key)
     
     try:
-        # Fetch existing items if we have a quotation code
         existing_items = []
-        items_descriptions = []
-        
-        if cod_cot:
-            quotations = Quotation.query.filter_by(cod_cot=cod_cot).all()
-            for quotation in quotations:
-                # Store item descriptions for prompt
-                if quotation.descricao and quotation.descricao not in items_descriptions:
-                    items_descriptions.append(quotation.descricao)
-                
-                existing_item = {
-                    'item_id': quotation.item_id,
-                    'descricao': quotation.descricao,
-                    'quantidade': quotation.quantidade,
-                    'preco_unitario': quotation.preco_unitario,
-                    'fornecedor_id': quotation.fornecedor_id,
-                    'fornecedor_descricao': quotation.fornecedor_descricao
-                }
-                
-                # Get last purchase data
-                last_purchase = PurchaseItem.query.join(PurchaseOrder)\
-                    .filter(PurchaseItem.descricao.ilike(f"%{quotation.descricao}%"))\
-                    .order_by(PurchaseOrder.dt_emis.desc())\
-                    .first()
-                
-                if last_purchase:
-                    existing_item['last_purchase'] = {
-                        'price': last_purchase.preco_unitario,
-                        'date': last_purchase.purchase_order.dt_emis,
-                        'cod_pedc': last_purchase.cod_pedc,
-                        'fornecedor': last_purchase.purchase_order.fornecedor_descricao
-                    }
-                
-                existing_items.append(existing_item)
-
-        # Process uploaded files
+        items_descriptions = []        
         temp_files = []
         file_types = []
         
@@ -1170,10 +1132,8 @@ def extract_quotation_data():
                         continue
             
             elif file_type == 'excel':
-                # Extract data from Excel
                 try:
                     import pandas as pd
-                    # Read all sheets
                     excel_data = pd.read_excel(file_path, sheet_name=None)
                     excel_text = "Excel file content:\n\n"
                     
@@ -1187,7 +1147,6 @@ def extract_quotation_data():
                     continue
             
             elif file_type == 'image':
-                # Process image directly
                 try:
                     with open(file_path, 'rb') as img_file:
                         img_data = img_file.read()
@@ -1251,13 +1210,8 @@ def extract_quotation_data():
             Caso não consiga identificar algum valor, use valores vazios para strings ("") e 0 para números.
             """
             
-            # Add the prompt to the beginning of content_parts
-            all_parts = [prompt] + content_parts
-            
-            # Make request to Gemini
-            response = model.generate_content(all_parts)
-            
-            # Parse and process response
+            all_parts = [prompt] + content_parts            
+            response = model.generate_content(all_parts)            
             response_text = response.text
             
             # Extract JSON from response
@@ -1272,13 +1226,11 @@ def extract_quotation_data():
                     print(f"Invalid JSON in response: {json_match.group(1)}")
             else:
                 try:
-                    # Try to parse the whole response as JSON
                     supplier_data = json.loads(response_text)
                     extracted_data.append(supplier_data)
                 except json.JSONDecodeError:
                     print("Could not extract JSON from response")
         
-        # Match extracted items with existing items (for cases where Gemini didn't provide matches)
         matched_results = []
         
         for supplier_data in extracted_data:
@@ -1292,21 +1244,16 @@ def extract_quotation_data():
             for item in supplier_data.get("items", []):
                 matched_item = item.copy()
                 
-                # If Gemini already provided a match, use it
                 if "matchedItemDescription" in item and item["matchedItemDescription"]:
-                    # Find the corresponding item_id in existing_items
                     for existing_item in existing_items:
                         if existing_item.get("descricao", "").lower() == item["matchedItemDescription"].lower():
                             matched_item["matchedItemId"] = existing_item.get("item_id", "")
                             
-                            # Determine confidence based on exact match
                             matched_item["matchConfidence"] = "Alta"
                             
-                            # Add last purchase info if available
                             if "last_purchase" in existing_item:
                                 matched_item["lastPurchase"] = existing_item["last_purchase"]
                                 
-                                # Calculate price difference percentage
                                 last_price = existing_item["last_purchase"].get("price", 0)
                                 current_price = item.get("unitPrice", 0)
                                 
@@ -1315,7 +1262,6 @@ def extract_quotation_data():
                                     matched_item["priceDifferencePercent"] = round(price_diff_pct, 2)
                             break
                 else:
-                    # Fallback to our own matching logic if Gemini didn't provide a match
                     best_match = None
                     best_match_score = 0
                     
@@ -1377,7 +1323,7 @@ def extract_quotation_data():
         
         return jsonify({
             "extractedData": matched_results,
-            "existingItems": existing_items if cod_cot else []
+            "existingItems": existing_items 
         }), 200
         
     except Exception as e:
@@ -2086,13 +2032,14 @@ def get_user_purchases():
 def assign_nfe_to_item():
     data = request.json
     
-    if not data or not all(k in data for k in ['purchase_id', 'item_id', 'nfe_id']):
+    if not data or not all(k in data for k in ['purchase_id', 'item_id']):
         return jsonify({'error': 'Missing required fields'}), 400
     
     purchase_id = data.get('purchase_id')
     item_id = data.get('item_id')
     nfe_id = data.get('nfe_id')
     quantity = data.get('quantity', 0)
+    mark_as_completed = data.get('mark_as_completed', False)
     
     try:
         purchase = PurchaseOrder.query.get(purchase_id)
@@ -2103,34 +2050,465 @@ def assign_nfe_to_item():
         if not item:
             return jsonify({'error': 'Purchase item not found'}), 404
             
-        nfe = NFEData.query.get(nfe_id)
-        if not nfe:
-            return jsonify({'error': 'NFE not found'}), 404
+        if nfe_id:
+            nfe = NFEData.query.get(nfe_id)
+            if not nfe:
+                return jsonify({'error': 'NFE not found'}), 404
+                
+            nf_entry = NFEntry(
+                cod_emp1=purchase.cod_emp1,
+                cod_pedc=item.cod_pedc,
+                linha=item.linha,
+                num_nf=nfe.numero,
+                dt_ent=nfe.data_emissao,
+                qtde=str(quantity)
+            )
+            db.session.add(nf_entry)
             
-        nf_entry = NFEntry(
-            cod_emp1=purchase.cod_emp1,
-            cod_pedc=item.cod_pedc,
-            linha=item.linha,
-            num_nf=nfe.numero,
-            dt_ent=nfe.data_emissao,
-            qtde=str(quantity)
-        )
-        
-        db.session.add(nf_entry)
-        
         # Update item's fulfilled quantity
-        if item.qtde_atendida is None:
-            item.qtde_atendida = quantity
-        else:
-            item.qtde_atendida += quantity
+        if mark_as_completed or nfe_id:
+            if item.qtde_atendida is None:
+                item.qtde_atendida = quantity
+            else:
+                item.qtde_atendida += quantity
+                
+            # Check if order is now fulfilled
+            purchase.is_fulfilled = check_order_fulfillment(purchase.id)
             
-        # Check if order is now fulfilled
-        purchase.is_fulfilled = check_order_fulfillment(purchase.id)
-        
         db.session.commit()
         
-        return jsonify({'message': 'NFE successfully linked to purchase item'}), 200
+        return jsonify({'message': 'Item successfully marked as completed/invoiced'}), 200
     
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+
+@bp.route('/view_danfe_template/<int:nfe_id>', methods=['GET'])
+@login_required
+def view_danfe_template(nfe_id):
+    """Render the DANFE using the template from cfirmo33/template-nfe"""
+    from app.models import NFEData, NFEItem, NFEEmitente, NFEDestinatario
+    
+    nfe = NFEData.query.get(nfe_id)
+    if not nfe:
+        return jsonify({'error': 'NFE not found'}), 404
+    
+    # Format the data for the template
+    danfe_data = {
+        'chave': nfe.chave,
+        'numero': nfe.numero,
+        'serie': nfe.serie,
+        'data_emissao': nfe.data_emissao.strftime('%d/%m/%Y %H:%M:%S') if nfe.data_emissao else '',
+        'natureza_operacao': nfe.natureza_operacao,
+        'protocolo': nfe.protocolo,
+        'valor_total': nfe.valor_total,
+        'emitente': {
+            'nome': nfe.emitente.nome if nfe.emitente else '',
+            'cnpj': nfe.emitente.cnpj if nfe.emitente else '',
+            'endereco': f"{nfe.emitente.logradouro}, {nfe.emitente.numero}" if nfe.emitente else '',
+            'bairro': nfe.emitente.bairro if nfe.emitente else '',
+            'municipio': nfe.emitente.municipio if nfe.emitente else '',
+            'uf': nfe.emitente.uf if nfe.emitente else '',
+            'cep': nfe.emitente.cep if nfe.emitente else '',
+            'telefone': nfe.emitente.telefone if nfe.emitente else '',
+        },
+        'destinatario': {
+            'nome': nfe.destinatario.nome if nfe.destinatario else '',
+            'cnpj': nfe.destinatario.cnpj if nfe.destinatario else '',
+            'endereco': f"{nfe.destinatario.logradouro}, {nfe.destinatario.numero}" if nfe.destinatario else '',
+            'bairro': nfe.destinatario.bairro if nfe.destinatario else '',
+            'municipio': nfe.destinatario.municipio if nfe.destinatario else '',
+            'uf': nfe.destinatario.uf if nfe.destinatario else '',
+            'cep': nfe.destinatario.cep if nfe.destinatario else '',
+        },
+        'itens': [
+            {
+                'codigo': item.codigo,
+                'descricao': item.descricao,
+                'quantidade': item.quantidade_comercial,
+                'unidade': item.unidade_comercial,
+                'valor_unitario': item.valor_unitario_comercial,
+                'valor_total': item.valor_total_bruto,
+                'ncm': item.ncm,
+                'cfop': item.cfop,
+            } for item in nfe.itens
+        ]
+    }
+    
+    # You would use the template from cfirmo33/template-nfe here
+    # For now, render a simple HTML template with the data
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>DANFE - {nfe.numero}</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 0; padding: 20px; }}
+            .danfe-container {{ border: 1px solid #ccc; padding: 20px; max-width: 800px; margin: 0 auto; }}
+            .header {{ display: flex; justify-content: space-between; border-bottom: 1px solid #ccc; padding-bottom: 10px; }}
+            .section {{ margin: 15px 0; }}
+            .section-title {{ font-weight: bold; background: #f5f5f5; padding: 5px; }}
+            .grid {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }}
+            .item {{ margin-bottom: 5px; }}
+            .items-table {{ width: 100%; border-collapse: collapse; }}
+            .items-table th, .items-table td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+            .items-table th {{ background-color: #f5f5f5; }}
+            .totals {{ text-align: right; margin-top: 20px; }}
+        </style>
+    </head>
+    <body>
+        <div class="danfe-container">
+            <div class="header">
+                <div>
+                    <h2>DANFE</h2>
+                    <p>Documento Auxiliar da Nota Fiscal Eletrônica</p>
+                </div>
+                <div>
+                    <p><strong>Número:</strong> {danfe_data['numero']}</p>
+                    <p><strong>Série:</strong> {danfe_data['serie']}</p>
+                    <p><strong>Data Emissão:</strong> {danfe_data['data_emissao']}</p>
+                </div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Chave de Acesso</div>
+                <p>{danfe_data['chave']}</p>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Protocolo de Autorização</div>
+                <p>{danfe_data['protocolo']}</p>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Natureza da Operação</div>
+                <p>{danfe_data['natureza_operacao']}</p>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Emitente</div>
+                <div class="grid">
+                    <div class="item"><strong>Nome:</strong> {danfe_data['emitente']['nome']}</div>
+                    <div class="item"><strong>CNPJ:</strong> {danfe_data['emitente']['cnpj']}</div>
+                    <div class="item"><strong>Endereço:</strong> {danfe_data['emitente']['endereco']}</div>
+                    <div class="item"><strong>Bairro:</strong> {danfe_data['emitente']['bairro']}</div>
+                    <div class="item"><strong>Município:</strong> {danfe_data['emitente']['municipio']}</div>
+                    <div class="item"><strong>UF:</strong> {danfe_data['emitente']['uf']}</div>
+                    <div class="item"><strong>CEP:</strong> {danfe_data['emitente']['cep']}</div>
+                    <div class="item"><strong>Telefone:</strong> {danfe_data['emitente']['telefone']}</div>
+                </div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Destinatário</div>
+                <div class="grid">
+                    <div class="item"><strong>Nome:</strong> {danfe_data['destinatario']['nome']}</div>
+                    <div class="item"><strong>CNPJ:</strong> {danfe_data['destinatario']['cnpj']}</div>
+                    <div class="item"><strong>Endereço:</strong> {danfe_data['destinatario']['endereco']}</div>
+                    <div class="item"><strong>Bairro:</strong> {danfe_data['destinatario']['bairro']}</div>
+                    <div class="item"><strong>Município:</strong> {danfe_data['destinatario']['municipio']}</div>
+                    <div class="item"><strong>UF:</strong> {danfe_data['destinatario']['uf']}</div>
+                    <div class="item"><strong>CEP:</strong> {danfe_data['destinatario']['cep']}</div>
+                </div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Produtos / Serviços</div>
+                <table class="items-table">
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Descrição</th>
+                            <th>NCM</th>
+                            <th>CFOP</th>
+                            <th>Qtd</th>
+                            <th>Un</th>
+                            <th>Valor Unit.</th>
+                            <th>Valor Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {''.join([f"<tr><td>{item['codigo']}</td><td>{item['descricao']}</td><td>{item['ncm']}</td><td>{item['cfop']}</td><td>{item['quantidade']}</td><td>{item['unidade']}</td><td>R$ {item['valor_unitario']:.2f}</td><td>R$ {item['valor_total']:.2f}</td></tr>" for item in danfe_data['itens']])}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="totals">
+                <p><strong>Valor Total da Nota:</strong> R$ {danfe_data['valor_total']:.2f}</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    return html
+
+@bp.route('/auto_match_nfes', methods=['GET'])
+@login_required
+def auto_match_nfes():
+    """Find potential NFE matches for pending purchase orders"""
+    from app.utils import score_purchase_nfe_match
+    
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    min_score = request.args.get('min_score', default=50, type=int)
+    limit = request.args.get('limit', default=10, type=int)
+    
+    # Query purchase orders that are not fully fulfilled
+    query = PurchaseOrder.query.filter(PurchaseOrder.is_fulfilled == False)
+    
+    # Filter by date if provided
+    if start_date:
+        query = query.filter(PurchaseOrder.dt_emis >= start_date)
+    if end_date:
+        query = query.filter(PurchaseOrder.dt_emis <= end_date)
+    
+    # Get purchases for the current user if not admin
+    if current_user.role != 'admin' and current_user.system_name:
+        query = query.filter(PurchaseOrder.func_nome.ilike(f'%{current_user.system_name}%'))
+    
+    # Get recent unfulfilled orders
+    purchase_orders = query.order_by(PurchaseOrder.dt_emis.desc()).limit(100).all()
+    
+    results = []
+    for po in purchase_orders:
+        # Skip if no items
+        items = PurchaseItem.query.filter_by(purchase_order_id=po.id).all()
+        if not items:
+            continue
+            
+        # Find potential matches
+        matches = score_purchase_nfe_match(po.cod_pedc)
+        
+        # Filter by minimum score
+        good_matches = [m for m in matches if m["score"] >= min_score]
+        if not good_matches:
+            continue
+            
+        # Take best match
+        best_match = good_matches[0]
+        
+        # Add to results
+        results.append({
+            'purchase_order': {
+                'id': po.id,
+                'cod_pedc': po.cod_pedc,
+                'dt_emis': po.dt_emis.isoformat() if po.dt_emis else None,
+                'fornecedor_descricao': po.fornecedor_descricao,
+                'total_pedido_com_ipi': po.total_pedido_com_ipi,
+                'item_count': len(items)
+            },
+            'best_match': best_match
+        })
+    
+    # Sort by match score (highest first)
+    results.sort(key=lambda x: x['best_match']['score'], reverse=True)
+    
+    # Limit results
+    results = results[:limit]
+    
+    return jsonify(results), 200
+
+
+@bp.route('/extract_reference_data', methods=['POST'])
+@login_required
+def extract_reference_data():
+    import json
+    import tempfile
+    import os
+    import google.generativeai as genai
+    from datetime import datetime
+
+    # Check if file was uploaded
+    if 'reference_file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+        
+    file = request.files['reference_file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+    
+    file_extension = file.filename.split('.')[-1].lower()
+    file_type = request.form.get('file_type', '')
+    
+    try:
+        temp_file_path = os.path.join(tempfile.gettempdir(), file.filename)
+        file.save(temp_file_path)
+        
+        # Configure Google Generative AI (Gemini)
+        gemini_api_key = Config.GEMINI_API_KEY
+        if not gemini_api_key:
+            return jsonify({'error': 'GEMINI_API_KEY not set in environment'}), 500
+        
+        genai.configure(api_key=gemini_api_key)
+        generation_config = {
+            "temperature": 0.1,
+            "top_p": 0.95,
+            "top_k": 40,
+            "max_output_tokens": 4096,
+        }
+        
+        model = genai.GenerativeModel(
+            model_name="gemini-2.0-flash",
+            generation_config=generation_config
+        )
+        
+        content_parts = []
+        
+        # Process based on file type
+        if file_extension in ['csv', 'xlsx', 'xls']:
+            # Use existing code for Excel/CSV files
+            import pandas as pd
+            if file_extension == 'csv':
+                df = pd.read_csv(temp_file_path)
+            else:
+                df = pd.read_excel(temp_file_path)
+                
+            # Convert dataframe to text for AI processing
+            excel_text = "Excel file content:\n\n"
+            for sheet_name, sheet_df in pd.read_excel(temp_file_path, sheet_name=None).items():
+                excel_text += f"Sheet: {sheet_name}\n"
+                excel_text += sheet_df.to_string(index=False, max_rows=100) + "\n\n"
+            
+            content_parts.append(excel_text)
+            
+        elif file_extension == 'pdf':
+            # Extract text from PDF
+            try:
+                import PyPDF2
+                text_content = ""
+                with open(temp_file_path, 'rb') as pdf_file:
+                    pdf_reader = PyPDF2.PdfReader(pdf_file)
+                    for page_num in range(len(pdf_reader.pages)):
+                        text_content += pdf_reader.pages[page_num].extract_text()
+                
+                if text_content.strip():
+                    content_parts.append(text_content)
+                else:
+                    # If text extraction yields no results, convert PDF to image
+                    try:
+                        from pdf2image import convert_from_path
+                        images = convert_from_path(temp_file_path, dpi=300, first_page=1, last_page=5)
+                        
+                        for img in images:
+                            import io
+                            img_byte_arr = io.BytesIO()
+                            img.save(img_byte_arr, format='PNG')
+                            img_byte_arr = img_byte_arr.getvalue()
+                            
+                            content_parts.append({
+                                "mime_type": "image/png",
+                                "data": img_byte_arr
+                            })
+                    except Exception as e2:
+                        return jsonify({'error': f'Failed to process PDF as image: {str(e2)}'}), 500
+            except Exception as e:
+                return jsonify({'error': f'Failed to extract text from PDF: {str(e)}'}), 500
+                
+        elif file_extension in ['jpg', 'jpeg', 'png']:
+            # Process image directly
+            try:
+                with open(temp_file_path, 'rb') as img_file:
+                    img_data = img_file.read()
+                    
+                content_parts.append({
+                    "mime_type": f"image/{file_extension}",
+                    "data": img_data
+                })
+            except Exception as e:
+                return jsonify({'error': f'Failed to process image: {str(e)}'}), 500
+        else:
+            return jsonify({'error': 'Formato de arquivo não suportado'}), 400
+        
+        # Create prompt for AI to extract structured data
+        prompt = """
+        Você é um assistente especializado em extrair informações estruturadas de documentos. 
+        Analise o conteúdo fornecido e identifique uma lista de itens com suas características:
+        
+        1. Código do item (se disponível)
+        2. Descrição detalhada do item
+        3. Quantidade (se disponível)
+        4. Unidade de medida (se disponível)
+        
+        Retorne apenas um objeto JSON seguindo esta estrutura:
+        {
+            "items": [
+                {
+                    "item_id": "código do item ou string vazia se não disponível",
+                    "descricao": "descrição completa do item",
+                    "quantidade": 0, // número ou 0 se não disponível
+                    "unidade_medida": "unidade de medida ou string vazia se não disponível"
+                },
+                // mais itens conforme necessário
+            ]
+        }
+
+        Se não conseguir identificar alguma informação, use valores padrão: string vazia para textos e 0 para números.
+        Não inclua nenhum outro texto ou explicação na sua resposta, apenas o JSON.
+        """
+        
+        # Add prompt to content parts
+        all_parts = [prompt] + content_parts
+        
+        # Send to AI model
+        response = model.generate_content(all_parts)
+        response_text = response.text
+        
+        # Parse JSON from response
+        try:
+            # Try to extract JSON if wrapped in markdown code blocks
+            import re
+            json_match = re.search(r'```(?:json)?\s*(.*?)\s*```', response_text, re.DOTALL)
+            
+            if json_match:
+                ai_result = json.loads(json_match.group(1))
+            else:
+                # Try to parse the whole response as JSON
+                ai_result = json.loads(response_text)
+        except json.JSONDecodeError as e:
+            return jsonify({'error': f'Failed to parse AI response as JSON: {str(e)}'}), 500
+        
+        # Process extracted items
+        items = []
+        for item_data in ai_result.get('items', []):
+            item_id = item_data.get('item_id', '')
+            description = item_data.get('descricao', '')
+            quantity = item_data.get('quantidade', 0)
+            
+            item = {
+                'item_id': item_id,
+                'descricao': description,
+                'quantidade': quantity,
+                'last_purchase': None
+            }
+            
+            # Look up last purchase data if item_id exists
+            if item_id:
+                last_purchase = PurchaseItem.query.filter_by(item_id=item_id).order_by(PurchaseItem.dt_emis.desc()).first()
+                if last_purchase:
+                    item['last_purchase'] = {
+                        'fornecedor': last_purchase.purchase_order.fornecedor_descricao,
+                        'price': last_purchase.preco_unitario,
+                        'date': last_purchase.purchase_order.dt_emis,
+                        'cod_pedc': last_purchase.cod_pedc
+                    }
+            
+            items.append(item)
+        
+        # Format the response to match quotation_items endpoint
+        response_data = {
+            'cod_cot': 'REF-' + datetime.now().strftime('%Y%m%d%H%M%S'),
+            'dt_emissao': datetime.now().isoformat(),
+            'items': items
+        }
+        
+        return jsonify(response_data), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Error processing file: {str(e)}'}), 500
+    finally:
+        # Clean up temp file
+        if os.path.exists(temp_file_path):
+            try:
+                os.unlink(temp_file_path)
+            except:
+                pass

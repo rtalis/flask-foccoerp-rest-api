@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Box, Container, Grid, Paper, Typography, Card, CardContent, Table,
   TableBody, TableCell, TableContainer, TableHead, TableRow, AppBar,
-  Toolbar, Button, Drawer, List, ListItemButton, ListItemIcon, ListItemText,
+  Toolbar, Button, Drawer, List, ListItemButton, ListItemIcon, ListItemText,LinearProgress,
   IconButton, Divider, CircularProgress, Alert, MenuItem, Select, FormControl, InputLabel,
   Tabs, Tab, Chip, Dialog, DialogTitle, DialogContent, DialogActions, Radio, RadioGroup, FormControlLabel
 } from '@mui/material';
@@ -13,9 +13,9 @@ import {
   Compare as CompareIcon, Upload as UploadIcon, Logout as LogoutIcon,
   ShoppingCart as ShoppingCartIcon, Receipt as ReceiptIcon, Business as BusinessIcon,
   TrendingUp as TrendingUpIcon, ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon,
- Refresh as RefreshIcon, Link as LinkIcon,
+  Refresh as RefreshIcon, Link as LinkIcon,
   CheckCircle as CheckCircleIcon, Error as ErrorIcon, Warning as WarningIcon,
- KeyboardArrowUp as KeyboardArrowUpIcon,
+  KeyboardArrowUp as KeyboardArrowUpIcon,
   KeyboardArrowDown as KeyboardArrowDownIcon,
 } from '@mui/icons-material';
 import {
@@ -57,6 +57,10 @@ const Dashboard = ({ onLogout }) => {
   const [selectedNFE, setSelectedNFE] = useState(null);
   const [nfeLoading, setNfeLoading] = useState(false);
   const [userInfo, setUserInfo] = useState(null);
+
+  const [suggestedMatches, setSuggestedMatches] = useState([]);
+  const [suggestedMatchesLoading, setSuggestedMatchesLoading] = useState(false);
+
 
   const navigate = useNavigate();
 
@@ -159,7 +163,8 @@ const Dashboard = ({ onLogout }) => {
       const startFormatted = dateRange.start.toISOString().split('T')[0];
       const endFormatted = dateRange.end.toISOString().split('T')[0];
 
-      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/user_purchases`, {
+      // Fetch purchases
+      const purchaseResponse = await axios.get(`${process.env.REACT_APP_API_URL}/api/user_purchases`, {
         params: {
           start_date: startFormatted,
           end_date: endFormatted,
@@ -169,7 +174,31 @@ const Dashboard = ({ onLogout }) => {
         withCredentials: true
       });
 
-      setPurchaseData(response.data);
+      // Fetch probability matches
+      const matchesResponse = await axios.get(`${process.env.REACT_APP_API_URL}/api/auto_match_nfes`, {
+        params: {
+          start_date: startFormatted,
+          end_date: endFormatted,
+          min_score: 0, // Get all matches to show probability for all
+          limit: 100
+        },
+        withCredentials: true
+      });
+
+      const purchaseData = purchaseResponse.data;
+      const matchesData = matchesResponse.data || [];
+
+      const enhancedPurchaseData = purchaseData.map(purchase => {
+        const match = matchesData.find(m => m.purchase_order.cod_pedc === purchase.cod_pedc);
+        return {
+          ...purchase,
+          matchProbability: match ? match.best_match.score : null,
+          matchDetails: match ? match.best_match : null,
+          status: match && match.best_match.score >= 85 ? 'probable_match' : purchase.status
+        };
+      });
+
+      setPurchaseData(enhancedPurchaseData);
     } catch (err) {
       console.error('Error fetching purchases:', err);
     } finally {
@@ -177,7 +206,7 @@ const Dashboard = ({ onLogout }) => {
     }
   };
 
-  const handleFindNFEMatches = async (purchaseId, itemId) => {
+  const handleMarkAsInvoiced = async (purchaseId, itemId) => {
     try {
       setNfeLoading(true);
       setMatchDialogOpen(true);
@@ -188,17 +217,82 @@ const Dashboard = ({ onLogout }) => {
       setCurrentPurchase(purchase);
       setCurrentItem(item);
 
-      // Call the API to get NFE match suggestions
-      const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/match_purchase_nfe/${purchase.cod_pedc}`,
+      // If the item already has NFEs, we'll just load them for viewing
+      if (item.nfes && item.nfes.length > 0) {
+        // Item already has NFEs, just load them for viewing
+        setSuggestedNFEs([]);
+      } else {
+        // Call the API to get NFE match suggestions
+        const response = await axios.get(
+          `${process.env.REACT_APP_API_URL}/api/match_purchase_nfe/${purchase.cod_pedc}`,
+          { withCredentials: true }
+        );
+
+        setSuggestedNFEs(response.data.results || []);
+      }
+    } catch (err) {
+      console.error('Error preparing invoice options:', err);
+    } finally {
+      setNfeLoading(false);
+    }
+  };
+
+  const fetchAutoMatchedNFEs = async () => {
+    try {
+      setSuggestedMatchesLoading(true);
+      const startFormatted = dateRange.start.toISOString().split('T')[0];
+      const endFormatted = dateRange.end.toISOString().split('T')[0];
+
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/auto_match_nfes`, {
+        params: {
+          start_date: startFormatted,
+          end_date: endFormatted,
+          min_score: 60, // Only show high-confidence matches
+          limit: 10
+        },
+        withCredentials: true
+      });
+
+      setSuggestedMatches(response.data);
+    } catch (err) {
+      console.error('Error fetching auto-matched NFEs:', err);
+    } finally {
+      setSuggestedMatchesLoading(false);
+    }
+  };
+
+  const handleMarkAsCompleted = async () => {
+    if (!currentPurchase || !currentItem) return;
+
+    try {
+      await axios.post(
+        `${process.env.REACT_APP_API_URL}/api/assign_nfe_to_item`,
+        {
+          purchase_id: currentPurchase.id,
+          item_id: currentItem.id,
+          nfe_id: null, // No NFE
+          quantity: currentItem.quantidade,
+          mark_as_completed: true // New flag
+        },
         { withCredentials: true }
       );
 
-      setSuggestedNFEs(response.data.results || []);
+      setMatchDialogOpen(false);
+      setSelectedNFE(null);
+
+      // Refresh purchase data
+      fetchPurchases();
+
     } catch (err) {
-      console.error('Error finding NFE matches:', err);
-    } finally {
-      setNfeLoading(false);
+      console.error('Error marking as completed:', err);
+    }
+  };
+
+  const handleViewDanfe = (nfeId, nfeChave) => {
+    if (nfeChave) {
+      window.open(`${process.env.REACT_APP_API_URL}/api/view_danfe_template_by_key/${nfeChave}`, '_blank');
+    } else {
+      window.open(`${process.env.REACT_APP_API_URL}/api/view_danfe_template/${nfeId}`, '_blank');
     }
   };
 
@@ -236,6 +330,7 @@ const Dashboard = ({ onLogout }) => {
   useEffect(() => {
     if (userInfo) {
       fetchPurchases();
+      fetchAutoMatchedNFEs();
     }
   }, [userInfo, dateRange, statusFilter]);
 
@@ -394,7 +489,20 @@ const Dashboard = ({ onLogout }) => {
     </>
   );
 
-  const getStatusChip = (status) => {
+  const getStatusChip = (status, matchProbability = null) => {
+    // If we have a high probability match but status isn't fulfilled yet
+    if (status === 'probable_match') {
+      return <Chip
+        icon={<CheckCircleIcon />}
+        label="Provável Faturado"
+        color="info"
+        size="small"
+        variant="outlined"
+        sx={{ background: 'rgba(3, 169, 244, 0.1)' }}
+      />;
+    }
+
+    // Existing status logic
     switch (status) {
       case 'fulfilled':
         return <Chip
@@ -639,7 +747,7 @@ const Dashboard = ({ onLogout }) => {
                 Atualizar
               </Button>
 
-      
+
             </Box>
 
             {/* Purchases table */}
@@ -663,32 +771,95 @@ const Dashboard = ({ onLogout }) => {
                   <TableBody>
                     {purchaseData.map((purchase) => (
                       <React.Fragment key={purchase.id}>
-                        <TableRow hover>
+                        <TableRow
+                          hover
+                          id={`purchase-${purchase.id}`}
+                          key={purchase.id}
+                          sx={{
+                            // Add subtle background color for high probability matches
+                            backgroundColor: purchase.matchProbability >= 80 ? 'rgba(33, 150, 243, 0.05)' : 'inherit'
+                          }}
+                        >
                           <TableCell>{purchase.cod_pedc}</TableCell>
                           <TableCell>{fmtDate(purchase.dt_emis)}</TableCell>
                           <TableCell>{purchase.fornecedor_descricao}</TableCell>
                           <TableCell>
-                            {getStatusChip(purchase.status)}
+                            {getStatusChip(purchase.status, purchase.matchProbability)}
+
+                            {/* Add match probability indicator if available */}
+                            {purchase.matchProbability && (
+                              <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
+                                <Box sx={{
+                                  width: '100%',
+                                  mr: 1,
+                                  height: 4,
+                                  borderRadius: 2,
+                                  bgcolor: 'background.paper',
+                                  position: 'relative'
+                                }}>
+                                  <Box sx={{
+                                    position: 'absolute',
+                                    left: 0,
+                                    top: 0,
+                                    height: '100%',
+                                    borderRadius: 2,
+                                    width: `${purchase.matchProbability}%`,
+                                    bgcolor:
+                                      purchase.matchProbability > 85 ? 'info.main' :
+                                        purchase.matchProbability > 70 ? 'success.main' :
+                                          purchase.matchProbability > 50 ? 'warning.main' : 'error.main'
+                                  }} />
+                                </Box>
+                                <Typography variant="caption" color="text.secondary">{Math.round(purchase.matchProbability)}%</Typography>
+                              </Box>
+                            )}
                           </TableCell>
                           <TableCell>{fmtCurrency(purchase.total_pedido_com_ipi)}</TableCell>
                           <TableCell>
-                            <IconButton
-                              size="small"
-                              onClick={() => {
-                                // Toggle expanded row
-                                const updatedData = purchaseData.map(p =>
-                                  p.id === purchase.id
-                                    ? { ...p, expanded: !p.expanded }
-                                    : p
-                                );
-                                setPurchaseData(updatedData);
-                              }}
-                            >
-                              {purchase.expanded ?
-                                <KeyboardArrowUpIcon /> :
-                                <KeyboardArrowDownIcon />
-                              }
-                            </IconButton>
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                              <IconButton
+                                size="small"
+                                onClick={() => {
+                                  // Toggle expanded row
+                                  const updatedData = purchaseData.map(p =>
+                                    p.id === purchase.id
+                                      ? { ...p, expanded: !p.expanded }
+                                      : p
+                                  );
+                                  setPurchaseData(updatedData);
+                                }}
+                              >
+                                {purchase.expanded ?
+                                  <KeyboardArrowUpIcon /> :
+                                  <KeyboardArrowDownIcon />
+                                }
+                              </IconButton>
+
+                              {/* Show process button for high probability matches */}
+                              {purchase.matchProbability >= 70 && purchase.status !== 'fulfilled' && (
+                                <Button
+                                  variant="outlined"
+                                  color="primary"
+                                  size="small"
+                                  sx={{ ml: 1 }}
+                                  startIcon={<ReceiptIcon />}
+                                  onClick={() => {
+                                    // If there's match details, open the dialog to process the match
+                                    if (purchase.matchDetails && purchase.items.length > 0) {
+                                      setCurrentPurchase(purchase);
+                                      setCurrentItem(purchase.items[0]); // Select first item
+                                      setSelectedNFE({
+                                        nfe: purchase.matchDetails.nfe,
+                                        score: purchase.matchProbability
+                                      });
+                                      setMatchDialogOpen(true);
+                                    }
+                                  }}
+                                >
+                                  Processar NFE
+                                </Button>
+                              )}
+                            </Box>
                           </TableCell>
                         </TableRow>
 
@@ -722,6 +893,7 @@ const Dashboard = ({ onLogout }) => {
                                           {' '}
                                           ({Math.round((item.qtde_atendida || 0) / item.quantidade * 100)}%)
                                         </TableCell>
+
                                         <TableCell>
                                           {item.nfes && item.nfes.length > 0 ? (
                                             <Box>
@@ -743,18 +915,58 @@ const Dashboard = ({ onLogout }) => {
                                           )}
                                         </TableCell>
                                         <TableCell>
+
                                           <Button
                                             variant="outlined"
                                             color="primary"
                                             size="small"
                                             startIcon={<LinkIcon />}
-                                            onClick={() => handleFindNFEMatches(purchase.id, item.id)}
+                                            onClick={() => handleMarkAsInvoiced(purchase.id, item.id)}
                                           >
-                                            Vincular NFE
+                                            Marcar como Faturado
                                           </Button>
                                         </TableCell>
                                       </TableRow>
                                     ))}
+                                    {purchase.matchProbability && purchase.matchDetails && (
+  <Box sx={{ mt: 2, mb: 1, p: 2, bgcolor: 'rgba(33, 150, 243, 0.05)', borderRadius: 2 }}>
+    <Typography variant="subtitle2" gutterBottom>
+      NFE Correspondente Encontrada (Probabilidade: {Math.round(purchase.matchProbability)}%)
+    </Typography>
+    
+    <Grid container spacing={2}>
+      <Grid item xs={12} sm={6}>
+        <Typography variant="body2">
+          <strong>NFE:</strong> {purchase.matchDetails.nfe.numero} (Série: {purchase.matchDetails.nfe.serie})
+        </Typography>
+        <Typography variant="body2">
+          <strong>Chave:</strong> {purchase.matchDetails.nfe.chave}
+        </Typography>
+        <Typography variant="body2">
+          <strong>Emitente:</strong> {purchase.matchDetails.nfe.emitente}
+        </Typography>
+      </Grid>
+      <Grid item xs={12} sm={6}>
+        <Typography variant="body2">
+          <strong>Data Emissão:</strong> {fmtDate(purchase.matchDetails.nfe.data_emissao)}
+        </Typography>
+        <Typography variant="body2">
+          <strong>Valor Total:</strong> {fmtCurrency(purchase.matchDetails.nfe.valor_total)}
+        </Typography>
+        <Button
+          variant="contained"
+          color="primary"
+          size="small"
+          startIcon={<ReceiptIcon />}
+          onClick={() => handleViewDanfe(purchase.matchDetails.nfe.id, purchase.matchDetails.nfe.chave)}
+          sx={{ mt: 1 }}
+        >
+          Visualizar DANFE
+        </Button>
+      </Grid>
+    </Grid>
+  </Box>
+)}
                                   </TableBody>
                                 </Table>
                               </Box>
@@ -777,74 +989,74 @@ const Dashboard = ({ onLogout }) => {
 
           {/* Monthly Chart - Only shown after user requests it */}
 
-            <Grid container spacing={3} sx={{ mb: 3 }}>
-              <Grid item xs={12}>
-                <Paper
+          <Grid container spacing={3} sx={{ mb: 3 }}>
+            <Grid item xs={12}>
+              <Paper
+                sx={{
+                  p: 3,
+                  borderRadius: 3,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.06)',
+                  width: '96%',
+                  maxWidth: '100%'
+                }}
+              >
+                <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
+                  Total de Compras por Mês
+                </Typography>
+                <Box
                   sx={{
-                    p: 3,
-                    borderRadius: 3,
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.06)',
-                    width: '96%',
-                    maxWidth: '100%'
+                    height: { xs: 350, md: 400 },
+                    width: '100%',
+                    mx: 'auto'
                   }}
                 >
-                  <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
-                    Total de Compras por Mês
-                  </Typography>
-                  <Box
-                    sx={{
-                      height: { xs: 350, md: 400 },
-                      width: '100%',
-                      mx: 'auto'
-                    }}
-                  >
-                    {monthlyChartLoading ? (
-                      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                        <CircularProgress />
-                      </Box>
-                    ) : monthlyData?.length > 0 ? (
-                      <Line
-                        data={monthlyChart}
-                        options={{
-                          responsive: true,
-                          maintainAspectRatio: false,
-                          resizeDelay: 100,
-                          plugins: {
-                            legend: { position: 'top' },
-                            tooltip: {
-                              backgroundColor: 'white',
-                              titleColor: '#222',
-                              bodyColor: '#222',
-                              borderColor: '#e1e1e1',
-                              borderWidth: 1,
-                              padding: 12,
-                              boxPadding: 6,
-                              usePointStyle: true,
-                              callbacks: {
-                                label: (ctx) => `R$ ${ctx.parsed.y.toLocaleString('pt-BR')}`
-                              }
+                  {monthlyChartLoading ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                      <CircularProgress />
+                    </Box>
+                  ) : monthlyData?.length > 0 ? (
+                    <Line
+                      data={monthlyChart}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        resizeDelay: 100,
+                        plugins: {
+                          legend: { position: 'top' },
+                          tooltip: {
+                            backgroundColor: 'white',
+                            titleColor: '#222',
+                            bodyColor: '#222',
+                            borderColor: '#e1e1e1',
+                            borderWidth: 1,
+                            padding: 12,
+                            boxPadding: 6,
+                            usePointStyle: true,
+                            callbacks: {
+                              label: (ctx) => `R$ ${ctx.parsed.y.toLocaleString('pt-BR')}`
                             }
-                          },
-                          scales: {
-                            y: {
-                              beginAtZero: true,
-                              grid: { borderDash: [5, 5], color: 'rgba(0,0,0,0.06)' },
-                              ticks: { callback: v => `R$ ${Number(v).toLocaleString('pt-BR')}` }
-                            },
-                            x: { grid: { display: false } }
                           }
-                        }}
-                      />
-                    ) : (
-                      <Typography variant="body2" sx={{ color: 'text.secondary', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        Sem dados para o período selecionado.
-                      </Typography>
-                    )}
-                  </Box>
-                </Paper>
-              </Grid>
+                        },
+                        scales: {
+                          y: {
+                            beginAtZero: true,
+                            grid: { borderDash: [5, 5], color: 'rgba(0,0,0,0.06)' },
+                            ticks: { callback: v => `R$ ${Number(v).toLocaleString('pt-BR')}` }
+                          },
+                          x: { grid: { display: false } }
+                        }
+                      }}
+                    />
+                  ) : (
+                    <Typography variant="body2" sx={{ color: 'text.secondary', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      Sem dados para o período selecionado.
+                    </Typography>
+                  )}
+                </Box>
+              </Paper>
             </Grid>
-       
+          </Grid>
+
 
           {/* KPIs */}
           <Grid container spacing={3} sx={{ mb: 3 }}>
@@ -1021,7 +1233,7 @@ const Dashboard = ({ onLogout }) => {
             </Grid>
           </Grid>
 
-          {/* NFE Matching Dialog */}
+          {/* Dialog for marking as invoiced/completed */}
           <Dialog
             open={matchDialogOpen}
             onClose={() => {
@@ -1032,7 +1244,7 @@ const Dashboard = ({ onLogout }) => {
             fullWidth
           >
             <DialogTitle>
-              Vincular NFE ao Item
+              Marcar Item como Faturado
               {currentPurchase && currentItem && (
                 <Typography variant="subtitle2" color="text.secondary">
                   Pedido: {currentPurchase.cod_pedc} | Item: {currentItem.item_id} - {currentItem.descricao}
@@ -1044,11 +1256,58 @@ const Dashboard = ({ onLogout }) => {
                 <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
                   <CircularProgress />
                 </Box>
+              ) : currentItem?.nfes && currentItem.nfes.length > 0 ? (
+                <Box>
+                  <Typography variant="subtitle1" gutterBottom>
+                    Este item já possui as seguintes NFEs vinculadas:
+                  </Typography>
+                  <Box sx={{ mb: 3 }}>
+                    {currentItem.nfes.map(nfe => (
+                      <Chip
+                        key={nfe.id}
+                        label={nfe.num_nf}
+                        color="primary"
+                        size="medium"
+                        sx={{ mr: 1, mb: 1 }}
+                        onClick={() => handleViewDanfe(nfe.id, nfe.chave)}
+                        icon={<ReceiptIcon />}
+                      />
+                    ))}
+                  </Box>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    startIcon={<ReceiptIcon />}
+                    onClick={() => handleViewDanfe(currentItem.nfes[0].id)}
+                    sx={{ mr: 2 }}
+                  >
+                    Visualizar DANFE
+                  </Button>
+                </Box>
               ) : suggestedNFEs.length > 0 ? (
                 <Box>
                   <Typography variant="subtitle1" gutterBottom>
-                    Selecione uma NFE para vincular a este item:
+                    Escolha uma das opções:
                   </Typography>
+
+                  <Box sx={{ mb: 3 }}>
+                    <Button
+                      variant="contained"
+                      color="success"
+                      onClick={handleMarkAsCompleted}
+                      startIcon={<CheckCircleIcon />}
+                      sx={{ mr: 2, mb: 2 }}
+                    >
+                      Marcar como Concluído (sem NFE)
+                    </Button>
+                  </Box>
+
+                  <Divider sx={{ my: 2 }} />
+
+                  <Typography variant="subtitle1" gutterBottom>
+                    Ou selecione uma NFE para vincular:
+                  </Typography>
+
                   <RadioGroup
                     value={selectedNFE ? selectedNFE.nfe.id : ''}
                     onChange={(e, value) => {
@@ -1105,9 +1364,25 @@ const Dashboard = ({ onLogout }) => {
                   </RadioGroup>
                 </Box>
               ) : (
-                <Typography>
-                  Nenhuma NFE encontrada que corresponda a este item. Verifique se o fornecedor já emitiu a NFE.
-                </Typography>
+                <Box>
+                  <Typography variant="subtitle1" gutterBottom>
+                    Escolha uma das opções:
+                  </Typography>
+
+                  <Button
+                    variant="contained"
+                    color="success"
+                    onClick={handleMarkAsCompleted}
+                    startIcon={<CheckCircleIcon />}
+                    sx={{ mr: 2, mt: 2 }}
+                  >
+                    Marcar como Concluído (sem NFE)
+                  </Button>
+
+                  <Typography variant="body2" sx={{ mt: 3 }}>
+                    Nenhuma NFE encontrada que corresponda a este item. Verifique se o fornecedor já emitiu a NFE.
+                  </Typography>
+                </Box>
               )}
             </DialogContent>
             <DialogActions>
@@ -1117,14 +1392,16 @@ const Dashboard = ({ onLogout }) => {
               }}>
                 Cancelar
               </Button>
-              <Button
-                variant="contained"
-                color="primary"
-                disabled={!selectedNFE}
-                onClick={handleAssignNFE}
-              >
-                Vincular NFE Selecionada
-              </Button>
+              {suggestedNFEs.length > 0 && (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  disabled={!selectedNFE}
+                  onClick={handleAssignNFE}
+                >
+                  Vincular NFE e Marcar como Faturado
+                </Button>
+              )}
             </DialogActions>
           </Dialog>
         </Container>
