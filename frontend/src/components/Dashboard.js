@@ -281,7 +281,7 @@ const Dashboard = ({ onLogout }) => {
       setSelectedNFE(null);
 
       // Refresh purchase data
-      fetchPurchases();
+      //fetchPurchases();
 
     } catch (err) {
       console.error('Error marking as completed:', err);
@@ -315,7 +315,7 @@ const Dashboard = ({ onLogout }) => {
       setSelectedNFE(null);
 
       // Refresh purchase data
-      fetchPurchases();
+      //fetchPurchases(); disabled while not fully implemented
     } catch (err) {
       console.error('Error assigning NFE:', err);
     }
@@ -329,7 +329,7 @@ const Dashboard = ({ onLogout }) => {
 
   useEffect(() => {
     if (userInfo) {
-      fetchPurchases();
+      //fetchPurchases(); disabled while not fully implemented
       fetchAutoMatchedNFEs();
     }
   }, [userInfo, dateRange, statusFilter]);
@@ -663,6 +663,8 @@ const Dashboard = ({ onLogout }) => {
           </Box>
 
           {/* Purchase Tracking */}
+          {/* Disabled while not working */}
+          { false && (
           <Paper sx={{ p: 3, borderRadius: 3, boxShadow: '0 8px 24px rgba(0,0,0,0.06)', mb: 3 }}>
             <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2 }}>
               Acompanhamento de Pedidos
@@ -741,7 +743,7 @@ const Dashboard = ({ onLogout }) => {
               <Button
                 variant="outlined"
                 startIcon={<RefreshIcon />}
-                onClick={fetchPurchases}
+                //onClick={fetchPurchases} disabled while not fully implemented
                 sx={{ height: 40 }}
               >
                 Atualizar
@@ -986,8 +988,12 @@ const Dashboard = ({ onLogout }) => {
               </Box>
             )}
           </Paper>
+          )}
+          {/* Disabled */}
 
-          {/* Monthly Chart - Only shown after user requests it */}
+
+
+          {/* Monthly Chart  */}
 
           <Grid container spacing={3} sx={{ mb: 3 }}>
             <Grid item xs={12}>
