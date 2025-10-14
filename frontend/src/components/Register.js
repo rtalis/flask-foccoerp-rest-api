@@ -32,8 +32,7 @@ import {
   Save as SaveIcon,
   Cancel as CancelIcon
 } from '@mui/icons-material';
-// Remove CSS import
-// import './Register.css';
+
 
 const Register = () => {
   const navigate = useNavigate();
