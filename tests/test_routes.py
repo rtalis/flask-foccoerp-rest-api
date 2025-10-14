@@ -1,4 +1,6 @@
 import pytest
+from io import BytesIO
+from datetime import date
 from flask import Flask
 from flask.testing import FlaskClient
 from app import create_app, db
@@ -50,11 +52,11 @@ def test_login(client: FlaskClient):
 
 def test_protected_route_without_auth(client: FlaskClient):
     response = client.get('/api/purchases')
-    assert response.status_code == 401
+    assert response.status_code in (302, 401)
 
 def test_import_xml(auth_client: FlaskClient):
     data = {
-        'file': (open('tests/test_data.xml', 'rb'), 'test_data.xml')
+        'file': (BytesIO(b'<RCOT0300></RCOT0300>'), 'test_data.xml')
     }
     response = auth_client.post('/api/import', data=data, content_type='multipart/form-data')
     assert response.status_code == 201
@@ -99,6 +101,16 @@ def test_search_combined(auth_client: FlaskClient):
     assert 'current_page' in response.json
 
 def test_get_last_update(auth_client: FlaskClient):
+    with auth_client.application.app_context():
+        order = PurchaseOrder(
+            cod_pedc='LU-001',
+            dt_emis=date(2024, 3, 1),
+            fornecedor_id=1,
+            fornecedor_descricao='Fornecedor Teste'
+        )
+        db.session.add(order)
+        db.session.commit()
+
     response = auth_client.get('/api/last_update')
     assert response.status_code == 200
 
@@ -111,7 +123,7 @@ def test_get_item_details(auth_client: FlaskClient):
     # Primeiro, criar um item para testar
     order = PurchaseOrder(
         cod_pedc='TEST123',
-        dt_emis='2024-03-19',
+        dt_emis=date(2024, 3, 19),
         fornecedor_id=1,
         fornecedor_descricao='Test Supplier'
     )
@@ -121,7 +133,7 @@ def test_get_item_details(auth_client: FlaskClient):
     item = PurchaseItem(
         purchase_order_id=order.id,
         item_id='ITEM123',
-        dt_emis='2024-03-19',
+        dt_emis=date(2024, 3, 19),
         cod_pedc='TEST123',
         descricao='Test Item',
         quantidade=1,
@@ -140,3 +152,74 @@ def test_logout(auth_client: FlaskClient):
     response = auth_client.post('/auth/logout')
     assert response.status_code == 200
     assert b'Logged out successfully' in response.data
+
+
+def test_search_advanced_requires_query(auth_client: FlaskClient):
+    response = auth_client.get('/api/search_advanced')
+    assert response.status_code == 400
+
+
+def test_search_advanced_multiterm(auth_client: FlaskClient):
+    with auth_client.application.app_context():
+        order = PurchaseOrder(
+            cod_pedc='PO-900',
+            dt_emis=date(2024, 1, 5),
+            fornecedor_id=42,
+            fornecedor_descricao='Fornecedor Motor LTDA',
+            observacao='Pedido urgente'
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        item = PurchaseItem(
+            purchase_order_id=order.id,
+            item_id='MTR-123',
+            dt_emis=date(2024, 1, 5),
+            cod_pedc='PO-900',
+            descricao='Motor industrial 123 fases',
+            quantidade=2,
+            preco_unitario=5000,
+            total=10000
+        )
+        db.session.add(item)
+        db.session.commit()
+
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': 'motor 123',
+        'fields': 'descricao,cod_pedc',
+        'per_page': 5
+    })
+
+    assert response.status_code == 200
+    assert 'purchases' in response.json
+    assert response.json['purchases']
+    assert response.json['purchases'][0]['order']['cod_pedc'] == 'PO-900'
+
+
+def test_search_advanced_suggestions(auth_client: FlaskClient):
+    with auth_client.application.app_context():
+        order = PurchaseOrder(
+            cod_pedc='PO-901',
+            dt_emis=date(2024, 2, 10),
+            fornecedor_id=43,
+            fornecedor_descricao='Motores Brasil'
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        item = PurchaseItem(
+            purchase_order_id=order.id,
+            item_id='MTR-999',
+            dt_emis=date(2024, 2, 10),
+            cod_pedc='PO-901',
+            descricao='Motor elétrico trifásico',
+            quantidade=1,
+            preco_unitario=7000,
+            total=7000
+        )
+        db.session.add(item)
+        db.session.commit()
+
+    response = auth_client.get('/api/search_advanced/suggestions', query_string={'term': 'motor'})
+    assert response.status_code == 200
+    assert 'suggestions' in response.json

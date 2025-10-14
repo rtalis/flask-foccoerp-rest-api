@@ -10,7 +10,7 @@ import {
 } from '@mui/material';
 import {
   Menu as MenuIcon, Dashboard as DashboardIcon, Search as SearchIcon,
-  Compare as CompareIcon, Upload as UploadIcon, Logout as LogoutIcon,
+  ManageSearch as ManageSearchIcon, Compare as CompareIcon, Upload as UploadIcon, Logout as LogoutIcon,
   ShoppingCart as ShoppingCartIcon, Receipt as ReceiptIcon, Business as BusinessIcon,
   TrendingUp as TrendingUpIcon, ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon,
   Refresh as RefreshIcon, Link as LinkIcon,
@@ -38,7 +38,6 @@ const Dashboard = ({ onLogout }) => {
   const [monthlyData, setMonthlyData] = useState(null);
   const [months, setMonths] = useState(6);
   const [loading, setLoading] = useState(true);
-  const [monthlyChartLoading, setMonthlyChartLoading] = useState(false);
   const [error, setError] = useState('');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -112,6 +111,11 @@ const Dashboard = ({ onLogout }) => {
           func_nome: String(x?.func_nome ?? ''),
           total_value: Number(x?.total_value ?? 0),
         })) : [],
+        monthly_data: Array.isArray(d?.monthly_data) ? d.monthly_data.map(x => ({
+          month: String(x?.month ?? ''),
+          order_count: Number(x?.order_count ?? 0),
+          total_value: Number(x?.total_value ?? 0),
+        })) : []
       });
     } catch (e) {
       console.error(e);
@@ -121,30 +125,7 @@ const Dashboard = ({ onLogout }) => {
     }
   };
 
-  const fetchMonthlyData = async () => {
-    try {
-      setMonthlyChartLoading(true);
-      const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/dashboard_summary`, {
-        params: {
-          months: Math.ceil((dateRange.end - dateRange.start) / (1000 * 60 * 60 * 24 * 30)),
-          start_date: dateRange.start.toISOString().split('T')[0],
-          end_date: dateRange.end.toISOString().split('T')[0]
-        },
-        withCredentials: true
-      });
-      const d = res.data || {};
 
-      setMonthlyData(Array.isArray(d?.monthly_data) ? d.monthly_data.map(x => ({
-        month: String(x?.month ?? ''),
-        order_count: Number(x?.order_count ?? 0),
-        total_value: Number(x?.total_value ?? 0),
-      })) : []);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setMonthlyChartLoading(false);
-    }
-  };
 
   const fetchUserInfo = async () => {
     try {
@@ -323,16 +304,7 @@ const Dashboard = ({ onLogout }) => {
 
   useEffect(() => {
     fetchData(months);
-    fetchUserInfo();
-    fetchMonthlyData();
-  }, [months], [fetchMonthlyData]);
-
-  useEffect(() => {
-    if (userInfo) {
-      //fetchPurchases(); disabled while not fully implemented
-      fetchAutoMatchedNFEs();
-    }
-  }, [userInfo, dateRange, statusFilter]);
+  }, [months]);
 
   // Handle date range change and load monthly chart
   const handleDateRangeChange = (type, newValue) => {
@@ -360,7 +332,7 @@ const Dashboard = ({ onLogout }) => {
 
   // Monthly line (total value)
   const monthlyChart = useMemo(() => {
-    const rows = Array.isArray(monthlyData) ? monthlyData : [];
+    const rows = Array.isArray(data?.monthly_data) ? data.monthly_data : [];
     return {
       labels: rows.map(r => String(r?.month ?? '')),
       datasets: [
@@ -379,7 +351,7 @@ const Dashboard = ({ onLogout }) => {
         }
       ]
     };
-  }, [monthlyData]);
+  }, [data]);
 
   // Buyer purchases chart data
   const buyerPurchasesChart = useMemo(() => {
@@ -1016,11 +988,7 @@ const Dashboard = ({ onLogout }) => {
                     mx: 'auto'
                   }}
                 >
-                  {monthlyChartLoading ? (
-                    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                      <CircularProgress />
-                    </Box>
-                  ) : monthlyData?.length > 0 ? (
+                  {data.monthly_data?.length > 0 ? (
                     <Line
                       data={monthlyChart}
                       options={{

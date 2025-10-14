@@ -10,8 +10,9 @@ import {
   FormControlLabel, FormControl, FormLabel, Checkbox, Select, MenuItem, InputAdornment,
   AppBar, Toolbar, Drawer, List, ListItemButton, ListItemIcon, ListItemText, Divider,
   CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, Card, CardContent,
-  CardActions, Slide, useScrollTrigger
+  CardActions, Slide, useScrollTrigger, Switch
 } from '@mui/material';
+import Autocomplete from '@mui/material/Autocomplete';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -24,6 +25,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import LogoutIcon from '@mui/icons-material/Logout';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import ReceiptIcon from '@mui/icons-material/Receipt';
+import ManageSearchIcon from '@mui/icons-material/ManageSearch';
 
 
 const DRAWER_WIDTH_OPEN = 260;
@@ -194,7 +196,6 @@ function PurchaseRow(props) {
   return (
     <React.Fragment>
       {/* Purchase header row */}
-      {console.log(purchase.order.is_fulfilled)}
       <TableRow sx={{
         '& > *': { borderBottom: 'unset' },
         backgroundColor: purchase.order.is_fulfilled ? '#38be26ff' : '#64a176ff',
@@ -399,6 +400,9 @@ function PurchaseRow(props) {
 }
 
 const UnifiedSearch = ({ onLogout }) => {
+  const SEARCH_MODE_STORAGE_KEY = 'searchModePreference';
+  const DEFAULT_ENHANCED_FIELDS = ['descricao', 'item_id', 'cod_pedc', 'fornecedor', 'observacao', 'num_nf'];
+
   const [searchParams, setSearchParams] = useState({
     query: '',
     searchPrecision: 'precisa',
@@ -432,6 +436,16 @@ const UnifiedSearch = ({ onLogout }) => {
   const resultsRef = useRef(null);
   const [scrollThreshold, setScrollThreshold] = useState(300);
   const [sidebarVisible, setSidebarVisible] = useState(true);
+  const [searchMode, setSearchMode] = useState(() => {
+    if (typeof window === 'undefined') {
+      return 'enhanced';
+    }
+    return localStorage.getItem(SEARCH_MODE_STORAGE_KEY) || 'classic';
+  });
+  const [suggestions, setSuggestions] = useState([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
+  const usingEnhanced = searchMode === 'enhanced';
 
 
 
@@ -558,6 +572,52 @@ const UnifiedSearch = ({ onLogout }) => {
     fetchFuncNames();
   }, []);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(SEARCH_MODE_STORAGE_KEY, searchMode);
+    }
+  }, [searchMode]);
+
+  useEffect(() => {
+    if (!usingEnhanced) {
+      setSuggestions([]);
+      return undefined;
+    }
+
+    const term = (searchParams.query || '').trim();
+    if (term.length < 2) {
+      setSuggestions([]);
+      return undefined;
+    }
+
+    let isActive = true;
+    const handler = setTimeout(async () => {
+      setLoadingSuggestions(true);
+      try {
+        const { data } = await axios.get(`${process.env.REACT_APP_API_URL}/api/search_advanced/suggestions`, {
+          params: { term, limit: 10 },
+          withCredentials: true
+        });
+        if (isActive) {
+          setSuggestions((data?.suggestions || []).map(suggestion => suggestion.value));
+        }
+      } catch (err) {
+        if (isActive) {
+          console.error('Failed to fetch suggestions', err);
+        }
+      } finally {
+        if (isActive) {
+          setLoadingSuggestions(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      isActive = false;
+      clearTimeout(handler);
+    };
+  }, [searchParams.query, usingEnhanced]);
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     if (name === 'searchPrecision') {
@@ -593,16 +653,47 @@ const UnifiedSearch = ({ onLogout }) => {
     }
   };
 
+  const updateQuery = (value) => {
+    setSearchParams(prev => ({
+      ...prev,
+      query: value
+    }));
+  };
+
+  const handleModeToggle = (event) => {
+    setSearchMode(event.target.checked ? 'enhanced' : 'classic');
+  };
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
-      handleSearch();
+      e.preventDefault();
+      handleSearch(1);
     }
   };
+  const resolveEnhancedFields = () => {
+    const selected = [];
+    if (searchParams.searchByDescricao) selected.push('descricao');
+    if (searchParams.searchByItemId) selected.push('item_id');
+    if (searchParams.searchByCodPedc) selected.push('cod_pedc');
+    if (searchParams.searchByFornecedor) selected.push('fornecedor');
+    if (searchParams.searchByObservacao) selected.push('observacao');
+    if (searchParams.searchByNumNF) selected.push('num_nf');
+    return selected.length ? selected : DEFAULT_ENHANCED_FIELDS;
+  };
+
   const getEstimatedResults = async () => {
+    if (usingEnhanced) {
+      return;
+    }
+    const term = (searchParams.query || '').trim();
+    if (!term) {
+      setEstimatedResults(0);
+      return;
+    }
     try {
       const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/count_results`, {
         params: {
-          query: searchParams.query,
+          query: term,
           score_cutoff: searchParams.score_cutoff,
           searchByCodPedc: searchParams.searchByCodPedc,
           searchByFornecedor: searchParams.searchByFornecedor,
@@ -622,38 +713,66 @@ const UnifiedSearch = ({ onLogout }) => {
   };
 
   const handleSearch = async (page = 1) => {
-    setLoading(true);
-    await getEstimatedResults();
-    try {
-      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/search_combined`, {
-        params: {
-          query: searchParams.query,
-          page: page,
-          per_page: perPage,
-          score_cutoff: searchParams.score_cutoff,
-          searchByCodPedc: searchParams.searchByCodPedc,
-          searchByFornecedor: searchParams.searchByFornecedor,
-          searchByObservacao: searchParams.searchByObservacao,
-          searchByItemId: searchParams.searchByItemId,
-          searchByDescricao: searchParams.searchByDescricao,
-          searchByNumNF: searchParams.searchByNumNF,
-          selectedFuncName: searchParams.selectedFuncName,
-          minValue: searchParams.min_value,
-          maxValue: searchParams.max_value
-        },
-        withCredentials: true
-      });
+    const trimmedQuery = (searchParams.query || '').trim();
+    if (!trimmedQuery) {
+      setResults([]);
+      setNoResults(0);
+      setEstimatedResults(0);
+      return;
+    }
 
-      if (response.data && response.data.purchases) {
-        setResults(response.data.purchases);
-        setCurrentPage(response.data.current_page || 1);
-        setTotalPages(response.data.total_pages || 1);
-        setNoResults(response.data.purchases.length || 0);
+    setLoading(true);
+    if (!usingEnhanced) {
+      await getEstimatedResults();
+    }
+
+    try {
+      let response;
+
+      if (usingEnhanced) {
+        response = await axios.get(`${process.env.REACT_APP_API_URL}/api/search_advanced`, {
+          params: {
+            query: trimmedQuery,
+            fields: resolveEnhancedFields().join(','),
+            selectedFuncName: searchParams.selectedFuncName,
+            minValue: searchParams.min_value || undefined,
+            maxValue: searchParams.max_value || undefined,
+            valueSearchType: searchParams.valueSearchType,
+            page,
+            per_page: perPage
+          },
+          withCredentials: true
+        });
       } else {
-        setResults([]);
-        setCurrentPage(1);
-        setTotalPages(1);
-        setNoResults(0);
+        response = await axios.get(`${process.env.REACT_APP_API_URL}/api/search_combined`, {
+          params: {
+            query: trimmedQuery,
+            page,
+            per_page: perPage,
+            score_cutoff: searchParams.score_cutoff,
+            searchByCodPedc: searchParams.searchByCodPedc,
+            searchByFornecedor: searchParams.searchByFornecedor,
+            searchByObservacao: searchParams.searchByObservacao,
+            searchByItemId: searchParams.searchByItemId,
+            searchByDescricao: searchParams.searchByDescricao,
+            searchByNumNF: searchParams.searchByNumNF,
+            selectedFuncName: searchParams.selectedFuncName,
+            minValue: searchParams.min_value,
+            maxValue: searchParams.max_value,
+            valueSearchType: searchParams.valueSearchType
+          },
+          withCredentials: true
+        });
+      }
+
+      const purchases = response.data?.purchases || [];
+      setResults(purchases);
+      setCurrentPage(response.data?.current_page || page);
+      setTotalPages(response.data?.total_pages || 1);
+      setNoResults(purchases.length);
+
+      if (usingEnhanced) {
+        setEstimatedResults(response.data?.total_results ?? purchases.length);
       }
     } catch (error) {
       console.error('Error fetching data', error);
@@ -799,17 +918,51 @@ const formatNumber = (number) => {
       >
         <Toolbar />
         <div className="unified-search">
-          <Box sx={{ display: 'flex', mb: 3, alignItems: 'center', gap: 2 }}>
-            <TextField
-              name="query"
-              placeholder="Search..."
-              variant="outlined"
-              size="small"
+          <Box sx={{ display: 'flex', mb: 3, alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+            <Autocomplete
+              sx={{ flexGrow: 1, minWidth: 280 }}
               fullWidth
-              value={searchParams.query}
-              onChange={handleChange}
-              onKeyDown={handleKeyDown}
-
+              freeSolo
+              options={suggestions}
+              loading={loadingSuggestions}
+              inputValue={searchParams.query}
+              onInputChange={(_, newValue) => updateQuery(newValue)}
+              onChange={(_, newValue) => {
+                if (typeof newValue === 'string') {
+                  updateQuery(newValue);
+                  setTimeout(() => handleSearch(1), 0);
+                }
+              }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Buscar pedidos"
+                  variant="outlined"
+                  size="small"
+                  placeholder="Ex.: motor 123 aço"
+                  onKeyDown={handleKeyDown}
+                  InputProps={{
+                    ...params.InputProps,
+                    endAdornment: (
+                      <>
+                        {loadingSuggestions ? <CircularProgress color="inherit" size={18} sx={{ mr: 1 }} /> : null}
+                        {params.InputProps.endAdornment}
+                      </>
+                    )
+                  }}
+                />
+              )}
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={usingEnhanced}
+                  onChange={handleModeToggle}
+                  color="primary"
+                />
+              }
+              label={usingEnhanced ? 'Busca aprimorada' : 'Busca clássica'}
+              sx={{ mr: 1 }}
             />
             <Button
               variant="contained"

@@ -121,26 +121,41 @@ def notify_admin_login(user, ip_address):
     except Exception as e:
         print(f"Erro ao enviar notificação: {str(e)}")
 
+def _user_from_authorization(req):
+    auth_header = req.headers.get('Authorization') if req else None
+    if not auth_header:
+        return None
+
+    parts = auth_header.split()
+    if len(parts) != 2 or parts[0].lower() != 'bearer':
+        return None
+
+    token = parts[1]
+    try:
+        data = jwt.decode(token, Config.SECRET_KEY, algorithms=['HS256'])
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, Exception):
+        return None
+
+    return User.query.filter_by(email=data.get('sub')).first()
+
+
 @login_manager.request_loader
-@limiter.limit("2 per 5 seconds")
+def load_user_from_request(req):
+    user = _user_from_authorization(req)
+    if user:
+        return user
+    return None
+
+
 @auth_bp.route('/login_by_token', methods=['POST'])
+@limiter.limit("2 per 5 seconds")
 def login_by_token():
-    auth_header = request.headers.get('Authorization')
-    if auth_header:
-        auth_headers = auth_header.split()
-        if len(auth_headers) == 2 and auth_headers[0].lower() == 'bearer':
-            token = auth_headers[1]
-            try:
-                data = jwt.decode(token, Config.SECRET_KEY, algorithms=['HS256'])
-                user = User.query.filter_by(email=data['sub']).first()
-                if user:
-                    login_user(user)
-                    return jsonify({'message': 'Logged in successfully'}), 200
-            except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, Exception) as e:
-                return jsonify({'error': 'Invalid or expired token'}), 401
-            except (jwt.InvalidTokenError, Exception) as e:
-                return jsonify({'error': 'Invalid token'}), 401
-        return jsonify({'error': 'Authorization header missing or invalid'}), 401
+    user = _user_from_authorization(request)
+    if not user:
+        return jsonify({'error': 'Invalid or expired token'}), 401
+
+    login_user(user)
+    return jsonify({'message': 'Logged in successfully'}), 200
 
 @auth_bp.route('/generate_jwt_token', methods=['POST'])
 @login_required

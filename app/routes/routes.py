@@ -1,9 +1,12 @@
 from datetime import datetime
 from urllib import response
+import re
 from fuzzywuzzy import process, fuzz
 from flask import Blueprint, redirect, request, jsonify
 import requests
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, func, cast
+from sqlalchemy.sql import exists
+from sqlalchemy.orm import joinedload
 from flask_login import login_user, logout_user, login_required, current_user
 from app.models import NFEData, NFEntry, PurchaseOrder, PurchaseItem, Quotation, User
 from app.utils import  apply_adjustments, check_order_fulfillment, fuzzy_search, import_rcot0300, import_rfor0302, import_rpdc0250c, import_ruah
@@ -18,6 +21,92 @@ bp = Blueprint('api', __name__)
 
 UPLOAD_FOLDER = tempfile.gettempdir()
 ALLOWED_EXTENSIONS = {'xml'}
+
+
+def _build_purchase_payload(items):
+    """Group purchase items by order and prepare API payload."""
+    grouped_results = {}
+    for item in items:
+        cod_pedc = item.cod_pedc
+        order = item.purchase_order
+        if not order:
+            continue
+
+        if cod_pedc not in grouped_results:
+            adjustments = getattr(order, 'adjustments', [])
+            base_total = order.total_pedido_com_ipi or 0
+            adjusted_total = apply_adjustments(base_total, adjustments)
+            nf_entries = NFEntry.query.filter_by(
+                cod_emp1=order.cod_emp1,
+                cod_pedc=cod_pedc
+            ).all()
+
+            grouped_results[cod_pedc] = {
+                'order': {
+                    'order_id': order.id,
+                    'cod_pedc': cod_pedc,
+                    'dt_emis': order.dt_emis,
+                    'fornecedor_id': order.fornecedor_id,
+                    'fornecedor_descricao': order.fornecedor_descricao,
+                    'total_bruto': order.total_bruto,
+                    'total_pedido_com_ipi': order.total_pedido_com_ipi,
+                    'adjusted_total': adjusted_total,
+                    'adjustments': [
+                        {
+                            'tp_apl': adj.tp_apl,
+                            'tp_dctacr1': adj.tp_dctacr1,
+                            'tp_vlr1': adj.tp_vlr1,
+                            'vlr1': adj.vlr1,
+                            'order_index': adj.order_index
+                        }
+                        for adj in adjustments
+                    ],
+                    'total_liquido': order.total_liquido,
+                    'total_liquido_ipi': order.total_liquido_ipi,
+                    'posicao': order.posicao,
+                    'posicao_hist': order.posicao_hist,
+                    'observacao': order.observacao,
+                    'contato': order.contato,
+                    'func_nome': order.func_nome,
+                    'cf_pgto': order.cf_pgto,
+                    'is_fulfilled': order.is_fulfilled,
+                    'cod_emp1': order.cod_emp1,
+                    'nfes': [
+                        {
+                            'num_nf': nf_entry.num_nf,
+                            'id': nf_entry.id,
+                            'dt_ent': nf_entry.dt_ent,
+                            'qtde': nf_entry.qtde,
+                            'linha': nf_entry.linha
+                        }
+                        for nf_entry in nf_entries
+                    ]
+                },
+                'items': []
+            }
+
+        grouped_results[cod_pedc]['items'].append({
+            'id': item.id,
+            'item_id': item.item_id,
+            'descricao': item.descricao,
+            'quantidade': item.quantidade,
+            'preco_unitario': item.preco_unitario,
+            'total': item.total,
+            'unidade_medida': item.unidade_medida,
+            'linha': item.linha,
+            'dt_entrega': item.dt_entrega,
+            'perc_ipi': item.perc_ipi,
+            'tot_liquido_ipi': item.tot_liquido_ipi,
+            'tot_descontos': item.tot_descontos,
+            'tot_acrescimos': item.tot_acrescimos,
+            'qtde_canc': item.qtde_canc,
+            'qtde_canc_toler': item.qtde_canc_toler,
+            'perc_toler': item.perc_toler,
+            'qtde_atendida': item.qtde_atendida,
+            'qtde_saldo': item.qtde_saldo,
+        })
+
+    return list(grouped_results.values())
 
 
 @bp.route('/purchasers', methods=['GET'])
@@ -540,6 +629,186 @@ def get_quotations_fuzzy():
 
     return jsonify(result), 200
 
+
+@bp.route('/search_advanced', methods=['GET'])
+@login_required
+def search_advanced():
+    from sqlalchemy import text
+
+    if request.args.get('legacy', 'false').lower() == 'true':
+        return search_combined()
+
+    raw_query = request.args.get('query', '').strip()
+    if not raw_query:
+        return jsonify({'error': 'Query is required'}), 400
+
+    tokens = [token for token in re.split(r'\s+', raw_query) if token]
+    if not tokens:
+        return jsonify({'error': 'Query is required'}), 400
+
+    page = max(int(request.args.get('page', 1)), 1)
+    per_page = max(min(int(request.args.get('per_page', 20)), 200), 1)
+    score_cutoff = int(request.args.get('score_cutoff', 100))
+    ignore_diacritics = request.args.get('ignoreDiacritics', 'false').lower() == 'true'
+    fields_param = request.args.get('fields', '')
+    search_by_func_nome = request.args.get('selectedFuncName', 'todos')
+    min_value = request.args.get('minValue', type=float)
+    max_value = request.args.get('maxValue', type=float)
+    value_search_type = request.args.get('valueSearchType', 'item').lower()
+
+    default_fields = {'cod_pedc', 'fornecedor', 'observacao', 'item_id', 'descricao', 'num_nf'}
+    fields = {field.strip().lower() for field in fields_param.split(',') if field.strip()} or default_fields
+
+    column_map = {
+        'cod_pedc': PurchaseOrder.cod_pedc,
+        'fornecedor': PurchaseOrder.fornecedor_descricao,
+        'observacao': PurchaseOrder.observacao,
+        'item_id': PurchaseItem.item_id,
+        'descricao': PurchaseItem.descricao,
+    }
+
+    include_nf = 'num_nf' in fields
+    search_columns = [column_map[key] for key in fields if key in column_map]
+    if not search_columns:
+        search_columns = [PurchaseItem.descricao]
+
+    remove_accents = None
+    if ignore_diacritics and db.engine.name == 'postgresql':
+        db.session.execute(text("CREATE EXTENSION IF NOT EXISTS unaccent"))
+        remove_accents = lambda col: func.unaccent(col)
+
+    def build_like_pattern(term: str) -> str:
+        pattern = term.replace('*', '%')
+        if '%' not in pattern:
+            pattern = f'%{pattern}%'
+        return pattern
+
+    def apply_ilike(column, pattern):
+        col_expr = remove_accents(column) if remove_accents else column
+        return col_expr.ilike(pattern)
+
+    base_query = (
+        PurchaseItem.query
+        .join(PurchaseOrder, PurchaseItem.purchase_order_id == PurchaseOrder.id)
+        .options(joinedload(PurchaseItem.purchase_order).joinedload(PurchaseOrder.adjustments))
+    )
+
+    value_filters = []
+    if min_value is not None:
+        if value_search_type == 'order':
+            value_filters.append(PurchaseOrder.total_pedido_com_ipi >= min_value)
+        else:
+            value_filters.append(PurchaseItem.preco_unitario >= min_value)
+    if max_value is not None:
+        if value_search_type == 'order':
+            value_filters.append(PurchaseOrder.total_pedido_com_ipi <= max_value)
+        else:
+            value_filters.append(PurchaseItem.preco_unitario <= max_value)
+    if value_filters:
+        base_query = base_query.filter(and_(*value_filters))
+
+    if search_by_func_nome and search_by_func_nome.lower() != 'todos':
+        base_query = base_query.filter(PurchaseOrder.func_nome.ilike(f'%{search_by_func_nome}%'))
+
+    token_filters = []
+    for token in tokens:
+        pattern = build_like_pattern(token)
+        term_clauses = [apply_ilike(column, pattern) for column in search_columns]
+
+        if include_nf:
+            nf_column = NFEntry.num_nf
+            nf_expr = remove_accents(nf_column) if remove_accents else nf_column
+            nf_clause = exists().where(and_(
+                nf_expr.ilike(pattern),
+                NFEntry.cod_emp1 == PurchaseItem.cod_emp1,
+                NFEntry.cod_pedc == PurchaseItem.cod_pedc,
+                cast(NFEntry.linha, db.String) == cast(PurchaseItem.linha, db.String)
+            ))
+            term_clauses.append(nf_clause)
+
+        token_filters.append(or_(*term_clauses))
+
+    if token_filters:
+        base_query = base_query.filter(and_(*token_filters))
+
+    base_query = base_query.order_by(PurchaseOrder.dt_emis.desc(), PurchaseItem.id.desc())
+
+    if score_cutoff < 100:
+        items = base_query.all()
+        items = fuzzy_search(' '.join(tokens), items, score_cutoff, 'descricao' in fields, 'observacao' in fields)
+        purchases_payload = _build_purchase_payload(items)
+        return jsonify({
+            'purchases': purchases_payload,
+            'total_pages': 1,
+            'current_page': 1,
+            'total_results': len(items)
+        }), 200
+
+    items_paginated = base_query.paginate(page=page, per_page=per_page, count=True)
+    purchases_payload = _build_purchase_payload(items_paginated.items)
+
+    return jsonify({
+        'purchases': purchases_payload,
+        'total_pages': items_paginated.pages,
+        'current_page': items_paginated.page,
+        'total_results': items_paginated.total
+    }), 200
+
+
+@bp.route('/search_advanced/suggestions', methods=['GET'])
+@login_required
+def search_advanced_suggestions():
+    term = request.args.get('term', '').strip()
+    limit = max(min(int(request.args.get('limit', 10)), 50), 1)
+
+    if not term:
+        return jsonify({'suggestions': []}), 200
+
+    pattern = term.replace('*', '%')
+    if '%' not in pattern:
+        pattern = f'%{pattern}%'
+
+    suggestions = []
+    seen_values = set()
+
+    def append_results(queryset, suggestion_type):
+        for value in queryset:
+            if not value:
+                continue
+            key = (suggestion_type, value)
+            if key in seen_values:
+                continue
+            seen_values.add(key)
+            suggestions.append({'value': value, 'type': suggestion_type})
+            if len(suggestions) >= limit:
+                return True
+        return False
+
+    if append_results(
+        [row[0] for row in db.session.query(PurchaseItem.descricao).filter(PurchaseItem.descricao.ilike(pattern)).limit(limit * 2).all()],
+        'descricao'
+    ):
+        return jsonify({'suggestions': suggestions}), 200
+
+    if append_results(
+        [row[0] for row in db.session.query(PurchaseItem.item_id).filter(PurchaseItem.item_id.ilike(pattern)).limit(limit * 2).all()],
+        'item_id'
+    ):
+        return jsonify({'suggestions': suggestions}), 200
+
+    if append_results(
+        [row[0] for row in db.session.query(PurchaseOrder.cod_pedc).filter(PurchaseOrder.cod_pedc.ilike(pattern)).limit(limit * 2).all()],
+        'cod_pedc'
+    ):
+        return jsonify({'suggestions': suggestions}), 200
+
+    append_results(
+        [row[0] for row in db.session.query(PurchaseOrder.fornecedor_descricao).filter(PurchaseOrder.fornecedor_descricao.ilike(pattern)).limit(limit * 2).all()],
+        'fornecedor'
+    )
+
+    return jsonify({'suggestions': suggestions}), 200
+
 @bp.route('/search_combined', methods=['GET'])
 @login_required
 def search_combined():
@@ -634,80 +903,7 @@ def search_combined():
         items_paginated = items_query.paginate(page=page, per_page=per_page, count=True)
         items = items_paginated.items
 
-    grouped_results = {}
-    for item in items:
-        cod_pedc = item.cod_pedc
-        if cod_pedc not in grouped_results:
-            order = item.purchase_order
-            adjustments = order.adjustments  
-            base_total = order.total_pedido_com_ipi or 0
-            adjusted_total = apply_adjustments(base_total, adjustments)
-            grouped_results[cod_pedc] = {
-                'order': {
-                    'order_id': item.purchase_order_id,
-                    'cod_pedc': item.cod_pedc,
-                    'dt_emis': item.purchase_order.dt_emis,
-                    'fornecedor_id': item.purchase_order.fornecedor_id,
-                    'fornecedor_descricao': item.purchase_order.fornecedor_descricao,
-                    'total_bruto': item.purchase_order.total_bruto,
-                    'total_pedido_com_ipi': item.purchase_order.total_pedido_com_ipi,
-                    'adjusted_total': adjusted_total,
-                    'adjustments': [
-                        {
-                            'tp_apl': adj.tp_apl,
-                            'tp_dctacr1': adj.tp_dctacr1,
-                            'tp_vlr1': adj.tp_vlr1,
-                            'vlr1': adj.vlr1,
-                            'order_index': adj.order_index
-                        } for adj in adjustments
-                    ],
-                    'total_liquido': item.purchase_order.total_liquido,
-                    'total_liquido_ipi': item.purchase_order.total_liquido_ipi,
-                    'posicao': item.purchase_order.posicao,
-                    'posicao_hist': item.purchase_order.posicao_hist,
-                    'observacao': item.purchase_order.observacao,
-                    'contato': item.purchase_order.contato,
-                    'func_nome': item.purchase_order.func_nome,
-                    'cf_pgto': item.purchase_order.cf_pgto,
-                    'is_fulfilled': item.purchase_order.is_fulfilled,
-                    'cod_emp1': item.purchase_order.cod_emp1,
-                    
-                    'nfes': [
-                        {
-                        'num_nf': nf_entry.num_nf,
-                        'id': nf_entry.id,
-                        'dt_ent': nf_entry.dt_ent,
-                        'qtde': nf_entry.qtde,
-                        'linha': nf_entry.linha
-                        } for nf_entry in NFEntry.query.filter_by(
-                            cod_emp1=item.purchase_order.cod_emp1, 
-                            cod_pedc=item.cod_pedc, 
-                            ).all()
-                            ]
-                        },
-                        'items': []
-                        }
-        item_data = {
-            'id': item.id,
-            'item_id': item.item_id,
-            'descricao': item.descricao,
-            'quantidade': item.quantidade,
-            'preco_unitario': item.preco_unitario,
-            'total': item.total,
-            'unidade_medida': item.unidade_medida,
-            'linha': item.linha,
-            'dt_entrega': item.dt_entrega,
-            'perc_ipi': item.perc_ipi,
-            'tot_liquido_ipi': item.tot_liquido_ipi,
-            'tot_descontos': item.tot_descontos,
-            'tot_acrescimos': item.tot_acrescimos,
-            'qtde_canc': item.qtde_canc,
-            'qtde_canc_toler': item.qtde_canc_toler,
-            'perc_toler': item.perc_toler,
-            'qtde_atendida': item.qtde_atendida,
-            'qtde_saldo': item.qtde_saldo,
-        }
-        grouped_results[cod_pedc]['items'].append(item_data)
+    purchases_payload = _build_purchase_payload(items)
 
     if score_cutoff < 100:
         total_pages = 1
@@ -717,7 +913,7 @@ def search_combined():
         current_page = items_paginated.page
 
     return jsonify({
-        'purchases': list(grouped_results.values()),
+        'purchases': purchases_payload,
         'total_pages': total_pages,
         'current_page': current_page
     }), 200
@@ -1651,7 +1847,7 @@ def dashboard_summary():
             'order_count': int(r.order_count or 0),
             'total_value': float(r.total_value or 0.0),
             'avg_value': float(r.avg_value or 0.0),
-            'item_count': int(r.item_count or 0)  # Add the item count here
+            'item_count': int(r.item_count or 0)  
         } for r in buyer_rows]
 
         # Top suppliers
