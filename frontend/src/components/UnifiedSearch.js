@@ -438,7 +438,7 @@ const UnifiedSearch = ({ onLogout }) => {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [searchMode, setSearchMode] = useState(() => {
     if (typeof window === 'undefined') {
-      return 'classic';
+      return 'enhanced';
     }
     return localStorage.getItem(SEARCH_MODE_STORAGE_KEY) || 'classic';
   });
