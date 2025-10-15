@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import './Login.css';
-import backgroundImage from '../assets/images/back.jpg';  
+import backgroundImage from '../assets/images/back.png';  
 
 
 const Login = ({ onLogin }) => {

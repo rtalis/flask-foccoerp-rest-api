@@ -1051,6 +1051,7 @@ const formatNumber = (number) => {
             </FormControl>
 
             {/* Search precision section */}
+            {!usingEnhanced && (
             <FormControl component="fieldset" sx={{ minWidth: '200px' }}>
               <FormLabel component="legend">Precisão da busca</FormLabel>
               <RadioGroup
@@ -1078,7 +1079,7 @@ const formatNumber = (number) => {
                 />
               </RadioGroup>
             </FormControl>
-
+            )}
             {/* Purchaser section */}
             <FormControl sx={{ minWidth: '200px' }}>
               <FormLabel component="legend">Mostrar compradores</FormLabel>
