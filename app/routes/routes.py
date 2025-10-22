@@ -649,7 +649,7 @@ def search_advanced():
     page = max(int(request.args.get('page', 1)), 1)
     per_page = max(min(int(request.args.get('per_page', 20)), 200), 1)
     score_cutoff = int(request.args.get('score_cutoff', 100))
-    ignore_diacritics = request.args.get('ignoreDiacritics', 'false').lower() == 'true'
+    ignore_diacritics = request.args.get('ignoreDiacritics', 'true').lower() == 'true'
     fields_param = request.args.get('fields', '')
     search_by_func_nome = request.args.get('selectedFuncName', 'todos')
     min_value = request.args.get('minValue', type=float)
@@ -676,7 +676,7 @@ def search_advanced():
     if ignore_diacritics and db.engine.name == 'postgresql':
         db.session.execute(text("CREATE EXTENSION IF NOT EXISTS unaccent"))
         remove_accents = lambda col: func.unaccent(col)
-
+    
     def build_like_pattern(term: str) -> str:
         pattern = term.replace('*', '%')
         if '%' not in pattern:
@@ -684,8 +684,12 @@ def search_advanced():
         return pattern
 
     def apply_ilike(column, pattern):
-        col_expr = remove_accents(column) if remove_accents else column
-        return col_expr.ilike(pattern)
+        if remove_accents:
+            col_expr = remove_accents(column)
+            search_term = remove_accents(func.cast(pattern, db.String))
+            return col_expr.ilike(search_term)
+        else:
+            return column.ilike(pattern)
 
     base_query = (
         PurchaseItem.query

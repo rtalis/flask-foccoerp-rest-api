@@ -60,11 +60,23 @@ function HideSidebar(props) {
 
 
 function PurchaseRow(props) {
-  const { purchase, formatDate, formatNumber, formatCurrency, getFirstWords, handleItemClick } = props;
+  const {
+    purchase,
+    formatDate,
+    formatNumber,
+    formatCurrency,
+    getFirstWords,
+    handleItemClick,
+    hideFulfilledItems = false
+  } = props;
   const [open, setOpen] = useState(true); // Expanded by default
   const [nfeData, setNfeData] = useState(null);
   const [loadingNfe, setLoadingNfe] = useState(false);
   const [showNfeDialog, setShowNfeDialog] = useState(false);
+
+  useEffect(() => {
+    setOpen(!hideFulfilledItems);
+  }, [hideFulfilledItems]);
 
   const fetchNfeData = async () => {
     setLoadingNfe(true);
@@ -202,7 +214,11 @@ function PurchaseRow(props) {
         '&:hover': { backgroundColor: purchase.order.is_fulfilled ? '#7cb342' : '#5d836cff' }
       }}>
         <TableCell style={{ padding: 0 }}>
-          <IconButton size="small" onClick={() => setOpen(!open)}>
+          <IconButton
+            size="small"
+            onClick={() => setOpen(!open)}
+            disabled={hideFulfilledItems}
+          >
             {open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
           </IconButton>
         </TableCell>
@@ -217,7 +233,7 @@ function PurchaseRow(props) {
       {/* Collapsible items section */}
       <TableRow>
         <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={11}>
-          <Collapse in={open} timeout="auto" unmountOnExit>
+          <Collapse in={!hideFulfilledItems && open} timeout="auto" unmountOnExit>
             <Box sx={{ margin: 1 }}>
               <Table size="small" aria-label="items">
                 <TableHead>
@@ -302,7 +318,8 @@ function PurchaseRow(props) {
                         ) : nfeData && nfeData.nfe_data && nfeData.nfe_data.length > 0 ? (
                           <IconButton
                             color="secondary"
-                            onClick={() => setShowNfeDialog(true)}
+                            onClick={() => setShowNfeDialog(true)
+                            }
                             title="Ver Notas Fiscais"
                           >
                             <ReceiptIcon />
@@ -418,7 +435,8 @@ const UnifiedSearch = ({ onLogout }) => {
     searchByNumNF: false,
     min_value: '',
     max_value: '',
-    valueSearchType: 'item'
+    valueSearchType: 'item',
+    ignoreDiacritics: true
   });
   const [results, setResults] = useState([]);
   const [selectedItemId, setSelectedItemId] = useState(null);
@@ -444,6 +462,7 @@ const UnifiedSearch = ({ onLogout }) => {
   });
   const [suggestions, setSuggestions] = useState([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [showFulfilled, setShowFulfilled] = useState(true);
 
   const usingEnhanced = searchMode === 'enhanced';
 
@@ -456,9 +475,17 @@ const UnifiedSearch = ({ onLogout }) => {
     { text: 'Importar Dados', icon: <UploadIcon />, path: '/import' }
   ]), []);
 
-  const handleDrawerToggle = () => setMobileOpen(!mobileOpen);
-  const handleSidebarCollapse = () => setSidebarOpen(v => !v);
-  const handleNav = (path) => { try { navigate(path); } catch { window.location.assign(path); } };
+  
+
+  const handleDrawerToggle = () => setMobileOpen(prev => !prev);
+  const handleSidebarToggle = () => setSidebarOpen(prev => !prev);
+  const handleNavigate = (path) => navigate(path);
+  const handleLogoutClick = () => {
+    onLogout?.();
+    navigate('/login');
+  };
+
+
   const handleLogoutTop = () => { onLogout(); try { navigate('/login', { replace: true }); } catch { window.location.replace('/login'); } };
 
   const isScrolledToResults = useScrollTrigger({
@@ -475,57 +502,55 @@ const UnifiedSearch = ({ onLogout }) => {
   const drawerWidth = sidebarVisible ? baseDrawerWidth : 0;
 
   const drawerContent = (
-    <>
-      <Toolbar
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: sidebarOpen ? 'space-between' : 'center',
-          py: 1,
-          px: 2
-        }}
-      >
+     <>
+      <Toolbar sx={{ display: 'flex', justifyContent: sidebarOpen ? 'space-between' : 'center', px: 2 }}>
         {sidebarOpen && (
           <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
             Sistema de Compras
           </Typography>
         )}
-        <IconButton size="small" onClick={handleSidebarCollapse}>
-          {sidebarOpen ? <ChevronLeftIcon /> : <ChevronRightIcon />}
+        <IconButton size="small" onClick={handleSidebarToggle}>
+          {sidebarOpen ? <MenuIcon /> : <MenuIcon />}
         </IconButton>
       </Toolbar>
       <Divider />
-      <Box sx={{ py: 1 }}>
-        <List sx={{ px: sidebarOpen ? 1 : 0 }}>
-          {menuItems.map(item => (
-            <ListItemButton
-              key={item.text}
-              onClick={() => handleNav(item.path)}
-              sx={{
-                borderRadius: 2,
-                mx: sidebarOpen ? 1 : 0.5,
-                mb: 0.5,
-                minHeight: 44,
-                justifyContent: sidebarOpen ? 'flex-start' : 'center',
-                '&.Mui-selected': { bgcolor: 'primary.light', '&:hover': { bgcolor: 'primary.light' } },
-                '&:hover': { bgcolor: 'rgba(0,0,0,0.04)' }
-              }}
-              selected={item.path === '/search'}
-            >
-              <ListItemIcon
-                sx={{
-                  minWidth: 0,
-                  mr: sidebarOpen ? 2 : 'auto',
-                  color: item.path === '/search' ? 'primary.main' : 'inherit',
-                  justifyContent: 'center'
-                }}
-              >
-                {item.icon}
-              </ListItemIcon>
-              {sidebarOpen && <ListItemText primary={item.text} />}
-            </ListItemButton>
-          ))}
-        </List>
+      <List sx={{ px: sidebarOpen ? 1 : 0 }}>
+        {menuItems.map(item => (
+          <ListItemButton
+            key={item.text}
+            selected={item.path === '/nfe-tracking'}
+            onClick={() => handleNavigate(item.path)}
+            sx={{
+              borderRadius: 2,
+              mx: sidebarOpen ? 1 : 0.5,
+              my: 0.5,
+              minHeight: 44,
+              justifyContent: sidebarOpen ? 'flex-start' : 'center',
+              '&.Mui-selected': { bgcolor: 'primary.light', '&:hover': { bgcolor: 'primary.light' } }
+            }}
+          >
+            <ListItemIcon sx={{
+              minWidth: 0,
+              mr: sidebarOpen ? 2 : 'auto',
+              justifyContent: 'center'
+            }}>
+              {item.icon}
+            </ListItemIcon>
+            {sidebarOpen && <ListItemText primary={item.text} />}
+          </ListItemButton>
+        ))}
+      </List>
+      <Divider />
+      <Box sx={{ px: sidebarOpen ? 2 : 1, py: 2 }}>
+        <Button
+          variant="outlined"
+          startIcon={<LogoutIcon />}
+          fullWidth
+          color="inherit"
+          onClick={handleLogoutClick}
+        >
+          {sidebarOpen ? 'Sair' : ''}
+        </Button>
       </Box>
     </>
   );
@@ -617,6 +642,10 @@ const UnifiedSearch = ({ onLogout }) => {
       clearTimeout(handler);
     };
   }, [searchParams.query, usingEnhanced]);
+
+  useEffect(() => {
+    setNoResults(results.length);
+  }, [results]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -731,7 +760,8 @@ const UnifiedSearch = ({ onLogout }) => {
 
       if (usingEnhanced) {
         response = await axios.get(`${process.env.REACT_APP_API_URL}/api/search_advanced`, {
-          params: {
+          params:
+          {
             query: trimmedQuery,
             fields: resolveEnhancedFields().join(','),
             selectedFuncName: searchParams.selectedFuncName,
@@ -769,7 +799,6 @@ const UnifiedSearch = ({ onLogout }) => {
       setResults(purchases);
       setCurrentPage(response.data?.current_page || page);
       setTotalPages(response.data?.total_pages || 1);
-      setNoResults(purchases.length);
 
       if (usingEnhanced) {
         setEstimatedResults(response.data?.total_results ?? purchases.length);
@@ -971,8 +1000,8 @@ const formatNumber = (number) => {
               startIcon={<SearchIcon />}
             >
               Buscar
-            </Button>
-
+            </Button>       
+                 
           </Box>
 
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 5, mb: 5 }}>
@@ -1084,6 +1113,7 @@ const formatNumber = (number) => {
             <FormControl sx={{ minWidth: '200px' }}>
               <FormLabel component="legend">Mostrar compradores</FormLabel>
               <Select
+                sx={{ mt: 1, marginBottom: 2 }}
                 name="selectedFuncName"
                 value={searchParams.selectedFuncName}
                 onChange={handleChange}
@@ -1097,8 +1127,9 @@ const formatNumber = (number) => {
                   </MenuItem>
                 ))}
               </Select>
-            </FormControl>
+              
 
+                </FormControl>
             {/* Value filter section */}
             <FormControl component="fieldset" sx={{ minWidth: '200px' }}>
               <FormLabel component="legend">Filtrar por valor</FormLabel>
@@ -1121,10 +1152,11 @@ const formatNumber = (number) => {
                 />
               </RadioGroup>
 
-              <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+              
                 <TextField
+                  sx={{ mb: 2, mt: 2 }}
                   label="Valor mínimo"
-                  name="min_value"
+                  name="min_value"  
                   type="number"
                   value={searchParams.min_value}
                   onChange={handleChange}
@@ -1144,9 +1176,36 @@ const formatNumber = (number) => {
                     startAdornment: <InputAdornment position="start">R$</InputAdornment>,
                   }}
                 />
-              </Box>
+             
             </FormControl>
-          </Box>
+            <FormControl component="fieldset" sx={{ minWidth: '200px' }}>
+              <FormLabel component="legend">Filtrar por...</FormLabel>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={!showFulfilled}
+                  onChange={() => setShowFulfilled(!showFulfilled)}
+                  color="primary"
+                />
+              }
+              label={showFulfilled ? 'Mostrar concluidos' : 'Ocultar concluidos'}
+              sx={{ mr: 1 }}
+              
+            /><Divider sx={{ my: 1 }} />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  name="ignoreDiacritics"
+                  checked={searchParams.ignoreDiacritics}
+                  onChange={handleChange}
+                />
+              }
+              label="Ignorar acentuação (diacríticos)"
+              sx={{ marginBottom: '-10px' }}
+            />
+
+            </FormControl>
+            </Box>
 
           {loading && (
             <Box sx={{
@@ -1187,6 +1246,7 @@ const formatNumber = (number) => {
                     formatCurrency={formatCurrency}
                     getFirstWords={getFirstWords}
                     handleItemClick={handleItemClick}
+                    hideFulfilledItems={!showFulfilled && purchase.order.is_fulfilled}
                   />
                 ))}
               </TableBody>
