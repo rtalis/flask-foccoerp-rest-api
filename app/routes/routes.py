@@ -638,13 +638,8 @@ def search_advanced():
     if request.args.get('legacy', 'false').lower() == 'true':
         return search_combined()
 
-    raw_query = request.args.get('query', '').strip()
-    if not raw_query:
-        return jsonify({'error': 'Query is required'}), 400
-
-    tokens = [token for token in re.split(r'\s+', raw_query) if token]
-    if not tokens:
-        return jsonify({'error': 'Query is required'}), 400
+    normalized_query = request.args.get('query', '').strip()
+    tokens = [token for token in re.split(r'\s+', normalized_query) if token]
 
     page = max(int(request.args.get('page', 1)), 1)
     per_page = max(min(int(request.args.get('per_page', 20)), 200), 1)
@@ -737,7 +732,7 @@ def search_advanced():
 
     base_query = base_query.order_by(PurchaseOrder.dt_emis.desc(), PurchaseItem.id.desc())
 
-    if score_cutoff < 100:
+    if score_cutoff < 100 and tokens:
         items = base_query.all()
         items = fuzzy_search(' '.join(tokens), items, score_cutoff, 'descricao' in fields, 'observacao' in fields)
         purchases_payload = _build_purchase_payload(items)
@@ -895,7 +890,7 @@ def search_combined():
     if search_by_func_nome != 'todos':
         items_query = items_query.filter(and_(PurchaseOrder.func_nome.ilike(f'%{search_by_func_nome}%')))
     
-    if score_cutoff < 100:
+    if score_cutoff < 100 and query:
         fuzzy_query = PurchaseItem.query.order_by(PurchaseOrder.dt_emis.desc()).join(PurchaseOrder, PurchaseItem.purchase_order_id == PurchaseOrder.id)
         if search_by_func_nome != 'todos':
             fuzzy_query =  fuzzy_query.filter(PurchaseOrder.func_nome.ilike(f'%{search_by_func_nome}%'))
@@ -909,7 +904,7 @@ def search_combined():
 
     purchases_payload = _build_purchase_payload(items)
 
-    if score_cutoff < 100:
+    if score_cutoff < 100 and query:
         total_pages = 1
         current_page = 1
     else:

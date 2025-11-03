@@ -116,6 +116,11 @@ class LoginHistory(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     login_time = db.Column(db.DateTime, default=datetime.now)
     logout_time = db.Column(db.DateTime, nullable=True)
+    login_ip = db.Column(db.String(45), nullable=True)
+    login_user_agent = db.Column(db.Text, nullable=True)
+    logout_ip = db.Column(db.String(45), nullable=True)
+    logout_user_agent = db.Column(db.Text, nullable=True)
+    login_method = db.Column(db.String(32), nullable=True)
     
 class Quotation(db.Model):
     __tablename__ = 'quotations'

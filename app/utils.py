@@ -891,17 +891,39 @@ def parse_and_store_nfe_xml(xml_content):
     return nfe_data
 
 def check_order_fulfillment(order_id):
-    """Check if all items in a purchase order are fully fulfilled."""
+    """Check if all items in a purchase order are fulfilled or fully canceled."""
+
+    def to_float(value):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
     items = PurchaseItem.query.filter_by(purchase_order_id=order_id).all()
     if not items:
         return False
-    
+
     for item in items:
-        if item.qtde_atendida is None or item.quantidade is None:
+        quantity = to_float(item.quantidade)
+        if quantity is None:
             return False
-        if float(item.qtde_atendida) < float(item.quantidade):
-            return False
-    
+        if quantity <= 0:
+            continue
+
+        attended = to_float(item.qtde_atendida) or 0.0
+        canceled = to_float(item.qtde_canc) or 0.0
+        canceled_tolerance = to_float(item.qtde_canc_toler) or 0.0
+        total_canceled = canceled + canceled_tolerance
+
+        if attended >= quantity:
+            continue
+        if total_canceled >= quantity:
+            continue
+        if attended + total_canceled >= quantity:
+            continue
+
+        return False
+
     return True
 
 def score_purchase_nfe_match(purchase_order_id, nfe_id=None):

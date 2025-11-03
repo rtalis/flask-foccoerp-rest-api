@@ -74,6 +74,38 @@ function PurchaseRow(props) {
   const [loadingNfe, setLoadingNfe] = useState(false);
   const [showNfeDialog, setShowNfeDialog] = useState(false);
 
+  const normalizeNumber = (value) => {
+    if (value === null || value === undefined) {
+      return undefined;
+    }
+    if (typeof value === 'object') {
+      if (value === null) {
+        return undefined;
+      }
+      if (value.parsedValue !== undefined && value.parsedValue !== null) {
+        const parsed = Number(value.parsedValue);
+        if (!Number.isNaN(parsed)) {
+          return parsed;
+        }
+      }
+      if (value.source !== undefined && value.source !== null) {
+        const parsed = Number(value.source);
+        if (!Number.isNaN(parsed)) {
+          return parsed;
+        }
+      }
+      if (value.value !== undefined && value.value !== null) {
+        const parsed = Number(value.value);
+        if (!Number.isNaN(parsed)) {
+          return parsed;
+        }
+      }
+      return undefined;
+    }
+    const numeric = Number(value);
+    return Number.isNaN(numeric) ? undefined : numeric;
+  };
+
   useEffect(() => {
     setOpen(!hideFulfilledItems);
   }, [hideFulfilledItems]);
@@ -251,83 +283,95 @@ function PurchaseRow(props) {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {purchase.items.map((item) => (
-                    <TableRow
-                      key={item.id}
-                      sx={{
-                        backgroundColor: item.quantidade === item.qtde_atendida
-                          ? '#f4fbffff' // Light blue for fully fulfilled items
-                          : (item.qtde_atendida > 0 && item.qtde_atendida < item.quantidade)
-                            ? '#fff4f4ff' // Light red for partially fulfilled items
-                            : 'inherit', // Default color for unfulfilled items
-                        '&:hover': {
-                          backgroundColor: item.quantidade === item.qtde_atendida
-                            ? '#bbdefb' // Darker blue on hover
-                            : (item.qtde_atendida > 0 && item.qtde_atendida < item.quantidade)
-                              ? '#ffcdd2' // Darker red on hover
-                              : '#f5f5f5' // Light gray on hover for default
-                        }
-                      }}
-                    >
-                      <TableCell>{formatDate(purchase.order.dt_emis)}</TableCell>
-                      <TableCell
-                        onClick={() => handleItemClick(item.id)}
-                        sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+                  {purchase.items.map((item) => {
+                    const qty = normalizeNumber(item?.quantidade);
+                    const attended = normalizeNumber(item?.qtde_atendida);
+                    const canceled = normalizeNumber(item?.qtde_canc);
+                    const unitPrice = normalizeNumber(item?.preco_unitario);
+                    const total = normalizeNumber(item?.total);
+                    const percIpi = normalizeNumber(item?.perc_ipi);
+                    const isFullyFulfilled = qty !== undefined && attended !== undefined && qty === attended;
+                    const isOverfulfilled = qty !== undefined && attended !== undefined && attended > qty;
+                    const isPartiallyFulfilled = qty !== undefined && attended !== undefined && attended > 0 && attended < qty;
+                    const isFullyCanceled = qty !== undefined && canceled !== undefined && canceled >= qty && qty > 0;
+                    return (
+                      <TableRow
+                        key={item.id}
+                        sx={{
+                          backgroundColor: isOverfulfilled
+                            ? '#fcfbefff'
+                            : isFullyFulfilled
+                              ? '#e8f7ffff'
+                              : (isPartiallyFulfilled ? '#eedfdfff' : 'inherit'),
+                          '&:hover': {
+                            backgroundColor: isOverfulfilled
+                              ? '#fcedc3ff'
+                              : isFullyFulfilled
+                                ? '#cae4f8ff'
+                                : (isPartiallyFulfilled ? '#d1a9adff' : '#f5f5f5')
+                          }
+                        }}
                       >
-                        {item.item_id}
-                      </TableCell>
-                      <TableCell>{item.descricao}</TableCell>
-                      <TableCell>{formatNumber(item.quantidade)} {item.unidade_medida}</TableCell>
-                      <TableCell>R$ {formatNumber(item.preco_unitario)}</TableCell>
-                      <TableCell>{item.perc_ipi ? `${formatNumber(item.perc_ipi)}%` : '0%'}</TableCell>
-                      <TableCell>R$ {formatNumber(item.total)}</TableCell>
-                      <TableCell>{formatNumber(item.qtde_atendida)} {item.unidade_medida}</TableCell>
-                      <TableCell>
-                        {purchase.order.nfes.map(nf => (
-                          <div key={nf.id}>
-                            {nf.linha == item.linha && (
-                              <>
-                                {nf.dt_ent ? formatDate(nf.dt_ent) : ''}
-                                {nf.qtde ? ` (${formatNumber(nf.qtde)} ${item.unidade_medida})` : ''}
-                              </>
-                            )}
-                          </div>
-                        ))}
-                      </TableCell>
-                      <TableCell>
-                        {purchase.order.nfes.map(nf => (
-                          nf.linha == item.linha && nf.num_nf ? (
-                            <div key={nf.id}>{nf.num_nf}</div>
-                          ) : null
-                        ))}
-                      </TableCell>
-                      <TableCell>
-                        {true ? (
-                          <IconButton
-                            size="small"
-                            color="primary"
-                            onClick={fetchNfeData}
-                            disabled={loadingNfe}
-                            title="Ver detalhes das notas fiscais"
-                          >
-                            <SearchIcon fontSize="small" />
-                          </IconButton>
-                        ) : null}
-                        {loadingNfe ? (
-                          <CircularProgress size={24} />
-                        ) : nfeData && nfeData.nfe_data && nfeData.nfe_data.length > 0 ? (
-                          <IconButton
-                            color="secondary"
-                            onClick={() => setShowNfeDialog(true)
-                            }
-                            title="Ver Notas Fiscais"
-                          >
-                            <ReceiptIcon />
-                          </IconButton>
-                        ) : null}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        <TableCell sx={isFullyCanceled ? { textDecoration: 'line-through', color: '#9e9e9e' } : {}}>{formatDate(purchase.order.dt_emis)}</TableCell>
+                        <TableCell
+                          onClick={() => handleItemClick(item.id)}
+                          sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' }, ...(isFullyCanceled ? { textDecoration: 'line-through', color: '#9e9e9e' } : {}) }}
+                        >
+                          {item.item_id}
+                        </TableCell>
+                        <TableCell sx={isFullyCanceled ? { textDecoration: 'line-through', color: '#9e9e9e' } : {}}>{item.descricao}</TableCell>
+                        <TableCell sx={isFullyCanceled ? { textDecoration: 'line-through', color: '#9e9e9e' } : {}}>{formatNumber(qty)} {item.unidade_medida}</TableCell>
+                        <TableCell sx={isFullyCanceled ? { textDecoration: 'line-through', color: '#9e9e9e' } : {}}>R$ {formatNumber(unitPrice)}</TableCell>
+                        <TableCell sx={isFullyCanceled ? { textDecoration: 'line-through', color: '#9e9e9e' } : {}}>{percIpi !== undefined ? `${formatNumber(percIpi)}%` : '0%'}</TableCell>
+                        <TableCell sx={isFullyCanceled ? { textDecoration: 'line-through', color: '#9e9e9e' } : {}}>R$ {formatNumber(total)}</TableCell>
+                        <TableCell sx={isFullyCanceled ? { textDecoration: 'line-through', color: '#9e9e9e' } : {}}>{formatNumber(attended)} {item.unidade_medida}</TableCell>
+                        <TableCell sx={isFullyCanceled ? { textDecoration: 'line-through', color: '#9e9e9e' } : {}}>
+                          {purchase.order.nfes.map(nf => (
+                            <div key={nf.id}>
+                              {nf.linha == item.linha && (
+                                <>
+                                  {nf.dt_ent ? formatDate(nf.dt_ent) : ''}
+                                  {nf.qtde ? ` (${formatNumber(normalizeNumber(nf?.qtde))} ${item.unidade_medida})` : ''}
+                                </>
+                              )}
+                            </div>
+                          ))}
+                        </TableCell>
+                        <TableCell sx={isFullyCanceled ? { textDecoration: 'line-through', color: '#9e9e9e' } : {}}>
+                          {purchase.order.nfes.map(nf => (
+                            nf.linha == item.linha && nf.num_nf ? (
+                              <div key={nf.id}>{nf.num_nf}</div>
+                            ) : null
+                          ))}
+                        </TableCell>
+                        <TableCell>
+                          {true ? (
+                            <IconButton
+                              size="small"
+                              color="primary"
+                              onClick={fetchNfeData}
+                              disabled={loadingNfe}
+                              title="Ver detalhes das notas fiscais"
+                            >
+                              <SearchIcon fontSize="small" />
+                            </IconButton>
+                          ) : null}
+                          {loadingNfe ? (
+                            <CircularProgress size={24} />
+                          ) : nfeData && nfeData.nfe_data && nfeData.nfe_data.length > 0 ? (
+                            <IconButton
+                              color="secondary"
+                              onClick={() => setShowNfeDialog(true)
+                              }
+                              title="Ver Notas Fiscais"
+                            >
+                              <ReceiptIcon />
+                            </IconButton>
+                          ) : null}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
                 {/* Footer */}
                 <TableFooter>
@@ -715,14 +759,10 @@ const UnifiedSearch = ({ onLogout }) => {
       return;
     }
     const term = (searchParams.query || '').trim();
-    if (!term) {
-      setEstimatedResults(0);
-      return;
-    }
     try {
       const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/count_results`, {
         params: {
-          query: term,
+          query: term || undefined,
           score_cutoff: searchParams.score_cutoff,
           searchByCodPedc: searchParams.searchByCodPedc,
           searchByFornecedor: searchParams.searchByFornecedor,
@@ -743,12 +783,6 @@ const UnifiedSearch = ({ onLogout }) => {
 
   const handleSearch = async (page = 1) => {
     const trimmedQuery = (searchParams.query || '').trim();
-    if (!trimmedQuery) {
-      setResults([]);
-      setNoResults(0);
-      setEstimatedResults(0);
-      return;
-    }
 
     setLoading(true);
     if (!usingEnhanced) {
@@ -762,7 +796,7 @@ const UnifiedSearch = ({ onLogout }) => {
         response = await axios.get(`${process.env.REACT_APP_API_URL}/api/search_advanced`, {
           params:
           {
-            query: trimmedQuery,
+            query: trimmedQuery || undefined,
             fields: resolveEnhancedFields().join(','),
             selectedFuncName: searchParams.selectedFuncName,
             minValue: searchParams.min_value || undefined,
@@ -968,7 +1002,7 @@ const formatNumber = (number) => {
                   label="Buscar pedidos"
                   variant="outlined"
                   size="small"
-                  placeholder="Ex.: motor 123 aço"
+                  placeholder="Ex.: motor 123"
                   onKeyDown={handleKeyDown}
                   InputProps={{
                     ...params.InputProps,

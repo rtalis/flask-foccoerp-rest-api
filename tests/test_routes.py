@@ -4,7 +4,8 @@ from datetime import date
 from flask import Flask
 from flask.testing import FlaskClient
 from app import create_app, db
-from app.models import PurchaseOrder, PurchaseItem, User
+from app.models import PurchaseOrder, PurchaseItem, User, LoginHistory
+from app.utils import check_order_fulfillment
 from werkzeug.security import generate_password_hash
 
 @pytest.fixture
@@ -17,6 +18,7 @@ def app():
     })
 
     with app.app_context():
+        db.drop_all()
         db.create_all()
         # Criar usuário de teste
         test_user = User(
@@ -153,10 +155,17 @@ def test_logout(auth_client: FlaskClient):
     assert response.status_code == 200
     assert b'Logged out successfully' in response.data
 
+    with auth_client.application.app_context():
+        user = User.query.filter_by(email='test@example.com').first()
+        history = LoginHistory.query.filter_by(user_id=user.id).order_by(LoginHistory.login_time.desc()).first()
+        assert history is not None
+        assert history.logout_time is not None
+        assert history.logout_ip == '127.0.0.1'
 
-def test_search_advanced_requires_query(auth_client: FlaskClient):
+
+def test_search_advanced_allows_empty_query(auth_client: FlaskClient):
     response = auth_client.get('/api/search_advanced')
-    assert response.status_code == 400
+    assert response.status_code == 200
 
 
 def test_search_advanced_multiterm(auth_client: FlaskClient):
@@ -223,3 +232,80 @@ def test_search_advanced_suggestions(auth_client: FlaskClient):
     response = auth_client.get('/api/search_advanced/suggestions', query_string={'term': 'motor'})
     assert response.status_code == 200
     assert 'suggestions' in response.json
+
+
+def test_check_order_fulfillment_counts_canceled_items(auth_client: FlaskClient):
+    with auth_client.application.app_context():
+        order = PurchaseOrder(
+            cod_pedc='FUL-001',
+            dt_emis=date(2024, 3, 1),
+            fornecedor_id=10,
+            fornecedor_descricao='Fornecedor Cancelado'
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        fully_attended = PurchaseItem(
+            purchase_order_id=order.id,
+            item_id='ITEM-A',
+            dt_emis=date(2024, 3, 1),
+            cod_pedc='FUL-001',
+            descricao='Item atendido',
+            quantidade=5,
+            preco_unitario=10,
+            total=50,
+            qtde_atendida=5
+        )
+        fully_canceled = PurchaseItem(
+            purchase_order_id=order.id,
+            item_id='ITEM-B',
+            dt_emis=date(2024, 3, 1),
+            cod_pedc='FUL-001',
+            descricao='Item cancelado',
+            quantidade=7,
+            preco_unitario=12,
+            total=84,
+            qtde_canc=7
+        )
+        split_attended = PurchaseItem(
+            purchase_order_id=order.id,
+            item_id='ITEM-C',
+            dt_emis=date(2024, 3, 1),
+            cod_pedc='FUL-001',
+            descricao='Item parcial atendido/cancelado',
+            quantidade=9,
+            preco_unitario=8,
+            total=72,
+            qtde_atendida=4,
+            qtde_canc=5
+        )
+        db.session.add_all([fully_attended, fully_canceled, split_attended])
+        db.session.commit()
+
+        assert check_order_fulfillment(order.id) is True
+
+        pending_order = PurchaseOrder(
+            cod_pedc='FUL-002',
+            dt_emis=date(2024, 3, 2),
+            fornecedor_id=20,
+            fornecedor_descricao='Fornecedor Pendente'
+        )
+        db.session.add(pending_order)
+        db.session.flush()
+
+        pending_item = PurchaseItem(
+            purchase_order_id=pending_order.id,
+            item_id='ITEM-D',
+            dt_emis=date(2024, 3, 2),
+            cod_pedc='FUL-002',
+            descricao='Item pendente',
+            quantidade=10,
+            preco_unitario=15,
+            total=150,
+            qtde_atendida=6,
+            qtde_canc=2
+        )
+        db.session.add(pending_item)
+        db.session.commit()
+
+        assert check_order_fulfillment(pending_order.id) is False

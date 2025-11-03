@@ -15,6 +15,50 @@ from config import Config
 auth_bp = Blueprint('auth', __name__)
 limiter = Limiter(key_func=get_remote_address)
 
+
+def _extract_client_ip(req):
+    forwarded_for = req.headers.get('X-Forwarded-For', '')
+    if forwarded_for:
+        return forwarded_for.split(',')[0].strip()
+    return req.remote_addr
+
+
+def _extract_user_agent(req):
+    return req.headers.get('User-Agent', '')
+
+
+def _record_login_event(user, req, method='password'):
+    ip_address = _extract_client_ip(req)
+    user_agent = _extract_user_agent(req)
+    login_history = LoginHistory(
+        user_id=user.id,
+        login_time=datetime.now(),
+        login_ip=ip_address,
+        login_user_agent=user_agent,
+        login_method=method
+    )
+    db.session.add(login_history)
+    db.session.commit()
+    return login_history
+
+
+def _record_logout_event(user, req):
+    ip_address = _extract_client_ip(req)
+    user_agent = _extract_user_agent(req)
+    last_login = (
+        LoginHistory.query
+        .filter_by(user_id=user.id)
+        .order_by(LoginHistory.login_time.desc())
+        .first()
+    )
+    if last_login and last_login.logout_time is None:
+        last_login.logout_time = datetime.now()
+        last_login.logout_ip = ip_address
+        last_login.logout_user_agent = user_agent
+        db.session.commit()
+        return last_login
+    return None
+
 @auth_bp.route('/login', methods=['POST'])
 @limiter.limit("2 per 5 seconds")
 def login():
@@ -25,10 +69,8 @@ def login():
 
     if user and check_password_hash(user.password, password):
         login_user(user)
-        login_history = LoginHistory(user_id=user.id, login_time=datetime.now())
-        db.session.add(login_history)
-        db.session.commit()
-        send_login_notification_email(user, request.remote_addr)
+        login_history = _record_login_event(user, request, method='password')
+        send_login_notification_email(user, login_history.login_ip)
 
         resp = make_response(jsonify({
             'message': 'Logged in successfully',
@@ -103,6 +145,7 @@ def register():
 @login_required
 @limiter.limit("5 per 5 seconds")
 def logout():
+    _record_logout_event(current_user, request)
     logout_user()
     response = make_response(jsonify({'message': 'Logged out successfully'}), 200)
     response.delete_cookie('session')
@@ -155,6 +198,7 @@ def login_by_token():
         return jsonify({'error': 'Invalid or expired token'}), 401
 
     login_user(user)
+    _record_login_event(user, request, method='jwt_token')
     return jsonify({'message': 'Logged in successfully'}), 200
 
 @auth_bp.route('/generate_jwt_token', methods=['POST'])
