@@ -30,8 +30,8 @@ import './Dashboard.css';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, ChartTooltip, Legend, ArcElement);
 
-const DRAWER_WIDTH_OPEN = 260;
-const DRAWER_WIDTH_COLLAPSED = 80;
+
+
 
 const Dashboard = ({ onLogout }) => {
   const [data, setData] = useState(null);
@@ -59,6 +59,10 @@ const Dashboard = ({ onLogout }) => {
 
   const [suggestedMatches, setSuggestedMatches] = useState([]);
   const [suggestedMatchesLoading, setSuggestedMatchesLoading] = useState(false);
+
+  const DRAWER_WIDTH_OPEN = 260;
+  const DRAWER_WIDTH_COLLAPSED = 80;
+  const baseDrawerWidth = sidebarOpen ? DRAWER_WIDTH_OPEN : DRAWER_WIDTH_COLLAPSED;
 
 
   const navigate = useNavigate();
@@ -335,42 +339,7 @@ const Dashboard = ({ onLogout }) => {
   const fmtCurrency = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v || 0));
   const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString('pt-BR') : '—');
 
-  const dailyUsageChart = useMemo(() => {
-    const rows = Array.isArray(data?.daily_usage) ? data.daily_usage : [];
-    return {
-      labels: rows.map(r => {
-        if (!r?.date) return '';
-        const dateObj = new Date(r.date);
-        if (Number.isNaN(dateObj.getTime())) {
-          return String(r.date);
-        }
-        return dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-      }),
-      datasets: [
-        {
-          label: 'Logins',
-          data: rows.map(r => Number(r?.logins ?? 0)),
-          borderColor: '#5b8def',
-          backgroundColor: 'rgba(91, 141, 239, 0.2)',
-          fill: true,
-          tension: 0.35,
-          pointRadius: 3,
-          pointBackgroundColor: '#5b8def'
-        },
-        {
-          label: 'Usuários Únicos',
-          data: rows.map(r => Number(r?.unique_users ?? 0)),
-          borderColor: '#6dd3c2',
-          backgroundColor: 'rgba(109, 211, 194, 0.2)',
-          fill: false,
-          tension: 0.35,
-          pointRadius: 3,
-          pointBackgroundColor: '#6dd3c2',
-          borderDash: [6, 4]
-        }
-      ]
-    };
-  }, [data]);
+
 
   // Monthly line (total value)
   const monthlyChart = useMemo(() => {
@@ -435,6 +404,42 @@ const Dashboard = ({ onLogout }) => {
         data: rows.map(r => Number(r?.total_value ?? 0)),
         backgroundColor: ['#5b8def', '#6dd3c2', '#fad776', '#c69df6', '#ef7171', '#68c2ff', '#a5b0c2', '#8fe3a6']
       }]
+    };
+  }, [data]);
+    const dailyUsageChart = useMemo(() => {
+    const rows = Array.isArray(data?.daily_usage) ? data.daily_usage : [];
+    return {
+      labels: rows.map(r => {
+        if (!r?.date) return '';
+        const dateObj = new Date(r.date);
+        if (Number.isNaN(dateObj.getTime())) {
+          return String(r.date);
+        }
+        return dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      }),
+      datasets: [
+        {
+          label: 'Logins',
+          data: rows.map(r => Number(r?.logins ?? 0)),
+          borderColor: '#5b8def',
+          backgroundColor: 'rgba(91, 141, 239, 0.2)',
+          fill: true,
+          tension: 0.35,
+          pointRadius: 3,
+          pointBackgroundColor: '#5b8def'
+        },
+        {
+          label: 'Usuários Únicos',
+          data: rows.map(r => Number(r?.unique_users ?? 0)),
+          borderColor: '#6dd3c2',
+          backgroundColor: 'rgba(109, 211, 194, 0.2)',
+          fill: false,
+          tension: 0.35,
+          pointRadius: 3,
+          pointBackgroundColor: '#6dd3c2',
+          borderDash: [6, 4]
+        }
+      ]
     };
   }, [data]);
 
@@ -550,7 +555,11 @@ const Dashboard = ({ onLogout }) => {
     return (
       <Box sx={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center' }}>
         <CircularProgress size={60} />
+        <Box sx={{ ml: 2 }}>
+          <Typography variant="body2">Carregando {months} meses de relatórios...</Typography>
+        </Box>
       </Box>
+      
     );
   }
   if (error) {
@@ -608,40 +617,43 @@ const Dashboard = ({ onLogout }) => {
       </AppBar>
 
       {/* Navigation drawers */}
-      <Box component="nav" sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}>
-        {/* Mobile temporary */}
-        <Drawer
-          variant="temporary"
-          open={mobileOpen}
-          onClose={handleDrawerToggle}
-          ModalProps={{ keepMounted: true }}
-          sx={{
-            display: { xs: 'block', sm: 'none' },
-            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: DRAWER_WIDTH_OPEN }
-          }}
-        >
-          {drawerContent}
-        </Drawer>
-
-        {/* Desktop permanent (retractible) */}
-        <Drawer
-          variant="permanent"
-          sx={{
-            display: { xs: 'none', sm: 'block' },
-            '& .MuiDrawer-paper': {
-              boxSizing: 'border-box',
-              width: drawerWidth,
-              transition: theme => theme.transitions.create('width', {
-                easing: theme.transitions.easing.sharp,
-                duration: theme.transitions.duration.shortest
-              })
-            }
-          }}
-          open
-        >
-          {drawerContent}
-        </Drawer>
-      </Box>
+        <Box component="nav" sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}>
+          {/* Mobile temporary drawer or when sidebar is hidden */}
+          <Drawer
+            variant="temporary"
+            open={mobileOpen}
+            onClose={handleDrawerToggle}
+            ModalProps={{ keepMounted: true }}
+            sx={{
+              display: { xs: 'block', sm: 'none'  },
+              '& .MuiDrawer-paper': { boxSizing: 'border-box', width: DRAWER_WIDTH_OPEN }
+            }}
+          >
+            {drawerContent}
+          </Drawer>
+  
+          {/* Desktop permanent drawer that hides on scroll */}
+        
+              <Drawer
+                variant="permanent"
+                sx={{
+                  display: { xs: 'none', sm: 'block' },
+                  '& .MuiDrawer-paper': {
+                    boxSizing: 'border-box',
+                    width: baseDrawerWidth,
+                    transition: theme => theme.transitions.create('width', {
+                      easing: theme.transitions.easing.sharp,
+                      duration: theme.transitions.duration.shortest
+                    })
+                  }
+                }}
+                open
+              >
+                {drawerContent}
+              </Drawer>
+      
+        </Box>
+  
 
       {/* Main */}
       <Box
@@ -1007,71 +1019,7 @@ const Dashboard = ({ onLogout }) => {
 
 
 
-          {/* Daily Usage Chart */}
-          <Grid container spacing={3} sx={{ mb: 3 }}>
-            <Grid item xs={12}>
-              <Paper
-                sx={{
-                  p: 3,
-                  borderRadius: 3,
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.06)',
-                  width: '96%',
-                  maxWidth: '100%'
-                }}
-              >
-                <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
-                  Uso Diário do Sistema
-                </Typography>
-                <Box
-                  sx={{
-                    height: { xs: 320, md: 360 },
-                    width: '100%',
-                    mx: 'auto'
-                  }}
-                >
-                  {data?.daily_usage?.length > 0 ? (
-                    <Line
-                      data={dailyUsageChart}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                          legend: { position: 'top' },
-                          tooltip: {
-                            backgroundColor: 'white',
-                            titleColor: '#222',
-                            bodyColor: '#222',
-                            borderColor: '#e1e1e1',
-                            borderWidth: 1,
-                            padding: 12,
-                            usePointStyle: true,
-                            callbacks: {
-                              label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y}`
-                            }
-                          }
-                        },
-                        scales: {
-                          y: {
-                            beginAtZero: true,
-                            ticks: { stepSize: 1, precision: 0 },
-                            grid: { borderDash: [5, 5], color: 'rgba(0,0,0,0.06)' }
-                          },
-                          x: { grid: { display: false } }
-                        }
-                      }}
-                    />
-                  ) : (
-                    <Typography
-                      variant="body2"
-                      sx={{ color: 'text.secondary', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                    >
-                      Sem dados de uso disponíveis para o período selecionado.
-                    </Typography>
-                  )}
-                </Box>
-              </Paper>
-            </Grid>
-          </Grid>
+        
 
           {/* Monthly Chart  */}
 
@@ -1308,6 +1256,71 @@ const Dashboard = ({ onLogout }) => {
                   ) : (
                     <Typography variant="body2" sx={{ color: 'text.secondary', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       Sem dados para o período.
+                    </Typography>
+                  )}
+                </Box>
+              </Paper>
+            </Grid>
+          </Grid>
+            {/* Daily Usage Chart */}
+          <Grid container spacing={3} sx={{ mb: 3 }}>
+            <Grid item xs={12}>
+              <Paper
+                sx={{
+                  p: 3,
+                  borderRadius: 3,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.06)',
+                  width: '96%',
+                  maxWidth: '100%'
+                }}
+              >
+                <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
+                  Uso Diário do Sistema
+                </Typography>
+                <Box
+                  sx={{
+                    height: { xs: 320, md: 360 },
+                    width: '100%',
+                    mx: 'auto'
+                  }}
+                >
+                  {data?.daily_usage?.length > 0 ? (
+                    <Line
+                      data={dailyUsageChart}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                          legend: { position: 'top' },
+                          tooltip: {
+                            backgroundColor: 'white',
+                            titleColor: '#222',
+                            bodyColor: '#222',
+                            borderColor: '#e1e1e1',
+                            borderWidth: 1,
+                            padding: 12,
+                            usePointStyle: true,
+                            callbacks: {
+                              label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y}`
+                            }
+                          }
+                        },
+                        scales: {
+                          y: {
+                            beginAtZero: true,
+                            ticks: { stepSize: 1, precision: 0 },
+                            grid: { borderDash: [5, 5], color: 'rgba(0,0,0,0.06)' }
+                          },
+                          x: { grid: { display: false } }
+                        }
+                      }}
+                    />
+                  ) : (
+                    <Typography
+                      variant="body2"
+                      sx={{ color: 'text.secondary', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      Sem dados de uso disponíveis para o período selecionado.
                     </Typography>
                   )}
                 </Box>
