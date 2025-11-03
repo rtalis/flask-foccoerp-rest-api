@@ -1,6 +1,6 @@
 import pytest
 from io import BytesIO
-from datetime import date
+from datetime import date, datetime, timedelta
 from flask import Flask
 from flask.testing import FlaskClient
 from app import create_app, db
@@ -161,6 +161,25 @@ def test_logout(auth_client: FlaskClient):
         assert history is not None
         assert history.logout_time is not None
         assert history.logout_ip == '127.0.0.1'
+
+
+def test_dashboard_summary_includes_daily_usage(auth_client: FlaskClient):
+    with auth_client.application.app_context():
+        user = User.query.filter_by(email='test@example.com').first()
+        now = datetime.now()
+        for days_ago in range(3):
+            db.session.add(LoginHistory(
+                user_id=user.id,
+                login_time=now - timedelta(days=days_ago),
+                login_ip='127.0.0.1'
+            ))
+        db.session.commit()
+
+    response = auth_client.get('/api/dashboard_summary')
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert 'daily_usage' in payload
+    assert isinstance(payload['daily_usage'], list)
 
 
 def test_search_advanced_allows_empty_query(auth_client: FlaskClient):

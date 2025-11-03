@@ -8,7 +8,7 @@ from sqlalchemy import and_, or_, func, cast
 from sqlalchemy.sql import exists
 from sqlalchemy.orm import joinedload
 from flask_login import login_user, logout_user, login_required, current_user
-from app.models import NFEData, NFEntry, PurchaseOrder, PurchaseItem, Quotation, User
+from app.models import LoginHistory, NFEData, NFEntry, PurchaseOrder, PurchaseItem, Quotation, User
 from app.utils import  apply_adjustments, check_order_fulfillment, fuzzy_search, import_rcot0300, import_rfor0302, import_rpdc0250c, import_ruah
 from app import db
 import tempfile
@@ -1817,6 +1817,48 @@ def dashboard_summary():
             })
             cur = (cur.replace(day=1) + timedelta(days=32)).replace(day=1)
 
+        # Daily usage based on login history
+        usage_days = max(int(request.args.get('usage_days', 14)), 1)
+        usage_start_date = end_date - timedelta(days=usage_days - 1)
+
+        usage_rows = db.session.query(
+            func.date(LoginHistory.login_time).label('login_date'),
+            func.count(LoginHistory.id).label('login_count'),
+            func.count(func.distinct(LoginHistory.user_id)).label('user_count')
+        ).filter(
+            LoginHistory.login_time >= usage_start_date
+        ).group_by(
+            'login_date'
+        ).order_by(
+            'login_date'
+        ).all()
+
+        usage_map = {}
+        for row in usage_rows:
+            day_value = row.login_date
+            if isinstance(day_value, datetime):
+                day_value = day_value.date()
+            else:
+                try:
+                    day_value = datetime.strptime(str(day_value), '%Y-%m-%d').date()
+                except ValueError:
+                    continue
+
+            usage_map[day_value] = {
+                'logins': int(row.login_count or 0),
+                'unique_users': int(row.user_count or 0)
+            }
+
+        daily_usage = []
+        for idx in range(usage_days):
+            current_day = usage_start_date + timedelta(days=idx)
+            stats = usage_map.get(current_day, {'logins': 0, 'unique_users': 0})
+            daily_usage.append({
+                'date': current_day.isoformat(),
+                'logins': stats['logins'],
+                'unique_users': stats['unique_users']
+            })
+
         # Top buyers
         buyer_rows = db.session.query(
             PurchaseOrder.func_nome.label('name'),
@@ -1908,6 +1950,7 @@ def dashboard_summary():
                 'total_suppliers': int(total_suppliers)
             },
             'monthly_data': monthly_data,
+            'daily_usage': daily_usage,
             'buyer_data': buyer_data,
             'supplier_data': supplier_data,
             'top_items': top_items,

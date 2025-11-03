@@ -87,6 +87,11 @@ const Dashboard = ({ onLogout }) => {
           avg_order_value: Number(d?.summary?.avg_order_value ?? 0),
           total_suppliers: Number(d?.summary?.total_suppliers ?? 0),
         },
+        daily_usage: Array.isArray(d?.daily_usage) ? d.daily_usage.map(x => ({
+          date: x?.date ?? '',
+          logins: Number(x?.logins ?? 0),
+          unique_users: Number(x?.unique_users ?? 0)
+        })) : [],
         buyer_data: Array.isArray(d?.buyer_data) ? d.buyer_data.map(x => ({
           name: String(x?.name ?? ''),
           order_count: Number(x?.order_count ?? 0),
@@ -329,6 +334,43 @@ const Dashboard = ({ onLogout }) => {
 
   const fmtCurrency = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v || 0));
   const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString('pt-BR') : '—');
+
+  const dailyUsageChart = useMemo(() => {
+    const rows = Array.isArray(data?.daily_usage) ? data.daily_usage : [];
+    return {
+      labels: rows.map(r => {
+        if (!r?.date) return '';
+        const dateObj = new Date(r.date);
+        if (Number.isNaN(dateObj.getTime())) {
+          return String(r.date);
+        }
+        return dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      }),
+      datasets: [
+        {
+          label: 'Logins',
+          data: rows.map(r => Number(r?.logins ?? 0)),
+          borderColor: '#5b8def',
+          backgroundColor: 'rgba(91, 141, 239, 0.2)',
+          fill: true,
+          tension: 0.35,
+          pointRadius: 3,
+          pointBackgroundColor: '#5b8def'
+        },
+        {
+          label: 'Usuários Únicos',
+          data: rows.map(r => Number(r?.unique_users ?? 0)),
+          borderColor: '#6dd3c2',
+          backgroundColor: 'rgba(109, 211, 194, 0.2)',
+          fill: false,
+          tension: 0.35,
+          pointRadius: 3,
+          pointBackgroundColor: '#6dd3c2',
+          borderDash: [6, 4]
+        }
+      ]
+    };
+  }, [data]);
 
   // Monthly line (total value)
   const monthlyChart = useMemo(() => {
@@ -964,6 +1006,72 @@ const Dashboard = ({ onLogout }) => {
           {/* Disabled */}
 
 
+
+          {/* Daily Usage Chart */}
+          <Grid container spacing={3} sx={{ mb: 3 }}>
+            <Grid item xs={12}>
+              <Paper
+                sx={{
+                  p: 3,
+                  borderRadius: 3,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.06)',
+                  width: '96%',
+                  maxWidth: '100%'
+                }}
+              >
+                <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
+                  Uso Diário do Sistema
+                </Typography>
+                <Box
+                  sx={{
+                    height: { xs: 320, md: 360 },
+                    width: '100%',
+                    mx: 'auto'
+                  }}
+                >
+                  {data?.daily_usage?.length > 0 ? (
+                    <Line
+                      data={dailyUsageChart}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                          legend: { position: 'top' },
+                          tooltip: {
+                            backgroundColor: 'white',
+                            titleColor: '#222',
+                            bodyColor: '#222',
+                            borderColor: '#e1e1e1',
+                            borderWidth: 1,
+                            padding: 12,
+                            usePointStyle: true,
+                            callbacks: {
+                              label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y}`
+                            }
+                          }
+                        },
+                        scales: {
+                          y: {
+                            beginAtZero: true,
+                            ticks: { stepSize: 1, precision: 0 },
+                            grid: { borderDash: [5, 5], color: 'rgba(0,0,0,0.06)' }
+                          },
+                          x: { grid: { display: false } }
+                        }
+                      }}
+                    />
+                  ) : (
+                    <Typography
+                      variant="body2"
+                      sx={{ color: 'text.secondary', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      Sem dados de uso disponíveis para o período selecionado.
+                    </Typography>
+                  )}
+                </Box>
+              </Paper>
+            </Grid>
+          </Grid>
 
           {/* Monthly Chart  */}
 
