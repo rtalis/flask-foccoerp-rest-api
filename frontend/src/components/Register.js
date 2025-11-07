@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+import { useNavigate } from "react-router-dom";
 import {
   Box,
   Container,
@@ -23,58 +23,62 @@ import {
   TableCell,
   TableContainer,
   TableHead,
-  TableRow
-} from '@mui/material';
+  TableRow,
+} from "@mui/material";
 import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
   Save as SaveIcon,
-  Cancel as CancelIcon
-} from '@mui/icons-material';
-
+  Cancel as CancelIcon,
+} from "@mui/icons-material";
 
 const Register = () => {
   const navigate = useNavigate();
 
   // User form state
   const [formData, setFormData] = useState({
-    username: '',
-    email: '',
-    password: '',
-    role: 'viewer',
-    purchaser_name: '',
-    system_name: '',
-    initial_screen: '/dashboard',
-    allowed_screens: ['/dashboard']
+    username: "",
+    email: "",
+    password: "",
+    role: "viewer",
+    purchaser_name: "",
+    system_name: "",
+    initial_screen: "/dashboard",
+    allowed_screens: ["/dashboard"],
   });
 
   // UI state
   const [isEditing, setIsEditing] = useState(false);
   const [editUserId, setEditUserId] = useState(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [purchaserNames, setPurchaserNames] = useState([]);
   const [users, setUsers] = useState([]);
-  const [alert, setAlert] = useState({ open: false, message: '', severity: 'success' });
+  const [alert, setAlert] = useState({
+    open: false,
+    message: "",
+    severity: "success",
+  });
   const [isAdmin, setIsAdmin] = useState(false);
 
   // Available screens for permissions
   const availableScreens = [
-    { path: '/dashboard', label: 'Dashboard' },
-    { path: '/search', label: 'Buscar Pedidos' },
-    { path: '/quotation-analyzer', label: 'Analisar Cotações' },
-    { path: '/import', label: 'Importar Dados' }
+    { path: "/dashboard", label: "Dashboard" },
+    { path: "/search", label: "Buscar Pedidos" },
+    { path: "/quotation-analyzer", label: "Analisar Cotações" },
+    { path: "/import", label: "Importar Dados" },
   ];
 
   useEffect(() => {
     // Check if user is admin
     const checkAdminStatus = async () => {
       try {
-        const response = await axios.get(`${process.env.REACT_APP_API_URL}/auth/me`,
+        const response = await axios.get(
+          `${process.env.REACT_APP_API_URL}/auth/me`,
           { withCredentials: true }
         );
-        if (response.data.role !== 'admin') {
-          setError('Somente administradores podem registrar novos usuários');
+        if (response.data.role !== "admin") {
+          setError("Somente administradores podem registrar novos usuários");
           setIsAdmin(false);
         } else {
           setIsAdmin(true);
@@ -83,7 +87,7 @@ const Register = () => {
           fetchUsers();
         }
       } catch (err) {
-        navigate('/login');
+        navigate("/login");
       }
     };
 
@@ -98,12 +102,12 @@ const Register = () => {
       );
       // Filter out empty values and duplicates
       const filteredNames = response.data
-        .filter(name => name && name.trim() !== '')
+        .filter((name) => name && name.trim() !== "")
         .filter((name, index, self) => self.indexOf(name) === index)
         .sort((a, b) => a.localeCompare(b));
       setPurchaserNames(filteredNames);
     } catch (error) {
-      console.error('Error fetching purchaser names:', error);
+      console.error("Error fetching purchaser names:", error);
     }
   };
 
@@ -115,27 +119,27 @@ const Register = () => {
       );
       setUsers(response.data);
     } catch (error) {
-      console.error('Error fetching users:', error);
+      console.error("Error fetching users:", error);
     }
   };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleScreensChange = (screenPath) => {
-    setFormData(prev => {
+    setFormData((prev) => {
       const currentScreens = [...prev.allowed_screens];
       if (currentScreens.includes(screenPath)) {
         return {
           ...prev,
-          allowed_screens: currentScreens.filter(path => path !== screenPath)
+          allowed_screens: currentScreens.filter((path) => path !== screenPath),
         };
       } else {
         return {
           ...prev,
-          allowed_screens: [...currentScreens, screenPath]
+          allowed_screens: [...currentScreens, screenPath],
         };
       }
     });
@@ -156,8 +160,8 @@ const Register = () => {
 
         setAlert({
           open: true,
-          message: 'Usuário atualizado com sucesso!',
-          severity: 'success'
+          message: "Usuário atualizado com sucesso!",
+          severity: "success",
         });
       } else {
         // Create new user
@@ -166,23 +170,26 @@ const Register = () => {
           formData,
           { withCredentials: true }
         );
-
-        setAlert({
-          open: true,
-          message: 'Usuário criado com sucesso!',
-          severity: 'success'
-        });
+        if (response.status === 201) {
+          setAlert({
+            open: true,
+            message: "Usuário criado com sucesso!",
+            severity: "success",
+          });
+        } else {
+          throw new Error("Falha ao criar usuário");
+        }
       }
 
       // Reset form and refresh users list
       resetForm();
       fetchUsers();
     } catch (error) {
-      console.error('Operation failed', error);
+      console.error("Operation failed", error);
       setAlert({
         open: true,
-        message: error.response?.data?.error || 'Operação falhou',
-        severity: 'error'
+        message: error.response?.data?.error || "Operação falhou",
+        severity: "error",
       });
     }
   };
@@ -193,17 +200,17 @@ const Register = () => {
     setFormData({
       username: user.username,
       email: user.email,
-      password: '', // Don't show password
-      role: user.role || 'viewer',
-      purchaser_name: user.purchaser_name || '',
-      system_name: user.system_name || '',
-      initial_screen: user.initial_screen || '/dashboard',
-      allowed_screens: user.allowed_screens || ['/dashboard']
+      password: "", // Don't show password
+      role: user.role || "viewer",
+      purchaser_name: user.purchaser_name || "",
+      system_name: user.system_name || "",
+      initial_screen: user.initial_screen || "/dashboard",
+      allowed_screens: user.allowed_screens || ["/dashboard"],
     });
   };
 
   const handleDeleteUser = async (userId) => {
-    if (!window.confirm('Tem certeza que deseja excluir este usuário?')) {
+    if (!window.confirm("Tem certeza que deseja excluir este usuário?")) {
       return;
     }
 
@@ -215,35 +222,35 @@ const Register = () => {
 
       setAlert({
         open: true,
-        message: 'Usuário excluído com sucesso!',
-        severity: 'success'
+        message: "Usuário excluído com sucesso!",
+        severity: "success",
       });
 
       fetchUsers();
     } catch (error) {
-      console.error('Failed to delete user', error);
+      console.error("Failed to delete user", error);
       setAlert({
         open: true,
-        message: error.response?.data?.error || 'Falha ao excluir usuário',
-        severity: 'error'
+        message: error.response?.data?.error || "Falha ao excluir usuário",
+        severity: "error",
       });
     }
   };
 
   const resetForm = () => {
     setFormData({
-      username: '',
-      email: '',
-      password: '',
-      role: 'viewer',
-      purchaser_name: '',
-      system_name: '',
-      initial_screen: '/dashboard',
-      allowed_screens: ['/dashboard']
+      username: "",
+      email: "",
+      password: "",
+      role: "viewer",
+      purchaser_name: "",
+      system_name: "",
+      initial_screen: "/dashboard",
+      allowed_screens: ["/dashboard"],
     });
     setIsEditing(false);
     setEditUserId(null);
-    setError('');
+    setError("");
   };
 
   const handleCloseAlert = () => {
@@ -258,7 +265,7 @@ const Register = () => {
             Acesso Restrito
           </Typography>
           <Typography variant="body1">
-            {error || 'Somente administradores podem acessar esta página.'}
+            {error || "Somente administradores podem acessar esta página."}
           </Typography>
         </Paper>
       </Container>
@@ -268,8 +275,11 @@ const Register = () => {
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }} className="transition-all">
       <Paper className="p-6 mb-6 rounded-lg shadow-md hover:shadow-lg transition-shadow">
-        <Typography variant="h5" className="pb-3 mb-4 border-b-2 border-gray-200 text-gray-800">
-          {isEditing ? 'Editar Usuário' : 'Cadastrar Novo Usuário'}
+        <Typography
+          variant="h5"
+          className="pb-3 mb-4 border-b-2 border-gray-200 text-gray-800"
+        >
+          {isEditing ? "Editar Usuário" : "Cadastrar Novo Usuário"}
         </Typography>
 
         <Box component="form" onSubmit={handleSubmit} className="mt-6">
@@ -286,7 +296,7 @@ const Register = () => {
                 autoFocus
               />
             </Grid>
-            
+
             {/* Email and Password - half width on desktop, full on mobile */}
             <Grid item xs={12} md={6}>
               <TextField
@@ -308,10 +318,12 @@ const Register = () => {
                 value={formData.password}
                 onChange={handleInputChange}
                 required={!isEditing}
-                helperText={isEditing ? "Deixe em branco para manter a senha atual" : ""}
+                helperText={
+                  isEditing ? "Deixe em branco para manter a senha atual" : ""
+                }
               />
             </Grid>
-            
+
             {/* User type - full width */}
             <Grid item xs={12}>
               <FormControl fullWidth>
@@ -380,7 +392,7 @@ const Register = () => {
               </FormControl>
             </Grid>
           </Grid>
-          
+
           {/* Screens permission checkboxes */}
           <Box className="mt-6 mb-6 p-4 bg-gray-50 rounded-md border border-gray-200">
             <Typography variant="subtitle1" className="mb-3 font-medium">
@@ -410,9 +422,9 @@ const Register = () => {
               className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-6"
               startIcon={isEditing ? <SaveIcon /> : <AddIcon />}
             >
-              {isEditing ? 'Atualizar' : 'Cadastrar'}
+              {isEditing ? "Atualizar" : "Cadastrar"}
             </Button>
-            
+
             {isEditing && (
               <Button
                 type="button"
@@ -430,7 +442,10 @@ const Register = () => {
 
       {/* Users Table */}
       <Paper className="mt-8 p-6 rounded-lg shadow-md overflow-hidden">
-        <Typography variant="h5" className="pb-3 mb-4 border-b-2 border-gray-200 text-gray-800">
+        <Typography
+          variant="h5"
+          className="pb-3 mb-4 border-b-2 border-gray-200 text-gray-800"
+        >
           Usuários Cadastrados
         </Typography>
 
@@ -442,22 +457,29 @@ const Register = () => {
                 <TableCell className="font-medium">Email</TableCell>
                 <TableCell className="font-medium">Tipo</TableCell>
                 <TableCell className="font-medium">Comprador</TableCell>
-                <TableCell className="font-medium whitespace-nowrap">Ações</TableCell>
+                <TableCell className="font-medium whitespace-nowrap">
+                  Ações
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {users.map((user) => (
-                <TableRow 
+                <TableRow
                   key={user.id}
                   className="hover:bg-gray-50 transition-colors"
                 >
                   <TableCell>{user.username}</TableCell>
                   <TableCell>{user.email}</TableCell>
                   <TableCell>
-                    {user.role === 'admin' ? 'Administrador' :
-                      user.role === 'purchaser' ? 'Comprador' : 'Visualizador'}
+                    {user.role === "admin"
+                      ? "Administrador"
+                      : user.role === "purchaser"
+                      ? "Comprador"
+                      : "Visualizador"}
                   </TableCell>
-                  <TableCell>{user.purchaser_name || user.system_name || '—'}</TableCell>
+                  <TableCell>
+                    {user.purchaser_name || user.system_name || "—"}
+                  </TableCell>
                   <TableCell className="whitespace-nowrap">
                     <IconButton
                       color="primary"
@@ -488,9 +510,13 @@ const Register = () => {
         open={alert.open}
         autoHideDuration={6000}
         onClose={handleCloseAlert}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
-        <Alert onClose={handleCloseAlert} severity={alert.severity} className="rounded-md">
+        <Alert
+          onClose={handleCloseAlert}
+          severity={alert.severity}
+          className="rounded-md"
+        >
           {alert.message}
         </Alert>
       </Snackbar>

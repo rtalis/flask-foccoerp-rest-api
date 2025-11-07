@@ -1,10 +1,33 @@
-from datetime import datetime
+from datetime import datetime, date
 from flask import jsonify
 from app.models import NFEntry, PurchaseAdjustment, PurchaseItem, PurchaseOrder, Quotation
 from app import db
 from fuzzywuzzy import fuzz
 from flask_mail import Mail, Message
 from config import Config
+
+
+def _parse_date(value):
+    if not value:
+        return None
+
+    if isinstance(value, date):
+        return value
+
+    if isinstance(value, datetime):
+        return value.date()
+
+    if isinstance(value, str):
+        trimmed = value.strip()
+        for fmt in ('%d/%m/%y', '%d/%m/%Y', '%Y-%m-%d', '%Y/%m/%d'):
+            try:
+                parsed = datetime.strptime(trimmed, fmt)
+                parsed = parsed.replace(hour=12, minute=0, second=0, microsecond=0)
+                return parsed.date()
+            except ValueError:
+                continue
+
+    return None
 
 
 def parse_xml(xml_data):
@@ -14,7 +37,7 @@ def parse_xml(xml_data):
     purchase_orders = []
 
     for order in root.findall('.//TPED_COMPRA'):
-        cod_pedc = order.find('COD_PEDC').text if order.find('COD_PEDC') is not None else None,
+        cod_pedc = order.find('COD_PEDC').text if order.find('COD_PEDC') is not None else None
 
         adjustments = []
         dctacr_list = order.find('LIST_TPEDC_DCTACR')
@@ -88,9 +111,13 @@ def format_for_db(data):
     formatted_adjustments = []
 
     for order in purchase_orders:
+        raw_cod_pedc = order.get('cod_pedc')
+        cod_pedc = raw_cod_pedc.strip() if isinstance(raw_cod_pedc, str) else raw_cod_pedc
+        order_date = _parse_date(order.get('dt_emis'))
+
         formatted_orders.append({
-            'cod_pedc': order['cod_pedc'],
-            'dt_emis': order['dt_emis'],
+            'cod_pedc': cod_pedc,
+            'dt_emis': order_date,
             'fornecedor_id': order['fornecedor_id'],
             'fornecedor_descricao': order['fornecedor_descricao'],
             'total_bruto': order['total_bruto'],
@@ -107,23 +134,24 @@ def format_for_db(data):
         })
         for adj in order.get('adjustments', []):
             formatted_adjustments.append({
-                'cod_pedc': order['cod_pedc'],
+                'cod_pedc': cod_pedc,
                 'cod_emp1': order['cod_emp1'],
                 **adj
             })
 
         for item in order['items']:
+            item_delivered = _parse_date(item.get('dt_entrega'))
             formatted_items.append({
                 'item_id': item['item_id'],
-                'dt_emis': order['dt_emis'],
+                'dt_emis': order_date,
                 'descricao': item['descricao'],
-                'cod_pedc': order['cod_pedc'],
+                'cod_pedc': cod_pedc,
                 'linha': item['linha'],
                 'quantidade': item['quantidade'],
                 'preco_unitario': item['preco_unitario'],
                 'total': item['total'],
                 'unidade_medida': item['unidade_medida'],
-                'dt_entrega': item['dt_entrega'],
+                'dt_entrega': item_delivered,
                 'perc_ipi': item['perc_ipi'],
                 'tot_liquido_ipi': item['tot_liquido_ipi'],
                 'tot_descontos': item['tot_descontos'],
@@ -133,7 +161,7 @@ def format_for_db(data):
                 'perc_toler': item['perc_toler'],
                 'qtde_atendida': item['qtde_atendida'],
                 'qtde_saldo': item['qtde_saldo'],
-                'purchase_order_id': order['cod_pedc'], 
+                'purchase_order_id': cod_pedc,
                 'cod_emp1': item['cod_emp1']
             })
 
@@ -179,32 +207,7 @@ def format_for_db_rpdc0250c(xml_data):
                     'qtde': qtde  
                 })
     return formatted_items
-    formatted_items = []
-    import xml.etree.ElementTree as ET
 
-    data = ET.fromstring(xml_data)
-    for g_cod_emp1 in data.findall('.//G_COD_EMP1'):
-        cod_emp1 = g_cod_emp1.find('COD_EMP').text
-        for cgg_tpedc_item in g_cod_emp1.findall('.//CGG_TPEDC_ITEM'):
-            cod_pedc = cgg_tpedc_item.find('CODIGO_PEDIDO').text
-            linha = cgg_tpedc_item.find('LINHA1').text
-            for g_nfe in cgg_tpedc_item.findall('.//G_NFE'):
-                num_nf = g_nfe.find('NUM_NF').text if g_nfe.find('NUM_NF') is not None else None
-                dt_ent = g_nfe.find('DT_ENT').text if g_nfe.find('DT_ENT') is not None else None
-                if dt_ent:
-                    try:
-                        dt_ent = datetime.strptime(dt_ent, '%d/%m/%y').date()
-                    except ValueError:
-                        dt_ent = None
-                if num_nf:                
-                    formatted_items.append({
-                        'cod_emp1': cod_emp1,
-                        'cod_pedc': cod_pedc,
-                        'linha': linha,
-                        'num_nf': num_nf,
-                        'dt_ent': dt_ent
-                    })
-    return formatted_items
 def import_ruah(file_content):
 
     data = parse_xml(file_content)  # Passe o conteúdo do arquivo para a função parse_xml
