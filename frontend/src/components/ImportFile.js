@@ -2,16 +2,26 @@ import React, { useState, useRef } from "react";
 import axios from "axios";
 import "./ImportFile.css";
 
-const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
+const CHUNK_SIZE = 1024 * 1024; // 1MB
 const ALLOWED_EXTENSIONS = ["xml"];
 
+const STATUS_LABELS = {
+  pending: "Na fila",
+  uploading: "Enviando",
+  processing: "Processando",
+  completed: "Concluído",
+  error: "Erro",
+  canceled: "Cancelado",
+};
+
 const ImportFile = () => {
-  const [file, setFile] = useState(null);
-  const [message, setMessage] = useState("");
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [files, setFiles] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+  const fileInputRef = useRef(null);
   const abortControllerRef = useRef(null);
+
+  const notify = (text, type = "info") => setFeedback({ text, type });
 
   const validateFile = (file) => {
     const extension = file.name.split(".").pop().toLowerCase();
@@ -19,10 +29,94 @@ const ImportFile = () => {
       throw new Error("Arquivo inválido. Apenas arquivos XML são permitidos.");
     }
 
-    // Validar tamanho máximo (exemplo: 50MB)
     if (file.size > 50 * 1024 * 1024) {
       throw new Error("Arquivo muito grande. Tamanho máximo permitido: 50MB");
     }
+  };
+
+  const formatBytes = (bytes) => {
+    if (!bytes) return "0 B";
+    const units = ["B", "KB", "MB", "GB"];
+    const power = Math.min(
+      Math.floor(Math.log(bytes) / Math.log(1024)),
+      units.length - 1
+    );
+    const value = bytes / Math.pow(1024, power);
+    return `${value.toFixed(value >= 10 || power === 0 ? 0 : 1)} ${
+      units[power]
+    }`;
+  };
+
+  const updateFile = (fileId, updater) => {
+    setFiles((prev) =>
+      prev.map((item) =>
+        item.id === fileId
+          ? {
+              ...item,
+              ...(typeof updater === "function" ? updater(item) : updater),
+            }
+          : item
+      )
+    );
+  };
+
+  const handleFileChange = (event) => {
+    const selectedFiles = Array.from(event.target.files || []);
+    if (!selectedFiles.length) return;
+
+    const acceptedFiles = [];
+    selectedFiles.forEach((file) => {
+      try {
+        validateFile(file);
+        acceptedFiles.push(file);
+      } catch (error) {
+        notify(error.message, "error");
+      }
+    });
+
+    if (!acceptedFiles.length) {
+      event.target.value = "";
+      return;
+    }
+
+    setFiles((prev) => {
+      const existingKeys = new Set(
+        prev.map((item) => `${item.file.name}-${item.file.size}`)
+      );
+
+      const newEntries = acceptedFiles
+        .filter((file) => !existingKeys.has(`${file.name}-${file.size}`))
+        .map((file) => ({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+          file,
+          status: "pending",
+          progress: 0,
+          message: "",
+        }));
+
+      if (!newEntries.length) {
+        notify("Os arquivos selecionados já estão na fila.", "info");
+        return prev;
+      }
+
+      notify(`${newEntries.length} arquivo(s) adicionados à fila.`, "success");
+      return [...prev, ...newEntries];
+    });
+
+    event.target.value = "";
+  };
+
+  const handleBrowseClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleRemoveFile = (fileId) => {
+    setFiles((prev) => prev.filter((item) => item.id !== fileId));
+  };
+
+  const handleRetry = (fileId) => {
+    updateFile(fileId, { status: "pending", progress: 0, message: "" });
+    notify("Arquivo marcado para reenvio.", "info");
   };
 
   const uploadChunk = async (chunk, chunkIndex, totalChunks, fileId) => {
@@ -42,144 +136,251 @@ const ImportFile = () => {
         }
       );
     } catch (error) {
-      if (error.name === "AbortError") {
+      if (
+        error.name === "AbortError" ||
+        error.code === "ERR_CANCELED" ||
+        (typeof axios.isCancel === "function" && axios.isCancel(error))
+      ) {
         throw new Error("Upload cancelado pelo usuário");
       }
       throw error;
     }
   };
 
-  const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0];
-    try {
-      if (selectedFile) {
-        validateFile(selectedFile);
-        setFile(selectedFile);
-        setMessage("");
-      }
-    } catch (error) {
-      setMessage(error.message);
-      e.target.value = null;
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!file) return;
+  const uploadSingleFile = async (fileItem) => {
+    const { id, file } = fileItem;
 
     try {
-      setIsUploading(true);
-      setMessage("");
-
-      const fileId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-      let uploadedChunks = 0;
+      updateFile(id, {
+        status: "uploading",
+        progress: 0,
+        message: "Preparando envio...",
+      });
 
       abortControllerRef.current = new AbortController();
 
+      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
       for (let i = 0; i < totalChunks; i++) {
         const chunk = file.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
-        await uploadChunk(chunk, i, totalChunks, fileId);
-        uploadedChunks++;
-        setUploadProgress(Math.round((uploadedChunks / totalChunks) * 100));
+        await uploadChunk(chunk, i, totalChunks, id);
+        const progress = Math.round(((i + 1) / totalChunks) * 100);
+        updateFile(id, { progress });
       }
 
-      // Iniciar processamento
-      setIsProcessing(true);
+      updateFile(id, {
+        status: "processing",
+        message: "Arquivo enviado. Processando informação...",
+      });
+
       const response = await axios.post(
         `${process.env.REACT_APP_API_URL}/api/process_file`,
-        { fileId },
+        { fileId: id },
         { withCredentials: true }
       );
 
-      setMessage(response.data.message);
+      updateFile(id, {
+        status: "completed",
+        progress: 100,
+        message: response.data?.message || "Importação concluída com sucesso.",
+      });
+
+      return "success";
     } catch (error) {
-      setMessage(error.response?.data?.error || error.message);
+      const errorMessage =
+        error.response?.data?.error || error.message || "Erro inesperado.";
+
+      if (errorMessage.includes("Upload cancelado")) {
+        updateFile(id, {
+          status: "canceled",
+          message: errorMessage,
+        });
+        return "aborted";
+      }
+
+      updateFile(id, {
+        status: "error",
+        message: errorMessage,
+      });
+
+      return "error";
     } finally {
-      setIsUploading(false);
-      setIsProcessing(false);
-      setUploadProgress(0);
       abortControllerRef.current = null;
     }
   };
 
-  const handleCancel = () => {
-    abortControllerRef.current?.abort();
-    setMessage("Upload cancelado");
+  const startUpload = async () => {
+    if (isUploading) return;
+
+    const queue = files.filter((file) =>
+      ["pending", "error", "canceled"].includes(file.status)
+    );
+
+    if (!queue.length) {
+      notify("Nenhum arquivo pendente para envio.", "info");
+      return;
+    }
+
+    setIsUploading(true);
+    notify(`Iniciando envio de ${queue.length} arquivo(s)...`, "info");
+
+    let aborted = false;
+
+    for (const fileItem of queue) {
+      const result = await uploadSingleFile(fileItem);
+      if (result === "aborted") {
+        notify("Envio cancelado pelo usuário.", "warning");
+        aborted = true;
+        break;
+      }
+    }
+
     setIsUploading(false);
-    setUploadProgress(0);
+
+    if (!aborted) {
+      notify("Fila processada com sucesso.", "success");
+    }
   };
+
+  const handleCancel = () => {
+    if (!abortControllerRef.current) return;
+    notify("Cancelando envio atual...", "warning");
+    abortControllerRef.current.abort();
+  };
+
+  const hasPendingFiles = files.some((file) =>
+    ["pending", "error", "canceled"].includes(file.status)
+  );
 
   return (
     <div className="import-file-container">
-      <form onSubmit={handleSubmit} className="import-file-form">
-        <h2>Importar Arquivo</h2>
-        <p>Selecione um arquivo de relatório XML para importação:</p>
-        <input
-          type="file"
-          onChange={handleFileChange}
-          accept=".xml"
-          disabled={isUploading || isProcessing}
-          required
-        />
-        <div className="button-group">
+      <div className="import-panel">
+        <div className="import-header">
+          <h1>Importar arquivos XML</h1>
+          <p>
+            Adicione um ou mais arquivos XML da NF-e para enviá-los em lote. Os
+            arquivos serão enviados de forma segura em blocos de 1MB.
+          </p>
+        </div>
+
+        <div className="import-actions">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xml"
+            multiple
+            hidden
+            onChange={handleFileChange}
+          />
           <button
-            className="import-file-button"
-            type="submit"
-            disabled={isUploading || isProcessing || !file}
+            type="button"
+            className="action-button primary"
+            onClick={handleBrowseClick}
+            disabled={isUploading}
           >
-            {isUploading
-              ? "Enviando..."
-              : isProcessing
-              ? "Processando..."
-              : "Importar"}
+            Selecionar arquivos
+          </button>
+          <button
+            type="button"
+            className="action-button success"
+            onClick={startUpload}
+            disabled={!files.length || isUploading || !hasPendingFiles}
+          >
+            Enviar fila
           </button>
           {isUploading && (
             <button
               type="button"
-              className="cancel-button"
+              className="action-button danger"
               onClick={handleCancel}
             >
-              Cancelar
+              Cancelar envio
             </button>
           )}
         </div>
-        {message && (
-          <p
-            className={`message ${
-              message.includes("Erro") ? "error" : "success"
-            }`}
-          >
-            {message}
-          </p>
-        )}
-      </form>
 
-      {(isUploading || isProcessing) && (
-        <div className="loading-overlay">
-          <div className="loading-icon">
-            <div className="spinner"></div>
-            {isUploading && (
-              <div className="progress-bar">
-                <div
-                  className="progress-bar-fill"
-                  style={{ width: `${uploadProgress}%` }}
-                />
+        {feedback && (
+          <div className={`global-message ${feedback.type}`}>
+            {feedback.text}
+          </div>
+        )}
+
+        <div className="files-queue">
+          {files.length === 0 ? (
+            <div className="empty-queue">
+              <p>Nenhum arquivo na fila.</p>
+              <span>Use o botão "Selecionar arquivos" para começar.</span>
+            </div>
+          ) : (
+            files.map((fileItem) => (
+              <div className="file-card" key={fileItem.id}>
+                <div className="file-card-header">
+                  <div>
+                    <p className="file-name">{fileItem.file.name}</p>
+                    <span className="file-size">
+                      {formatBytes(fileItem.file.size)}
+                    </span>
+                  </div>
+                  <span className={`status-pill status-${fileItem.status}`}>
+                    {STATUS_LABELS[fileItem.status] || fileItem.status}
+                  </span>
+                </div>
+
+                <div className="progress-wrapper">
+                  <div className="progress-bar">
+                    <div
+                      className={`progress-bar-fill status-${fileItem.status}`}
+                      style={{ width: `${fileItem.progress}%` }}
+                    />
+                  </div>
+                  {fileItem.status === "processing" && (
+                    <div
+                      className="processing-indicator"
+                      aria-label="Processando arquivo"
+                    >
+                      <span className="sr-only">Processando</span>
+                    </div>
+                  )}
+                  <span className="progress-value">{fileItem.progress}%</span>
+                </div>
+
+                {fileItem.message && (
+                  <p
+                    className={`file-message ${
+                      fileItem.status === "error" ? "error" : ""
+                    }`}
+                  >
+                    {fileItem.message}
+                  </p>
+                )}
+
+                <div className="file-actions">
+                  {["pending", "error", "canceled"].includes(
+                    fileItem.status
+                  ) && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveFile(fileItem.id)}
+                      disabled={isUploading && fileItem.status === "pending"}
+                    >
+                      Remover
+                    </button>
+                  )}
+                  {fileItem.status === "error" && (
+                    <button
+                      type="button"
+                      className="retry"
+                      onClick={() => handleRetry(fileItem.id)}
+                      disabled={isUploading}
+                    >
+                      Tentar novamente
+                    </button>
+                  )}
+                </div>
               </div>
-            )}
-          </div>
-          <div className="loading-text">
-            {isUploading
-              ? isProcessing
-                ? "Processando arquivo..."
-                : `Enviando arquivo... ${uploadProgress}%`
-              : "Processando arquivo..."}
-            <br />
-            Por favor, aguarde.
-          </div>
+            ))
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 };
