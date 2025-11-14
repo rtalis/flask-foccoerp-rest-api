@@ -1,45 +1,49 @@
-import React, { useState, useRef } from 'react';
-import axios from 'axios';
-import './ImportFile.css';
+import React, { useState, useRef } from "react";
+import axios from "axios";
+import "./ImportFile.css";
 
 const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
-const ALLOWED_EXTENSIONS = ['xml'];
+const ALLOWED_EXTENSIONS = ["xml"];
 
 const ImportFile = () => {
   const [file, setFile] = useState(null);
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const abortControllerRef = useRef(null);
 
   const validateFile = (file) => {
-    const extension = file.name.split('.').pop().toLowerCase();
+    const extension = file.name.split(".").pop().toLowerCase();
     if (!ALLOWED_EXTENSIONS.includes(extension)) {
-      throw new Error('Arquivo inválido. Apenas arquivos XML são permitidos.');
+      throw new Error("Arquivo inválido. Apenas arquivos XML são permitidos.");
     }
 
     // Validar tamanho máximo (exemplo: 50MB)
     if (file.size > 50 * 1024 * 1024) {
-      throw new Error('Arquivo muito grande. Tamanho máximo permitido: 50MB');
+      throw new Error("Arquivo muito grande. Tamanho máximo permitido: 50MB");
     }
   };
 
   const uploadChunk = async (chunk, chunkIndex, totalChunks, fileId) => {
     const formData = new FormData();
-    formData.append('file', chunk);
-    formData.append('chunkIndex', chunkIndex);
-    formData.append('totalChunks', totalChunks);
-    formData.append('fileId', fileId);
+    formData.append("file", chunk);
+    formData.append("chunkIndex", chunkIndex);
+    formData.append("totalChunks", totalChunks);
+    formData.append("fileId", fileId);
 
     try {
-      await axios.post(`${process.env.REACT_APP_API_URL}/api/upload_chunk`, formData, {
-        withCredentials: true,
-        signal: abortControllerRef.current?.signal
-      });
+      await axios.post(
+        `${process.env.REACT_APP_API_URL}/api/upload_chunk`,
+        formData,
+        {
+          withCredentials: true,
+          signal: abortControllerRef.current?.signal,
+        }
+      );
     } catch (error) {
-      if (error.name === 'AbortError') {
-        throw new Error('Upload cancelado pelo usuário');
+      if (error.name === "AbortError") {
+        throw new Error("Upload cancelado pelo usuário");
       }
       throw error;
     }
@@ -51,7 +55,7 @@ const ImportFile = () => {
       if (selectedFile) {
         validateFile(selectedFile);
         setFile(selectedFile);
-        setMessage('');
+        setMessage("");
       }
     } catch (error) {
       setMessage(error.message);
@@ -65,10 +69,10 @@ const ImportFile = () => {
 
     try {
       setIsUploading(true);
-      setMessage('');
-      
+      setMessage("");
+
       const fileId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      
+
       const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
       let uploadedChunks = 0;
 
@@ -102,7 +106,7 @@ const ImportFile = () => {
 
   const handleCancel = () => {
     abortControllerRef.current?.abort();
-    setMessage('Upload cancelado');
+    setMessage("Upload cancelado");
     setIsUploading(false);
     setUploadProgress(0);
   };
@@ -111,25 +115,29 @@ const ImportFile = () => {
     <div className="import-file-container">
       <form onSubmit={handleSubmit} className="import-file-form">
         <h2>Importar Arquivo</h2>
-          <p>Selecione um arquivo de relatório XML para importação:</p>
-        <input 
-          type="file" 
-          onChange={handleFileChange} 
+        <p>Selecione um arquivo de relatório XML para importação:</p>
+        <input
+          type="file"
+          onChange={handleFileChange}
           accept=".xml"
           disabled={isUploading || isProcessing}
-          required 
+          required
         />
         <div className="button-group">
-          <button 
-            className="import-file-button" 
-            type="submit" 
+          <button
+            className="import-file-button"
+            type="submit"
             disabled={isUploading || isProcessing || !file}
           >
-            {isUploading ? 'Enviando...' : isProcessing ? 'Processando...' : 'Importar'}
+            {isUploading
+              ? "Enviando..."
+              : isProcessing
+              ? "Processando..."
+              : "Importar"}
           </button>
           {isUploading && (
-            <button 
-              type="button" 
+            <button
+              type="button"
               className="cancel-button"
               onClick={handleCancel}
             >
@@ -138,30 +146,35 @@ const ImportFile = () => {
           )}
         </div>
         {message && (
-          <p className={`message ${message.includes('Erro') ? 'error' : 'success'}`}>
+          <p
+            className={`message ${
+              message.includes("Erro") ? "error" : "success"
+            }`}
+          >
             {message}
           </p>
         )}
       </form>
-      
+
       {(isUploading || isProcessing) && (
         <div className="loading-overlay">
           <div className="loading-icon">
             <div className="spinner"></div>
             {isUploading && (
               <div className="progress-bar">
-                <div 
-                  className="progress-bar-fill" 
+                <div
+                  className="progress-bar-fill"
                   style={{ width: `${uploadProgress}%` }}
                 />
               </div>
             )}
           </div>
           <div className="loading-text">
-            {isUploading ? isProcessing ?
-              'Processando arquivo...' :
-              `Enviando arquivo... ${uploadProgress}%` :
-              'Processando arquivo...'}
+            {isUploading
+              ? isProcessing
+                ? "Processando arquivo..."
+                : `Enviando arquivo... ${uploadProgress}%`
+              : "Processando arquivo..."}
             <br />
             Por favor, aguarde.
           </div>

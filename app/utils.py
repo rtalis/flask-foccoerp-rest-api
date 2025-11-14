@@ -1,10 +1,15 @@
+import logging
+from collections import defaultdict
 from datetime import datetime, date
-from flask import jsonify
+from flask import jsonify, current_app, has_app_context
 from app.models import NFEntry, PurchaseAdjustment, PurchaseItem, PurchaseOrder, Quotation
 from app import db
 from fuzzywuzzy import fuzz
 from flask_mail import Mail, Message
 from config import Config
+
+
+
 
 
 def _parse_date(value):
@@ -33,139 +38,147 @@ def _parse_date(value):
 def parse_xml(xml_data):
     import xml.etree.ElementTree as ET
 
-    root = ET.fromstring(xml_data)
     purchase_orders = []
+    total_items = 0
 
-    for order in root.findall('.//TPED_COMPRA'):
-        cod_pedc = order.find('COD_PEDC').text if order.find('COD_PEDC') is not None else None
+    try:
+        root = ET.fromstring(xml_data)
 
-        adjustments = []
-        dctacr_list = order.find('LIST_TPEDC_DCTACR')
-        if dctacr_list is not None:
-            for idx, dctacr in enumerate(dctacr_list.findall('TPEDC_DCTACR')):
-                adjustments.append({
-                    'tp_apl': dctacr.find('TP_APL').text if dctacr.find('TP_APL') is not None else None,
-                    'tp_dctacr1': dctacr.find('TP_DCTACR1').text if dctacr.find('TP_DCTACR1') is not None else None,
-                    'tp_vlr1': dctacr.find('TP_VLR1').text if dctacr.find('TP_VLR1') is not None else None,
-                    'vlr1': float(dctacr.find('VLR1').text.replace(',', '.')) if dctacr.find('VLR1') is not None and dctacr.find('VLR1').text else None,
-                    'order_index': idx,
-                })
-        order_data = {
-            'cod_pedc': cod_pedc,
-            'dt_emis': order.find('DT_EMIS').text if order.find('DT_EMIS') is not None else None,
-            'fornecedor_id': int(order.find('FOR_COD').text) if order.find('FOR_COD') is not None else None,
-            'fornecedor_descricao': order.find('FOR_DESCRICAO').text if order.find('FOR_DESCRICAO') is not None else None,
-            'total_bruto': float(order.find('TOT_BRUTO1').text.replace(',', '.')) if order.find('TOT_BRUTO1') is not None and order.find('TOT_BRUTO1').text else None,
-            'total_liquido': float(order.find('TOT_LIQUIDO1').text.replace(',', '.')) if order.find('TOT_LIQUIDO1') is not None and order.find('TOT_LIQUIDO1').text else None,
-            'total_liquido_ipi': float(order.find('CP_TOT_IPI').text.replace(',', '.')) if order.find('CP_TOT_IPI') is not None and order.find('CP_TOT_IPI').text else None,
-            'total_pedido_com_ipi': float(order.find('TOT_LIQUIDO_IPI1').text.replace(',', '.')) if order.find('TOT_LIQUIDO_IPI1') is not None and order.find('TOT_LIQUIDO_IPI1').text else None,
-            'posicao': order.find('POSICAO1').text if order.find('POSICAO1') is not None else None,
-            'posicao_hist': order.find('POSICAO_HIST1').text if order.find('POSICAO_HIST1') is not None else None,
-            'observacao': order.find('OBSERVACAO').text if order.find('OBSERVACAO') is not None else None,
-            'contato': order.find('CONTATO').text if order.find('CONTATO') is not None else None,
-            'func_nome': order.find('FUNC_NOME').text if order.find('FUNC_NOME') is not None else None,
-            'cf_pgto': order.find('CF_PGTO').text if order.find('CF_PGTO') is not None else None,
-            'cod_emp1': order.find('EMPR_ID').text if order.find('EMPR_ID') is not None else None,
-            'adjustments': adjustments,
+        for order in root.findall('.//TPED_COMPRA'):
+            cod_pedc = order.find('COD_PEDC').text if order.find('COD_PEDC') is not None else None
 
-
-            'items': []
-        }
-
-        for item in order.findall('.//TPEDC_ITEM'):
-         
-            item_data = {
-                'item_id': int(item.find('ITEM_COD').text) if item.find('ITEM_COD') is not None else None,
-                
+            adjustments = []
+            dctacr_list = order.find('LIST_TPEDC_DCTACR')
+            if dctacr_list is not None:
+                for idx, dctacr in enumerate(dctacr_list.findall('TPEDC_DCTACR')):
+                    adjustments.append({
+                        'tp_apl': dctacr.find('TP_APL').text if dctacr.find('TP_APL') is not None else None,
+                        'tp_dctacr1': dctacr.find('TP_DCTACR1').text if dctacr.find('TP_DCTACR1') is not None else None,
+                        'tp_vlr1': dctacr.find('TP_VLR1').text if dctacr.find('TP_VLR1') is not None else None,
+                        'vlr1': float(dctacr.find('VLR1').text.replace(',', '.')) if dctacr.find('VLR1') is not None and dctacr.find('VLR1').text else None,
+                        'order_index': idx,
+                    })
+            order_data = {
                 'cod_pedc': cod_pedc,
-                'linha': item.find('LINHA1').text if item.find('LINHA1') is not None else None,
-                'descricao': item.find('ITEM_DESC_TECNICA').text if item.find('ITEM_DESC_TECNICA') is not None else None,
-                'quantidade': float(item.find('QTDE').text.replace(',', '.')) if item.find('QTDE') is not None and item.find('QTDE').text else None,
-                'preco_unitario': float(item.find('PRECO_UNITARIO').text.replace(',', '.')) if item.find('PRECO_UNITARIO') is not None and item.find('PRECO_UNITARIO').text else None,
-                'total': float(item.find('TOT_BRUTO').text.replace(',', '.')) if item.find('TOT_BRUTO') is not None and item.find('TOT_BRUTO').text else None,
-                'unidade_medida': item.find('UNID_MED').text if item.find('UNID_MED') is not None else None,
-                'dt_entrega': item.find('DT_ENTREGA').text if item.find('DT_ENTREGA') is not None else None,
-                'perc_ipi': float(item.find('PERC_IPI').text.replace(',', '.')) if item.find('PERC_IPI') is not None and item.find('PERC_IPI').text else None,
-                'tot_liquido_ipi': float(item.find('TOT_LIQUIDO_IPI').text.replace(',', '.')) if item.find('TOT_LIQUIDO_IPI') is not None and item.find('TOT_LIQUIDO_IPI').text else None,
-                'tot_descontos': float(item.find('TOT_DESCONTOS').text.replace(',', '.')) if item.find('TOT_DESCONTOS') is not None and item.find('TOT_DESCONTOS').text else None,
-                'tot_acrescimos': float(item.find('TOT_ACRESCIMOS').text.replace(',', '.')) if item.find('TOT_ACRESCIMOS') is not None and item.find('TOT_ACRESCIMOS').text else None,
-                'qtde_canc': float(item.find('QTDE_CANC').text.replace(',', '.')) if item.find('QTDE_CANC') is not None and item.find('QTDE_CANC').text else None,
-                'qtde_canc_toler': float(item.find('QTDE_CANC_TOLER').text.replace(',', '.')) if item.find('QTDE_CANC_TOLER') is not None and item.find('QTDE_CANC_TOLER').text else None,
-                'perc_toler': float(item.find('PERC_TOLER').text.replace(',', '.')) if item.find('PERC_TOLER') is not None and item.find('PERC_TOLER').text else None,
-                'qtde_atendida': float(item.find('QTDE_ATENDIDA').text.replace(',', '.')) if item.find('QTDE_ATENDIDA') is not None and item.find('QTDE_ATENDIDA').text else None,
-                'qtde_saldo': float(item.find('QTDE_SALDO').text.replace(',', '.')) if item.find('QTDE_SALDO') is not None and item.find('QTDE_SALDO').text else None,
-                'cod_emp1': item.find('COD_EMP1').text if item.find('COD_EMP1') is not None else None
+                'dt_emis': order.find('DT_EMIS').text if order.find('DT_EMIS') is not None else None,
+                'fornecedor_id': int(order.find('FOR_COD').text) if order.find('FOR_COD') is not None else None,
+                'fornecedor_descricao': order.find('FOR_DESCRICAO').text if order.find('FOR_DESCRICAO') is not None else None,
+                'total_bruto': float(order.find('TOT_BRUTO1').text.replace(',', '.')) if order.find('TOT_BRUTO1') is not None and order.find('TOT_BRUTO1').text else None,
+                'total_liquido': float(order.find('TOT_LIQUIDO1').text.replace(',', '.')) if order.find('TOT_LIQUIDO1') is not None and order.find('TOT_LIQUIDO1').text else None,
+                'total_liquido_ipi': float(order.find('CP_TOT_IPI').text.replace(',', '.')) if order.find('CP_TOT_IPI') is not None and order.find('CP_TOT_IPI').text else None,
+                'total_pedido_com_ipi': float(order.find('TOT_LIQUIDO_IPI1').text.replace(',', '.')) if order.find('TOT_LIQUIDO_IPI1') is not None and order.find('TOT_LIQUIDO_IPI1').text else None,
+                'posicao': order.find('POSICAO1').text if order.find('POSICAO1') is not None else None,
+                'posicao_hist': order.find('POSICAO_HIST1').text if order.find('POSICAO_HIST1') is not None else None,
+                'observacao': order.find('OBSERVACAO').text if order.find('OBSERVACAO') is not None else None,
+                'contato': order.find('CONTATO').text if order.find('CONTATO') is not None else None,
+                'func_nome': order.find('FUNC_NOME').text if order.find('FUNC_NOME') is not None else None,
+                'cf_pgto': order.find('CF_PGTO').text if order.find('CF_PGTO') is not None else None,
+                'cod_emp1': order.find('EMPR_ID').text if order.find('EMPR_ID') is not None else None,
+                'adjustments': adjustments,
+                'items': []
             }
-            order_data['items'].append(item_data)
 
-        purchase_orders.append(order_data)
+            for item in order.findall('.//TPEDC_ITEM'):
+                item_data = {
+                    'item_id': int(item.find('ITEM_COD').text) if item.find('ITEM_COD') is not None else None,
+                    'cod_pedc': cod_pedc,
+                    'linha': item.find('LINHA1').text if item.find('LINHA1') is not None else None,
+                    'descricao': item.find('ITEM_DESC_TECNICA').text if item.find('ITEM_DESC_TECNICA') is not None else None,
+                    'quantidade': float(item.find('QTDE').text.replace(',', '.')) if item.find('QTDE') is not None and item.find('QTDE').text else None,
+                    'preco_unitario': float(item.find('PRECO_UNITARIO').text.replace(',', '.')) if item.find('PRECO_UNITARIO') is not None and item.find('PRECO_UNITARIO').text else None,
+                    'total': float(item.find('TOT_BRUTO').text.replace(',', '.')) if item.find('TOT_BRUTO') is not None and item.find('TOT_BRUTO').text else None,
+                    'unidade_medida': item.find('UNID_MED').text if item.find('UNID_MED') is not None else None,
+                    'dt_entrega': item.find('DT_ENTREGA').text if item.find('DT_ENTREGA') is not None else None,
+                    'perc_ipi': float(item.find('PERC_IPI').text.replace(',', '.')) if item.find('PERC_IPI') is not None and item.find('PERC_IPI').text else None,
+                    'tot_liquido_ipi': float(item.find('TOT_LIQUIDO_IPI').text.replace(',', '.')) if item.find('TOT_LIQUIDO_IPI') is not None and item.find('TOT_LIQUIDO_IPI').text else None,
+                    'tot_descontos': float(item.find('TOT_DESCONTOS').text.replace(',', '.')) if item.find('TOT_DESCONTOS') is not None and item.find('TOT_DESCONTOS').text else None,
+                    'tot_acrescimos': float(item.find('TOT_ACRESCIMOS').text.replace(',', '.')) if item.find('TOT_ACRESCIMOS') is not None and item.find('TOT_ACRESCIMOS').text else None,
+                    'qtde_canc': float(item.find('QTDE_CANC').text.replace(',', '.')) if item.find('QTDE_CANC') is not None and item.find('QTDE_CANC').text else None,
+                    'qtde_canc_toler': float(item.find('QTDE_CANC_TOLER').text.replace(',', '.')) if item.find('QTDE_CANC_TOLER') is not None and item.find('QTDE_CANC_TOLER').text else None,
+                    'perc_toler': float(item.find('PERC_TOLER').text.replace(',', '.')) if item.find('PERC_TOLER') is not None and item.find('PERC_TOLER').text else None,
+                    'qtde_atendida': float(item.find('QTDE_ATENDIDA').text.replace(',', '.')) if item.find('QTDE_ATENDIDA') is not None and item.find('QTDE_ATENDIDA').text else None,
+                    'qtde_saldo': float(item.find('QTDE_SALDO').text.replace(',', '.')) if item.find('QTDE_SALDO') is not None and item.find('QTDE_SALDO').text else None,
+                    'cod_emp1': item.find('COD_EMP1').text if item.find('COD_EMP1') is not None else None
+                }
+                order_data['items'].append(item_data)
 
-    return {'purchase_orders': purchase_orders}
+            total_items += len(order_data['items'])
+            purchase_orders.append(order_data)
+
+        return {'purchase_orders': purchase_orders}
+    except Exception:
+        raise Exception('Failed to parse XML data')
+  
 
 def format_for_db(data):
-
+    namespace = 'format_for_db'
 
     purchase_orders = data['purchase_orders']
     formatted_orders = []
     formatted_items = []
     formatted_adjustments = []
 
-    for order in purchase_orders:
-        raw_cod_pedc = order.get('cod_pedc')
-        cod_pedc = raw_cod_pedc.strip() if isinstance(raw_cod_pedc, str) else raw_cod_pedc
-        order_date = _parse_date(order.get('dt_emis'))
+    try:
 
-        formatted_orders.append({
-            'cod_pedc': cod_pedc,
-            'dt_emis': order_date,
-            'fornecedor_id': order['fornecedor_id'],
-            'fornecedor_descricao': order['fornecedor_descricao'],
-            'total_bruto': order['total_bruto'],
-            'total_liquido': order['total_liquido'],
-            'total_liquido_ipi': order['total_liquido_ipi'],
-            'posicao': order['posicao'],
-            'posicao_hist': order['posicao_hist'],
-            'observacao': order['observacao'],
-            'contato': order['contato'],
-            'func_nome': order['func_nome'],
-            'cf_pgto': order['cf_pgto'],
-            'cod_emp1': order['cod_emp1'],
-            'total_pedido_com_ipi': order['total_pedido_com_ipi']
-        })
-        for adj in order.get('adjustments', []):
-            formatted_adjustments.append({
+        for order in purchase_orders:
+            raw_cod_pedc = order.get('cod_pedc')
+            cod_pedc = raw_cod_pedc.strip() if isinstance(raw_cod_pedc, str) else raw_cod_pedc
+            order_date = _parse_date(order.get('dt_emis'))
+
+            formatted_orders.append({
                 'cod_pedc': cod_pedc,
-                'cod_emp1': order['cod_emp1'],
-                **adj
-            })
-
-        for item in order['items']:
-            item_delivered = _parse_date(item.get('dt_entrega'))
-            formatted_items.append({
-                'item_id': item['item_id'],
                 'dt_emis': order_date,
-                'descricao': item['descricao'],
-                'cod_pedc': cod_pedc,
-                'linha': item['linha'],
-                'quantidade': item['quantidade'],
-                'preco_unitario': item['preco_unitario'],
-                'total': item['total'],
-                'unidade_medida': item['unidade_medida'],
-                'dt_entrega': item_delivered,
-                'perc_ipi': item['perc_ipi'],
-                'tot_liquido_ipi': item['tot_liquido_ipi'],
-                'tot_descontos': item['tot_descontos'],
-                'tot_acrescimos': item['tot_acrescimos'],
-                'qtde_canc': item['qtde_canc'],
-                'qtde_canc_toler': item['qtde_canc_toler'],
-                'perc_toler': item['perc_toler'],
-                'qtde_atendida': item['qtde_atendida'],
-                'qtde_saldo': item['qtde_saldo'],
-                'purchase_order_id': cod_pedc,
-                'cod_emp1': item['cod_emp1']
+                'fornecedor_id': order['fornecedor_id'],
+                'fornecedor_descricao': order['fornecedor_descricao'],
+                'total_bruto': order['total_bruto'],
+                'total_liquido': order['total_liquido'],
+                'total_liquido_ipi': order['total_liquido_ipi'],
+                'posicao': order['posicao'],
+                'posicao_hist': order['posicao_hist'],
+                'observacao': order['observacao'],
+                'contato': order['contato'],
+                'func_nome': order['func_nome'],
+                'cf_pgto': order['cf_pgto'],
+                'cod_emp1': order['cod_emp1'],
+                'total_pedido_com_ipi': order['total_pedido_com_ipi']
             })
 
-    return formatted_orders, formatted_items, formatted_adjustments
+            for adj in order.get('adjustments', []):
+                formatted_adjustments.append({
+                    'cod_pedc': cod_pedc,
+                    'cod_emp1': order['cod_emp1'],
+                    **adj
+                })
+
+            for item in order['items']:
+                item_delivered = _parse_date(item.get('dt_entrega'))
+                formatted_items.append({
+                    'item_id': item['item_id'],
+                    'dt_emis': order_date,
+                    'descricao': item['descricao'],
+                    'cod_pedc': cod_pedc,
+                    'linha': item['linha'],
+                    'quantidade': item['quantidade'],
+                    'preco_unitario': item['preco_unitario'],
+                    'total': item['total'],
+                    'unidade_medida': item['unidade_medida'],
+                    'dt_entrega': item_delivered,
+                    'perc_ipi': item['perc_ipi'],
+                    'tot_liquido_ipi': item['tot_liquido_ipi'],
+                    'tot_descontos': item['tot_descontos'],
+                    'tot_acrescimos': item['tot_acrescimos'],
+                    'qtde_canc': item['qtde_canc'],
+                    'qtde_canc_toler': item['qtde_canc_toler'],
+                    'perc_toler': item['perc_toler'],
+                    'qtde_atendida': item['qtde_atendida'],
+                    'qtde_saldo': item['qtde_saldo'],
+                    'purchase_order_id': cod_pedc,
+                    'cod_emp1': item['cod_emp1']
+                })
+
+        return formatted_orders, formatted_items, formatted_adjustments
+    except Exception:
+        raise Exception('Failed to format data for DB')
 
 def format_for_db_rpdc0250c(xml_data):
     formatted_items = []
@@ -209,49 +222,72 @@ def format_for_db_rpdc0250c(xml_data):
     return formatted_items
 
 def import_ruah(file_content):
-
-    data = parse_xml(file_content)  # Passe o conteúdo do arquivo para a função parse_xml
-    formatted_orders, formatted_items, formatted_adjustments = format_for_db(data) #Formate os dados para o banco de dados
+    formatted_orders = []
+    formatted_items = []
+    formatted_adjustments = []
     itemcount = 0
     purchasecount = 0
     updated = 0
 
-    for order_data in formatted_orders:       
-        existing_order = PurchaseOrder.query.filter_by(
+    try:
+        data = parse_xml(file_content)
+
+        formatted_orders, formatted_items, formatted_adjustments = format_for_db(data)
+
+        # Group items and adjustments once to avoid repeatedly scanning entire lists per order.
+        items_by_key = defaultdict(list)
+        for item in formatted_items:
+            key = (item['purchase_order_id'], item['cod_emp1'])
+            items_by_key[key].append(item)
+
+        adjustments_by_key = defaultdict(list)
+        for adj in formatted_adjustments:
+            key = (adj['cod_pedc'], adj['cod_emp1'])
+            adjustments_by_key[key].append(adj)
+
+        for order_data in formatted_orders:
+            order_key = (order_data['cod_pedc'], order_data['cod_emp1'])
+            order_items = items_by_key.get(order_key, [])
+            order_adjustments = adjustments_by_key.get(order_key, [])
+
+            existing_order = PurchaseOrder.query.filter_by(
                 cod_pedc=order_data['cod_pedc'],
                 cod_emp1=order_data['cod_emp1']
-            ).first()        
-        if existing_order:
-            PurchaseItem.query.filter_by(purchase_order_id=existing_order.id).delete()
-            PurchaseAdjustment.query.filter_by(purchase_order_id=existing_order.id).delete()
-            db.session.delete(existing_order)
-            db.session.commit()
-            updated += 1
+            ).first()
 
-        # Adicione o novo pedido de compra
-        order = PurchaseOrder(
-            cod_pedc=order_data['cod_pedc'],
-            dt_emis=order_data['dt_emis'],
-            fornecedor_id=order_data['fornecedor_id'],
-            fornecedor_descricao=order_data['fornecedor_descricao'],
-            total_bruto=order_data['total_bruto'],
-            total_liquido=order_data['total_liquido'],
-            total_liquido_ipi=order_data['total_liquido_ipi'],
-            total_pedido_com_ipi=order_data['total_pedido_com_ipi'],
-            posicao=order_data['posicao'],
-            posicao_hist=order_data['posicao_hist'],
-            observacao=order_data['observacao'],
-            contato=order_data['contato'],
-            func_nome=order_data['func_nome'],
-            cf_pgto=order_data['cf_pgto'],
-            cod_emp1=order_data['cod_emp1']
-        )
-        purchasecount += 1
-        db.session.add(order)
-        db.session.flush()  # To get the order ID for items
-        for item_data in formatted_items:
-          
-            if item_data['purchase_order_id'] == order_data['cod_pedc']:
+            order_details = {
+                'cod_pedc': order_data['cod_pedc'],
+                'dt_emis': order_data['dt_emis'],
+                'fornecedor_id': order_data['fornecedor_id'],
+                'fornecedor_descricao': order_data['fornecedor_descricao'],
+                'total_bruto': order_data['total_bruto'],
+                'total_liquido': order_data['total_liquido'],
+                'total_liquido_ipi': order_data['total_liquido_ipi'],
+                'total_pedido_com_ipi': order_data['total_pedido_com_ipi'],
+                'posicao': order_data['posicao'],
+                'posicao_hist': order_data['posicao_hist'],
+                'observacao': order_data['observacao'],
+                'contato': order_data['contato'],
+                'func_nome': order_data['func_nome'],
+                'cf_pgto': order_data['cf_pgto'],
+                'cod_emp1': order_data['cod_emp1'],
+            }
+
+            if existing_order:
+                for field, value in order_details.items():
+                    setattr(existing_order, field, value)
+                PurchaseItem.query.filter_by(purchase_order_id=existing_order.id).delete(synchronize_session=False)
+                PurchaseAdjustment.query.filter_by(purchase_order_id=existing_order.id).delete(synchronize_session=False)
+               
+                order = existing_order
+                updated += 1
+            else:
+                order = PurchaseOrder(**order_details)
+                db.session.add(order)
+                db.session.flush()
+            purchasecount += 1
+
+            for item_data in order_items:
                 item = PurchaseItem(
                     purchase_order_id=order.id,
                     item_id=item_data['item_id'],
@@ -277,30 +313,34 @@ def import_ruah(file_content):
                 )
                 itemcount += 1
                 db.session.add(item)
-                
+
+            for adj_data in order_adjustments:
+                adjustment = PurchaseAdjustment(
+                    purchase_order_id=order.id,
+                    cod_pedc=adj_data['cod_pedc'],
+                    cod_emp1=adj_data['cod_emp1'],
+                    tp_apl=adj_data['tp_apl'],
+                    tp_dctacr1=adj_data['tp_dctacr1'],
+                    tp_vlr1=adj_data['tp_vlr1'],
+                    vlr1=adj_data['vlr1'],
+                    order_index=adj_data['order_index']
+                )
+                db.session.add(adjustment)
+
+            db.session.flush()
+            order.is_fulfilled = check_order_fulfillment(order.id)
+        db.session.commit()
+        message = 'Data imported successfully purchases {}, items {}, updated {}'.format(
+            purchasecount - updated,
+            itemcount,
+            updated,
+        )
+        return jsonify({'message': message}), 201
+    except Exception:
+        db.session.rollback()
+        raise Exception('Failed to import RUAH data')
 
         
-        for adj_data in formatted_adjustments:
-            if order:
-                if adj_data['cod_pedc'] == order_data['cod_pedc'] and adj_data['cod_emp1'] == order_data['cod_emp1']:
-                    adjustment = PurchaseAdjustment(
-                        purchase_order_id=order.id,
-                        cod_pedc=adj_data['cod_pedc'],
-                        cod_emp1=adj_data['cod_emp1'],
-                        tp_apl=adj_data['tp_apl'],
-                        tp_dctacr1=adj_data['tp_dctacr1'],
-                        tp_vlr1=adj_data['tp_vlr1'],
-                        vlr1=adj_data['vlr1'],
-                        order_index=adj_data['order_index']
-                    )
-                    db.session.add(adjustment)
-
-        order.is_fulfilled = check_order_fulfillment(order.id)
-            
-                
-        
-    db.session.commit()
-    return jsonify({'message': 'Data imported successfully purchases {}, items {}, updated {}'.format(purchasecount - updated, itemcount, updated)}), 201
 
 def import_rpdc0250c(file_content):
     formatted_items = format_for_db_rpdc0250c(file_content) 

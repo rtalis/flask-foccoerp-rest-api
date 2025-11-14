@@ -2,17 +2,18 @@ from datetime import datetime
 from urllib import response
 import re
 from fuzzywuzzy import process, fuzz
-from flask import Blueprint, redirect, request, jsonify
+from flask import Blueprint, redirect, request, jsonify, current_app
 import requests
 from sqlalchemy import and_, or_, func, cast
 from sqlalchemy.sql import exists
 from sqlalchemy.orm import joinedload
 from flask_login import login_user, logout_user, login_required, current_user
 from app.models import LoginHistory, NFEData, NFEntry, PurchaseOrder, PurchaseItem, Quotation, User
-from app.utils import  apply_adjustments, check_order_fulfillment, fuzzy_search, import_rcot0300, import_rfor0302, import_rpdc0250c, import_ruah
+from app.utils import  apply_adjustments, check_order_fulfillment, fuzzy_search, import_rcot0300, import_rfor0302, import_rpdc0250c, import_ruah,_parse_date
 from app import db
 import tempfile
 import os
+import shutil
 from config import Config
 
 
@@ -45,7 +46,7 @@ def _build_purchase_payload(items):
                 'order': {
                     'order_id': order.id,
                     'cod_pedc': cod_pedc,
-                    'dt_emis': order.dt_emis,
+                    'dt_emis':  _parse_date(order.dt_emis),
                     'fornecedor_id': order.fornecedor_id,
                     'fornecedor_descricao': order.fornecedor_descricao,
                     'total_bruto': order.total_bruto,
@@ -130,7 +131,7 @@ def get_purchases():
             order_data = {
                 'order_id': order.id,
                 'cod_pedc': order.cod_pedc,
-                'dt_emis': order.dt_emis,
+                'dt_emis':  _parse_date(order.dt_emis),
                 'fornecedor_id': order.fornecedor_id,
                 'fornecedor_descricao': order.fornecedor_descricao,
                 'total_bruto': order.total_bruto,
@@ -195,7 +196,7 @@ def search_items():
             item_data['order'] = {
                 'order_id': order.id,
                 'cod_pedc': order.cod_pedc,
-                'dt_emis': order.dt_emis,
+                'dt_emis':  _parse_date(order.dt_emis),
                 'fornecedor_id': order.fornecedor_id,
                 'fornecedor_descricao': order.fornecedor_descricao,
                 'total_bruto': order.total_bruto,
@@ -250,7 +251,7 @@ def search_purchases():
         order_data = {
             'order_id': order.id,
             'cod_pedc': order.cod_pedc,
-            'dt_emis': order.dt_emis,
+            'dt_emis': _parse_date(order.dt_emis),
             'fornecedor_id': order.fornecedor_id,
             'fornecedor_descricao': order.fornecedor_descricao,
             'total_bruto': order.total_bruto,
@@ -322,7 +323,7 @@ def search_cod_pedc():
         order_data = {
             'order_id': order.id,
             'cod_pedc': order.cod_pedc,
-            'dt_emis': order.dt_emis,
+            'dt_emis': _parse_date(order.dt_emis),
             'fornecedor_id': order.fornecedor_id,
             'fornecedor_descricao': order.fornecedor_descricao,
             'total_bruto': order.total_bruto,
@@ -388,7 +389,7 @@ def search_fuzzy():
                 item_data['order'] = {
                     'order_id': order.id,
                     'cod_pedc': order.cod_pedc,
-                    'dt_emis': order.dt_emis,
+                    'dt_emis': _parse_date(order.dt_emis),
                     'fornecedor_id': order.fornecedor_id,
                     'fornecedor_descricao': order.fornecedor_descricao,
                     'total_bruto': order.total_bruto,
@@ -416,7 +417,7 @@ def search_fuzzy():
         order_data = {
             'order_id': order.id,
             'cod_pedc': order.cod_pedc,
-            'dt_emis': order.dt_emis,
+            'dt_emis': _parse_date(order.dt_emis),
             'fornecedor_id': order.fornecedor_id,
             'fornecedor_descricao': order.fornecedor_descricao,
             'total_bruto': order.total_bruto,
@@ -1009,40 +1010,46 @@ def process_file():
     if not os.path.exists(chunk_dir):
         return jsonify({'error': 'File chunks not found'}), 404
 
+    final_file_path = os.path.join(UPLOAD_FOLDER, f'{file_id}_complete.xml')
+
     try:
         chunks = sorted(os.listdir(chunk_dir), key=lambda x: int(x.split('_')[1]))
-        final_file_path = os.path.join(UPLOAD_FOLDER, f'{file_id}_complete.xml')
         with open(final_file_path, 'wb') as outfile:
             for chunk_name in chunks:
                 chunk_path = os.path.join(chunk_dir, chunk_name)
                 with open(chunk_path, 'rb') as infile:
                     outfile.write(infile.read())
-
+        assembled_size = os.path.getsize(final_file_path)
         with open(final_file_path, 'rb') as f:
             content = f.read()
-            if not is_valid_xml(content):
-                raise ValueError('Invalid XML file')
+        if not is_valid_xml(content):
+            raise ValueError('Invalid XML file')
 
-            if b'<RPDC0250_RUAH>' in content or b'<RPDC0250>' in content:
-                result = import_ruah(content)
-            elif b'<RPDC0250C>' in content:
-                result = import_rpdc0250c(content)
-            elif b'<RCOT0300>' in content:
-                result = import_rcot0300(content)
-            elif b'<RFOR0302>' in content:
-                result = import_rfor0302(content)
-            else:
-                raise ValueError('Arquivo XML invalido ou não suportado')
+        if b'<RPDC0250_RUAH>' in content or b'<RPDC0250>' in content:
+            doc_type = 'RPDC0250'
+            handler = import_ruah
+        elif b'<RPDC0250C>' in content:
+            doc_type = 'RPDC0250C'
+            handler = import_rpdc0250c
+        elif b'<RCOT0300>' in content:
+            doc_type = 'RCOT0300'
+            handler = import_rcot0300
+        elif b'<RFOR0302>' in content:
+            doc_type = 'RFOR0302'
+            handler = import_rfor0302
+        else:
+            raise ValueError('Arquivo XML invalido ou não suportado')
 
+        result = handler(content)
         return result
 
     except Exception as e:
         db.session.rollback()
+        current_app.logger.exception("process_file: failure | file_id=%s", file_id)
         return jsonify({'error': str(e)}), 500
     
 
     finally:
-        import shutil
         shutil.rmtree(chunk_dir, ignore_errors=True)
         if os.path.exists(final_file_path):
             os.remove(final_file_path)
@@ -1054,36 +1061,8 @@ def is_valid_xml(content):
         return True
     except ET.ParseError:
         return False
-    
-    
-# Old endpoint for importing XML files
-@bp.route('/import', methods=['POST'])
-@login_required
-def import_xml():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file part'}), 400
+      
 
-    file = request.files['file']
-    
-    if file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
-
-    try:
-        file_content = file.read()  # Leia o conteúdo do arquivo
-        if b'<RPDC0250_RUAH>' in file_content or b'<RPDC0250>' in file_content:            
-            return import_ruah(file_content)
-        elif b'<RPDC0250C>' in file_content:
-            return import_rpdc0250c(file_content)
-        elif b'<RCOT0300>' in file_content:
-            return import_rcot0300(file_content)
-        elif b'<RFOR0302>' in file_content:
-            return import_rfor0302(file_content)
-        else:
-            return jsonify({'error': 'Invalid XML header'}), 400
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
     
     
 @bp.route('/purchase_by_nf', methods=['GET'])
@@ -1141,7 +1120,7 @@ def get_purchase_by_nf():
     order_data = {
         'order_id': order.id,
         'cod_pedc': order.cod_pedc,
-        'dt_emis': order.dt_emis,
+        'dt_emis': _parse_date(order.dt_emis),
         'fornecedor_id': order.fornecedor_id,
         'fornecedor_descricao': order.fornecedor_descricao,
         'total_bruto': order.total_bruto,
@@ -2250,7 +2229,7 @@ def get_user_purchases():
         order_data = {
             'id': order.id,
             'cod_pedc': order.cod_pedc,
-            'dt_emis': order.dt_emis.isoformat() if order.dt_emis else None,
+            'dt_emis': _parse_date(order.dt_emis),
             'fornecedor_descricao': order.fornecedor_descricao,
             'fornecedor_id': order.fornecedor_id,
             'total_pedido_com_ipi': order.total_pedido_com_ipi,
