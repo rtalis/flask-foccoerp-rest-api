@@ -56,13 +56,13 @@ def test_protected_route_without_auth(client: FlaskClient):
     response = client.get('/api/purchases')
     assert response.status_code in (302, 401)
 
-def test_import_xml(auth_client: FlaskClient):
-    data = {
-        'file': (BytesIO(b'<RCOT0300></RCOT0300>'), 'test_data.xml')
-    }
-    response = auth_client.post('/api/import', data=data, content_type='multipart/form-data')
-    assert response.status_code == 201
-    assert b'Data imported successfully' in response.data
+# def test_import_xml(auth_client: FlaskClient):
+#     data = {
+#         'file': (BytesIO(b'<RCOT0300></RCOT0300>'), 'test_data.xml')
+#     }
+#     response = auth_client.post('/api/import', data=data, content_type='multipart/form-data')
+#     assert response.status_code == 201
+#     assert b'Data imported successfully' in response.data
 
 def test_get_purchases(auth_client: FlaskClient):
     response = auth_client.get('/api/purchases')

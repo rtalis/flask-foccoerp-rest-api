@@ -17,6 +17,7 @@ const STATUS_LABELS = {
 const ImportFile = () => {
   const [files, setFiles] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const fileInputRef = useRef(null);
   const abortControllerRef = useRef(null);
@@ -29,8 +30,8 @@ const ImportFile = () => {
       throw new Error("Arquivo inválido. Apenas arquivos XML são permitidos.");
     }
 
-    if (file.size > 50 * 1024 * 1024) {
-      throw new Error("Arquivo muito grande. Tamanho máximo permitido: 50MB");
+    if (file.size > 100 * 1024 * 1024) {
+      throw new Error("Arquivo muito grande. Tamanho máximo permitido: 100MB");
     }
   };
 
@@ -60,12 +61,11 @@ const ImportFile = () => {
     );
   };
 
-  const handleFileChange = (event) => {
-    const selectedFiles = Array.from(event.target.files || []);
-    if (!selectedFiles.length) return;
+  const addFilesToQueue = (newFiles) => {
+    if (!newFiles.length) return;
 
     const acceptedFiles = [];
-    selectedFiles.forEach((file) => {
+    newFiles.forEach((file) => {
       try {
         validateFile(file);
         acceptedFiles.push(file);
@@ -74,10 +74,7 @@ const ImportFile = () => {
       }
     });
 
-    if (!acceptedFiles.length) {
-      event.target.value = "";
-      return;
-    }
+    if (!acceptedFiles.length) return;
 
     setFiles((prev) => {
       const existingKeys = new Set(
@@ -102,8 +99,29 @@ const ImportFile = () => {
       notify(`${newEntries.length} arquivo(s) adicionados à fila.`, "success");
       return [...prev, ...newEntries];
     });
+  };
 
+  const handleFileChange = (event) => {
+    const selectedFiles = Array.from(event.target.files || []);
+    addFilesToQueue(selectedFiles);
     event.target.value = "";
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    addFilesToQueue(droppedFiles);
   };
 
   const handleBrowseClick = () => {
@@ -251,15 +269,24 @@ const ImportFile = () => {
     ["pending", "error", "canceled"].includes(file.status)
   );
 
+  React.useEffect(() => {
+    if (!isUploading && files.some((f) => f.status === "pending")) {
+      startUpload();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [files, isUploading]);
+
   return (
     <div className="import-file-container">
-      <div className="import-panel">
+      <div
+        className={`import-panel ${isDragging ? "dragging" : ""}`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
         <div className="import-header">
-          <h1>Importar arquivos XML</h1>
-          <p>
-            Adicione um ou mais arquivos XML da NF-e para enviá-los em lote. Os
-            arquivos serão enviados de forma segura em blocos de 1MB.
-          </p>
+          <h1>Importar Arquivos</h1>
+          <p>Arraste e solte arquivos XML aqui ou clique para selecionar.</p>
         </div>
 
         <div className="import-actions">
@@ -278,14 +305,6 @@ const ImportFile = () => {
             disabled={isUploading}
           >
             Selecionar arquivos
-          </button>
-          <button
-            type="button"
-            className="action-button success"
-            onClick={startUpload}
-            disabled={!files.length || isUploading || !hasPendingFiles}
-          >
-            Enviar fila
           </button>
           {isUploading && (
             <button

@@ -14,5 +14,7 @@ test("renders multi-file upload controls", () => {
   expect(
     screen.getByRole("button", { name: /selecionar arquivos/i })
   ).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /enviar fila/i })).toBeDisabled();
+  expect(
+    screen.queryByRole("button", { name: /enviar fila/i })
+  ).not.toBeInTheDocument();
 });

@@ -27,10 +27,17 @@
   border-radius: 20px;
   padding: 2.25rem;
   box-shadow: 0 30px 60px rgba(0, 0, 0, 0.08);
-  border: 1px solid var(--border-color);
+  border: 2px dashed transparent;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  transition: all 0.3s ease;
+}
+
+.import-panel.dragging {
+  border-color: var(--primary);
+  background-color: rgba(0, 123, 255, 0.03);
+  transform: scale(1.01);
 }
 
 .import-header h1 {

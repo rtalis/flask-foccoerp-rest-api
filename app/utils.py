@@ -245,15 +245,17 @@ def import_ruah(file_content):
             key = (adj['cod_pedc'], adj['cod_emp1'])
             adjustments_by_key[key].append(adj)
 
+        # Bulk fetch existing orders
+        incoming_cod_pedcs = {o['cod_pedc'] for o in formatted_orders}
+        existing_orders = PurchaseOrder.query.filter(PurchaseOrder.cod_pedc.in_(incoming_cod_pedcs)).all()
+        existing_orders_map = {(o.cod_pedc, o.cod_emp1): o for o in existing_orders}
+
+        orders_to_update_ids = []
+        processed_orders = []
+
         for order_data in formatted_orders:
             order_key = (order_data['cod_pedc'], order_data['cod_emp1'])
-            order_items = items_by_key.get(order_key, [])
-            order_adjustments = adjustments_by_key.get(order_key, [])
-
-            existing_order = PurchaseOrder.query.filter_by(
-                cod_pedc=order_data['cod_pedc'],
-                cod_emp1=order_data['cod_emp1']
-            ).first()
+            existing_order = existing_orders_map.get(order_key)
 
             order_details = {
                 'cod_pedc': order_data['cod_pedc'],
@@ -276,20 +278,29 @@ def import_ruah(file_content):
             if existing_order:
                 for field, value in order_details.items():
                     setattr(existing_order, field, value)
-                PurchaseItem.query.filter_by(purchase_order_id=existing_order.id).delete(synchronize_session=False)
-                PurchaseAdjustment.query.filter_by(purchase_order_id=existing_order.id).delete(synchronize_session=False)
-               
+                orders_to_update_ids.append(existing_order.id)
                 order = existing_order
                 updated += 1
             else:
                 order = PurchaseOrder(**order_details)
                 db.session.add(order)
-                db.session.flush()
+            
+            processed_orders.append((order, order_data))
             purchasecount += 1
+
+        # Bulk delete items and adjustments for updated orders
+        if orders_to_update_ids:
+            PurchaseItem.query.filter(PurchaseItem.purchase_order_id.in_(orders_to_update_ids)).delete(synchronize_session=False)
+            PurchaseAdjustment.query.filter(PurchaseAdjustment.purchase_order_id.in_(orders_to_update_ids)).delete(synchronize_session=False)
+
+        for order, order_data in processed_orders:
+            order_key = (order_data['cod_pedc'], order_data['cod_emp1'])
+            order_items = items_by_key.get(order_key, [])
+            order_adjustments = adjustments_by_key.get(order_key, [])
 
             for item_data in order_items:
                 item = PurchaseItem(
-                    purchase_order_id=order.id,
+                    purchase_order=order,
                     item_id=item_data['item_id'],
                     dt_emis=item_data['dt_emis'],
                     linha=item_data['linha'],
@@ -316,7 +327,7 @@ def import_ruah(file_content):
 
             for adj_data in order_adjustments:
                 adjustment = PurchaseAdjustment(
-                    purchase_order_id=order.id,
+                    purchase_order=order,
                     cod_pedc=adj_data['cod_pedc'],
                     cod_emp1=adj_data['cod_emp1'],
                     tp_apl=adj_data['tp_apl'],
@@ -327,8 +338,8 @@ def import_ruah(file_content):
                 )
                 db.session.add(adjustment)
 
-            db.session.flush()
-            order.is_fulfilled = check_order_fulfillment(order.id)
+            order.is_fulfilled = check_order_fulfillment_memory(order_items)
+
         db.session.commit()
         message = 'Data imported successfully purchases {}, items {}, updated {}'.format(
             purchasecount - updated,
@@ -354,39 +365,37 @@ def import_rpdc0250c(file_content):
             if key not in unique_combinations:
                 unique_combinations[key] = item_data
 
+    # Bulk fetch existing entries
+    cod_pedcs = {item['cod_pedc'] for item in unique_combinations.values()}
+    existing_entries = NFEntry.query.filter(NFEntry.cod_pedc.in_(cod_pedcs)).all()
+    existing_map = {(e.cod_emp1, e.cod_pedc, e.linha, e.num_nf): e for e in existing_entries}
+
     for key, item_data in unique_combinations.items():
-        if item_data:
-            existing_entry = NFEntry.query.filter_by(
+        existing_entry = existing_map.get(key)
+
+        if existing_entry:
+            has_changes = False
+            if existing_entry.dt_ent != item_data.get('dt_ent'):
+                existing_entry.dt_ent = item_data.get('dt_ent', '')
+                has_changes = True
+                
+            if hasattr(existing_entry, 'qtde') and existing_entry.qtde != item_data.get('qtde'):
+                existing_entry.qtde = item_data.get('qtde')
+                has_changes = True
+            
+            if has_changes:
+                updated += 1
+        else:
+            nf_entry = NFEntry(
                 cod_emp1=item_data['cod_emp1'],
                 cod_pedc=item_data['cod_pedc'],
                 linha=item_data['linha'],
-                num_nf=item_data['num_nf']
-            ).first()
-
-            if existing_entry:
-                has_changes = False
-                if existing_entry.dt_ent != item_data.get('dt_ent'):
-                    existing_entry.dt_ent = item_data.get('dt_ent', '')
-                    has_changes = True
-                    
-                if hasattr(existing_entry, 'qtde') and existing_entry.qtde != item_data.get('qtde'):
-                    existing_entry.qtde = item_data.get('qtde')
-                    has_changes = True
-                
-                if has_changes:
-                    db.session.commit()
-                    updated += 1
-            else:
-                nf_entry = NFEntry(
-                    cod_emp1=item_data['cod_emp1'],
-                    cod_pedc=item_data['cod_pedc'],
-                    linha=item_data['linha'],
-                    num_nf=item_data['num_nf'],
-                    dt_ent=item_data.get('dt_ent', ''),
-                    qtde=item_data.get('qtde')  
-                )
-                itemcount += 1
-                db.session.add(nf_entry)
+                num_nf=item_data['num_nf'],
+                dt_ent=item_data.get('dt_ent', ''),
+                qtde=item_data.get('qtde')  
+            )
+            itemcount += 1
+            db.session.add(nf_entry)
 
     db.session.commit()
     return jsonify({'message': f'Data imported successfully: {itemcount} new entries, {updated} updated'}), 201
@@ -440,13 +449,14 @@ def import_rcot0300(file_content):
     new_count = 0
     updated_count = 0
 
+    cod_cots = {q['cod_cot'] for q in quotations}
+    existing_quotations = Quotation.query.filter(Quotation.cod_cot.in_(cod_cots)).all()
+    existing_map = {(q.cod_cot, q.item_id, str(q.fornecedor_id)): q for q in existing_quotations}
+
     for quotation_data in quotations:
         # Check if quotation already exists
-        existing_quotation = Quotation.query.filter_by(
-            cod_cot=quotation_data['cod_cot'],
-            item_id=quotation_data['item_id'],
-            fornecedor_id=quotation_data['fornecedor_id']
-        ).first()
+        key = (quotation_data['cod_cot'], quotation_data['item_id'], str(quotation_data['fornecedor_id']))
+        existing_quotation = existing_map.get(key)
         
         if existing_quotation:
             # Update existing quotation
@@ -522,59 +532,67 @@ def import_rfor0302(file_content):
     from app.models import Supplier
 
     root = ET.fromstring(file_content)
-    suppliers = []
+    suppliers_data = []
+    
+    for g_fornec in root.findall('.//G_FORNEC'):
+        suppliers_data.append({
+            'cod_for': g_fornec.findtext('COD_FOR'),
+            'tip_forn': g_fornec.findtext('TIP_FORN'),
+            'conta_itens': g_fornec.findtext('CONTA_ITENS'),
+            'insc_est': g_fornec.findtext('INSC_EST'),
+            'insc_mun': g_fornec.findtext('INSC_MUN'),
+            'email': g_fornec.findtext('EMAIL'),
+            'tel_ddd_tel_telefone': g_fornec.findtext('TEL_DDD_TEL_TELEFONE'),
+            'endereco': g_fornec.findtext('ENDERECO'),
+            'cep': g_fornec.findtext('CEP'),
+            'cidade': g_fornec.findtext('CIDADE'),
+            'uf': g_fornec.findtext('UF'),
+            'id_for': g_fornec.findtext('ID_FOR'),
+            'nvl_forn_cnpj_forn_cpf': g_fornec.findtext('NVL_FORN_CNPJ_FORN_CPF'),
+            'descricao': g_fornec.findtext('DESCRICAO'),
+            'bairro': g_fornec.findtext('BAIRRO'),
+            'cf_fax': g_fornec.findtext('CF_FAX')
+        })
+
+    cod_fors = {s['cod_for'] for s in suppliers_data if s['cod_for']}
+    existing_suppliers = Supplier.query.filter(Supplier.cod_for.in_(cod_fors)).all()
+    existing_map = {s.cod_for: s for s in existing_suppliers}
+
     new_count = 0
     updated_count = 0
     
-    for g_fornec in root.findall('.//G_FORNEC'):
-        cod_for = g_fornec.findtext('COD_FOR')
-        existing_supplier = Supplier.query.filter_by(cod_for=cod_for).first()
+    for s_data in suppliers_data:
+        cod_for = s_data['cod_for']
+        if not cod_for:
+            continue
+            
+        existing_supplier = existing_map.get(cod_for)
         
         if existing_supplier:
-            existing_supplier.tip_forn = g_fornec.findtext('TIP_FORN')
-            existing_supplier.conta_itens = g_fornec.findtext('CONTA_ITENS')
-            existing_supplier.insc_est = g_fornec.findtext('INSC_EST')
-            existing_supplier.insc_mun = g_fornec.findtext('INSC_MUN')
-            existing_supplier.email = g_fornec.findtext('EMAIL')
-            existing_supplier.tel_ddd_tel_telefone = g_fornec.findtext('TEL_DDD_TEL_TELEFONE')
-            existing_supplier.endereco = g_fornec.findtext('ENDERECO')
-            existing_supplier.cep = g_fornec.findtext('CEP')
-            existing_supplier.cidade = g_fornec.findtext('CIDADE')
-            existing_supplier.uf = g_fornec.findtext('UF')
-            existing_supplier.cod_for = g_fornec.findtext('COD_FOR')
-            existing_supplier.nvl_forn_cnpj_forn_cpf = g_fornec.findtext('NVL_FORN_CNPJ_FORN_CPF')
-            existing_supplier.descricao = g_fornec.findtext('DESCRICAO')
-            existing_supplier.bairro = g_fornec.findtext('BAIRRO')
-            existing_supplier.cf_fax = g_fornec.findtext('CF_FAX')
-            suppliers.append(existing_supplier)
+            existing_supplier.tip_forn = s_data['tip_forn']
+            existing_supplier.conta_itens = s_data['conta_itens']
+            existing_supplier.insc_est = s_data['insc_est']
+            existing_supplier.insc_mun = s_data['insc_mun']
+            existing_supplier.email = s_data['email']
+            existing_supplier.tel_ddd_tel_telefone = s_data['tel_ddd_tel_telefone']
+            existing_supplier.endereco = s_data['endereco']
+            existing_supplier.cep = s_data['cep']
+            existing_supplier.cidade = s_data['cidade']
+            existing_supplier.uf = s_data['uf']
+            existing_supplier.nvl_forn_cnpj_forn_cpf = s_data['nvl_forn_cnpj_forn_cpf']
+            existing_supplier.descricao = s_data['descricao']
+            existing_supplier.bairro = s_data['bairro']
+            existing_supplier.cf_fax = s_data['cf_fax']
             updated_count += 1
         else:
             # Create new supplier
-            supplier = Supplier(
-                tip_forn=g_fornec.findtext('TIP_FORN'),
-                conta_itens=g_fornec.findtext('CONTA_ITENS'),
-                insc_est=g_fornec.findtext('INSC_EST'),
-                insc_mun=g_fornec.findtext('INSC_MUN'),
-                email=g_fornec.findtext('EMAIL'),
-                tel_ddd_tel_telefone=g_fornec.findtext('TEL_DDD_TEL_TELEFONE'),
-                endereco=g_fornec.findtext('ENDERECO'),
-                cep=g_fornec.findtext('CEP'),
-                cidade=g_fornec.findtext('CIDADE'),
-                uf=g_fornec.findtext('UF'),
-                id_for= g_fornec.findtext('ID_FOR'),
-                cod_for=g_fornec.findtext('COD_FOR'),
-                nvl_forn_cnpj_forn_cpf=g_fornec.findtext('NVL_FORN_CNPJ_FORN_CPF'),
-                descricao=g_fornec.findtext('DESCRICAO'),
-                bairro=g_fornec.findtext('BAIRRO'),
-                cf_fax=g_fornec.findtext('CF_FAX')
-            )
-            suppliers.append(supplier)
+            supplier = Supplier(**s_data)
             db.session.add(supplier)
             new_count += 1
             
     db.session.commit()
     return jsonify({
-        'message': f'Suppliers imported: {len(suppliers)} total ({new_count} new, {updated_count} updated)'
+        'message': f'Suppliers imported: {len(suppliers_data)} total ({new_count} new, {updated_count} updated)'
     }), 201
 
 def apply_adjustments(base_value, adjustments):
@@ -956,6 +974,34 @@ def check_order_fulfillment(order_id):
         attended = to_float(item.qtde_atendida) or 0.0
         canceled = to_float(item.qtde_canc) or 0.0
         canceled_tolerance = to_float(item.qtde_canc_toler) or 0.0
+        total_canceled = canceled + canceled_tolerance
+
+        if attended >= quantity:
+            continue
+        if total_canceled >= quantity:
+            continue
+        if attended + total_canceled >= quantity:
+            continue
+
+        return False
+
+    return True
+
+def check_order_fulfillment_memory(items_data):
+    """Check fulfillment based on item data dicts."""
+    if not items_data:
+        return False
+
+    for item in items_data:
+        quantity = item.get('quantidade')
+        if quantity is None:
+            return False
+        if quantity <= 0:
+            continue
+
+        attended = item.get('qtde_atendida') or 0.0
+        canceled = item.get('qtde_canc') or 0.0
+        canceled_tolerance = item.get('qtde_canc_toler') or 0.0
         total_canceled = canceled + canceled_tolerance
 
         if attended >= quantity:
