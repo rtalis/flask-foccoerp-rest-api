@@ -709,6 +709,7 @@ const UnifiedSearch = ({ onLogout }) => {
     max_value: "",
     valueSearchType: "item",
     ignoreDiacritics: true,
+    exactSearch: false,
   };
 
   const getStoredSearchParams = () => {
@@ -1120,6 +1121,7 @@ const UnifiedSearch = ({ onLogout }) => {
               minValue: searchParams.min_value || undefined,
               maxValue: searchParams.max_value || undefined,
               valueSearchType: searchParams.valueSearchType,
+              exactSearch: searchParams.exactSearch,
               page,
               per_page: perPageToUse,
             },
@@ -1690,6 +1692,17 @@ const UnifiedSearch = ({ onLogout }) => {
                       />
                     }
                     label="Ignorar acentuação (diacríticos)"
+                    sx={{ marginBottom: "-10px" }}
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        name="exactSearch"
+                        checked={searchParams.exactSearch}
+                        onChange={handleChange}
+                      />
+                    }
+                    label="Busca por texto exato"
                     sx={{ marginBottom: "-10px" }}
                   />
                 </FormControl>
