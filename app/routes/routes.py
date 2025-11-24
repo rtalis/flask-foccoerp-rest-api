@@ -4,7 +4,7 @@ import re
 from fuzzywuzzy import process, fuzz
 from flask import Blueprint, redirect, request, jsonify, current_app
 import requests
-from sqlalchemy import and_, or_, func, cast
+from sqlalchemy import and_, or_, func, cast, tuple_
 from sqlalchemy.sql import exists
 from sqlalchemy.orm import joinedload
 from flask_login import login_user, logout_user, login_required, current_user
@@ -27,20 +27,39 @@ ALLOWED_EXTENSIONS = {'xml'}
 def _build_purchase_payload(items):
     """Group purchase items by order and prepare API payload."""
     grouped_results = {}
+    order_keys = set()
+
+    for item in items:
+        order = item.purchase_order
+        if not order:
+            continue
+        order_keys.add((order.cod_emp1, item.cod_pedc))
+
+    nf_entries_by_order = {}
+
+    if order_keys:
+        nf_entries = (
+            NFEntry.query
+            .filter(tuple_(NFEntry.cod_emp1, NFEntry.cod_pedc).in_(list(order_keys)))
+            .all()
+        )
+        for nf_entry in nf_entries:
+            order_key = (nf_entry.cod_emp1, nf_entry.cod_pedc)
+            nf_entries_by_order.setdefault(order_key, []).append(nf_entry)
+
     for item in items:
         cod_pedc = item.cod_pedc
         order = item.purchase_order
         if not order:
             continue
 
+        order_key = (order.cod_emp1, cod_pedc)
+        order_nf_entries = nf_entries_by_order.get(order_key, [])
+
         if cod_pedc not in grouped_results:
             adjustments = getattr(order, 'adjustments', [])
             base_total = order.total_pedido_com_ipi or 0
             adjusted_total = apply_adjustments(base_total, adjustments)
-            nf_entries = NFEntry.query.filter_by(
-                cod_emp1=order.cod_emp1,
-                cod_pedc=cod_pedc
-            ).all()
 
             grouped_results[cod_pedc] = {
                 'order': {
@@ -80,7 +99,7 @@ def _build_purchase_payload(items):
                             'qtde': nf_entry.qtde,
                             'linha': nf_entry.linha
                         }
-                        for nf_entry in nf_entries
+                        for nf_entry in order_nf_entries
                     ]
                 },
                 'items': []
@@ -883,7 +902,12 @@ def search_combined():
                 PurchaseOrder.observacao.ilike(f'%{query}%')
             ))
 
-    items_query = PurchaseItem.query.order_by(PurchaseOrder.dt_emis.desc()).join(PurchaseOrder, PurchaseItem.purchase_order_id == PurchaseOrder.id)
+    items_query = (
+        PurchaseItem.query
+        .order_by(PurchaseOrder.dt_emis.desc())
+        .join(PurchaseOrder, PurchaseItem.purchase_order_id == PurchaseOrder.id)
+        .options(joinedload(PurchaseItem.purchase_order).joinedload(PurchaseOrder.adjustments))
+    )
     if value_filters:
             filters.append(and_(*value_filters))
     if filters:
@@ -892,7 +916,12 @@ def search_combined():
         items_query = items_query.filter(and_(PurchaseOrder.func_nome.ilike(f'%{search_by_func_nome}%')))
     
     if score_cutoff < 100 and query:
-        fuzzy_query = PurchaseItem.query.order_by(PurchaseOrder.dt_emis.desc()).join(PurchaseOrder, PurchaseItem.purchase_order_id == PurchaseOrder.id)
+        fuzzy_query = (
+            PurchaseItem.query
+            .order_by(PurchaseOrder.dt_emis.desc())
+            .join(PurchaseOrder, PurchaseItem.purchase_order_id == PurchaseOrder.id)
+            .options(joinedload(PurchaseItem.purchase_order).joinedload(PurchaseOrder.adjustments))
+        )
         if search_by_func_nome != 'todos':
             fuzzy_query =  fuzzy_query.filter(PurchaseOrder.func_nome.ilike(f'%{search_by_func_nome}%'))
         if value_filters:

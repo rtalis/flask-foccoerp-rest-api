@@ -709,7 +709,7 @@ const UnifiedSearch = ({ onLogout }) => {
   const [funcNames, setFuncNames] = useState([]); // Estado para armazenar os nomes dos compradores
   const [currentPage, setCurrentPage] = useState(1);
   const [noResults, setNoResults] = useState(0);
-  const [perPage, setPerPage] = useState(200);
+  const [perPage, setPerPage] = useState(50);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState("");

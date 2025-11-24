@@ -102,6 +102,64 @@ def test_search_combined(auth_client: FlaskClient):
     assert 'total_pages' in response.json
     assert 'current_page' in response.json
 
+def test_search_combined_matches_description(auth_client: FlaskClient):
+    with auth_client.application.app_context():
+        alpha_order = PurchaseOrder(
+            cod_pedc='PO-ALPHA-001',
+            dt_emis=date(2024, 4, 10),
+            fornecedor_id=11,
+            fornecedor_descricao='Alpha Equipamentos',
+            observacao='Linha hidraulica'
+        )
+        beta_order = PurchaseOrder(
+            cod_pedc='PO-BETA-001',
+            dt_emis=date(2024, 4, 11),
+            fornecedor_id=22,
+            fornecedor_descricao='Beta Ferramentas',
+            observacao='Linha filtros'
+        )
+        db.session.add_all([alpha_order, beta_order])
+        db.session.flush()
+
+        alpha_item = PurchaseItem(
+            purchase_order_id=alpha_order.id,
+            item_id='ALPHA-ITEM',
+            dt_emis=date(2024, 4, 10),
+            cod_pedc='PO-ALPHA-001',
+            descricao='Bomba Hidraulica industrial',
+            quantidade=3,
+            preco_unitario=1500,
+            total=4500
+        )
+        beta_item = PurchaseItem(
+            purchase_order_id=beta_order.id,
+            item_id='BETA-ITEM',
+            dt_emis=date(2024, 4, 11),
+            cod_pedc='PO-BETA-001',
+            descricao='Filtro de ar',
+            quantidade=5,
+            preco_unitario=200,
+            total=1000
+        )
+        db.session.add_all([alpha_item, beta_item])
+        db.session.commit()
+
+    response = auth_client.get('/api/search_combined', query_string={
+        'query': 'hidraulica',
+        'page': 1,
+        'per_page': 10,
+        'score_cutoff': 100,
+        'searchByDescricao': True,
+        'selectedFuncName': 'todos'
+    })
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload['purchases']
+    assert len(payload['purchases']) == 1
+    assert payload['purchases'][0]['order']['cod_pedc'] == 'PO-ALPHA-001'
+    assert payload['purchases'][0]['items'][0]['descricao'] == 'Bomba Hidraulica industrial'
+
 def test_get_last_update(auth_client: FlaskClient):
     with auth_client.application.app_context():
         order = PurchaseOrder(
@@ -223,6 +281,60 @@ def test_search_advanced_multiterm(auth_client: FlaskClient):
     assert response.json['purchases']
     assert response.json['purchases'][0]['order']['cod_pedc'] == 'PO-900'
 
+    def test_search_advanced_respects_min_value(auth_client: FlaskClient):
+        with auth_client.application.app_context():
+            low_order = PurchaseOrder(
+                cod_pedc='PO-LOW',
+                dt_emis=date(2024, 5, 1),
+                fornecedor_id=55,
+                fornecedor_descricao='Fornecedor Basico'
+            )
+            high_order = PurchaseOrder(
+                cod_pedc='PO-HIGH',
+                dt_emis=date(2024, 5, 2),
+                fornecedor_id=56,
+                fornecedor_descricao='Fornecedor Premium'
+            )
+            db.session.add_all([low_order, high_order])
+            db.session.flush()
+
+            low_item = PurchaseItem(
+                purchase_order_id=low_order.id,
+                item_id='VALV-100',
+                dt_emis=date(2024, 5, 1),
+                cod_pedc='PO-LOW',
+                descricao='Valvula compacta',
+                quantidade=2,
+                preco_unitario=500,
+                total=1000
+            )
+            high_item = PurchaseItem(
+                purchase_order_id=high_order.id,
+                item_id='VALV-900',
+                dt_emis=date(2024, 5, 2),
+                cod_pedc='PO-HIGH',
+                descricao='Valvula industrial premium',
+                quantidade=4,
+                preco_unitario=4000,
+                total=16000
+            )
+            db.session.add_all([low_item, high_item])
+            db.session.commit()
+
+        response = auth_client.get('/api/search_advanced', query_string={
+            'query': 'valvula',
+            'fields': 'descricao',
+            'per_page': 10,
+            'minValue': 2000,
+            'valueSearchType': 'item'
+        })
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload['purchases']
+        assert len(payload['purchases']) == 1
+        assert payload['purchases'][0]['order']['cod_pedc'] == 'PO-HIGH'
+        assert payload['purchases'][0]['items'][0]['preco_unitario'] == 4000
 
 def test_search_advanced_suggestions(auth_client: FlaskClient):
     with auth_client.application.app_context():

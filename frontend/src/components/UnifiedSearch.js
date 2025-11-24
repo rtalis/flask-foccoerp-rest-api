@@ -61,7 +61,6 @@ import SearchIcon from "@mui/icons-material/Search";
 import LogoutIcon from "@mui/icons-material/Logout";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import ReceiptIcon from "@mui/icons-material/Receipt";
-import ManageSearchIcon from "@mui/icons-material/ManageSearch";
 
 const DRAWER_WIDTH_OPEN = 260;
 const DRAWER_WIDTH_COLLAPSED = 60;
@@ -677,6 +676,8 @@ function PurchaseRow(props) {
 
 const UnifiedSearch = ({ onLogout }) => {
   const SEARCH_MODE_STORAGE_KEY = "searchModePreference";
+  const SEARCH_PARAMS_STORAGE_KEY = "searchParamsPreference";
+  const PER_PAGE_OPTIONS = [50, 100, 200];
   const DEFAULT_ENHANCED_FIELDS = [
     "descricao",
     "item_id",
@@ -685,8 +686,7 @@ const UnifiedSearch = ({ onLogout }) => {
     "observacao",
     "num_nf",
   ];
-
-  const [searchParams, setSearchParams] = useState({
+  const DEFAULT_SEARCH_PARAMS = {
     query: "",
     searchPrecision: "precisa",
     score_cutoff: 100,
@@ -703,13 +703,31 @@ const UnifiedSearch = ({ onLogout }) => {
     max_value: "",
     valueSearchType: "item",
     ignoreDiacritics: true,
-  });
+  };
+
+  const getStoredSearchParams = () => {
+    if (typeof window === "undefined") {
+      return { ...DEFAULT_SEARCH_PARAMS };
+    }
+    try {
+      const stored = localStorage.getItem(SEARCH_PARAMS_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        return { ...DEFAULT_SEARCH_PARAMS, ...parsed };
+      }
+    } catch (error) {
+      console.warn("Erro ao recuperar filtros salvos", error);
+    }
+    return { ...DEFAULT_SEARCH_PARAMS };
+  };
+
+  const [searchParams, setSearchParams] = useState(getStoredSearchParams);
   const [results, setResults] = useState([]);
   const [selectedItemId, setSelectedItemId] = useState(null);
   const [funcNames, setFuncNames] = useState([]); // Estado para armazenar os nomes dos compradores
   const [currentPage, setCurrentPage] = useState(1);
   const [noResults, setNoResults] = useState(0);
-  const [perPage, setPerPage] = useState(200);
+  const [perPage, setPerPage] = useState(100);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState("");
@@ -724,13 +742,23 @@ const UnifiedSearch = ({ onLogout }) => {
     if (typeof window === "undefined") {
       return "enhanced";
     }
-    return localStorage.getItem(SEARCH_MODE_STORAGE_KEY) || "classic";
+    return localStorage.getItem(SEARCH_MODE_STORAGE_KEY) || "enhanced";
   });
   const [suggestions, setSuggestions] = useState([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [showSuggestionsToggle, setShowSuggestionsToggle] = useState(false);
   const [showFulfilled, setShowFulfilled] = useState(true);
 
   const usingEnhanced = searchMode === "enhanced";
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(
+        SEARCH_PARAMS_STORAGE_KEY,
+        JSON.stringify(searchParams)
+      );
+    }
+  }, [searchParams]);
 
   const menuItems = React.useMemo(
     () => [
@@ -901,7 +929,7 @@ const UnifiedSearch = ({ onLogout }) => {
   }, [searchMode]);
 
   useEffect(() => {
-    if (!usingEnhanced) {
+    if (!usingEnhanced || !showSuggestionsToggle) {
       setSuggestions([]);
       return undefined;
     }
@@ -943,7 +971,7 @@ const UnifiedSearch = ({ onLogout }) => {
       isActive = false;
       clearTimeout(handler);
     };
-  }, [searchParams.query, usingEnhanced]);
+  }, [searchParams.query, usingEnhanced, showSuggestionsToggle]);
 
   useEffect(() => {
     setNoResults(results.length);
@@ -994,6 +1022,10 @@ const UnifiedSearch = ({ onLogout }) => {
     setSearchMode(event.target.checked ? "enhanced" : "classic");
   };
 
+  const handleRestoreDefaults = () => {
+    setSearchParams({ ...DEFAULT_SEARCH_PARAMS });
+  };
+
   const handleKeyDown = (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -1041,8 +1073,9 @@ const UnifiedSearch = ({ onLogout }) => {
     }
   };
 
-  const handleSearch = async (page = 1) => {
+  const handleSearch = async (page = 1, perPageOverride) => {
     const trimmedQuery = (searchParams.query || "").trim();
+    const perPageToUse = perPageOverride ?? perPage;
 
     setLoading(true);
     if (!usingEnhanced) {
@@ -1064,7 +1097,7 @@ const UnifiedSearch = ({ onLogout }) => {
               maxValue: searchParams.max_value || undefined,
               valueSearchType: searchParams.valueSearchType,
               page,
-              per_page: perPage,
+              per_page: perPageToUse,
             },
             withCredentials: true,
           }
@@ -1076,7 +1109,7 @@ const UnifiedSearch = ({ onLogout }) => {
             params: {
               query: trimmedQuery,
               page,
-              per_page: perPage,
+              per_page: perPageToUse,
               score_cutoff: searchParams.score_cutoff,
               searchByCodPedc: searchParams.searchByCodPedc,
               searchByFornecedor: searchParams.searchByFornecedor,
@@ -1147,6 +1180,13 @@ const UnifiedSearch = ({ onLogout }) => {
 
   const handlePageChange = (newPage) => {
     handleSearch(newPage);
+  };
+
+  const handlePerPageChange = (event) => {
+    const value = Number(event.target.value);
+    setPerPage(value);
+    setCurrentPage(1);
+    handleSearch(1, value);
   };
 
   return (
@@ -1276,46 +1316,77 @@ const UnifiedSearch = ({ onLogout }) => {
               flexWrap: "wrap",
             }}
           >
-            <Autocomplete
-              sx={{ flexGrow: 1, minWidth: 280 }}
-              fullWidth
-              freeSolo
-              options={suggestions}
-              loading={loadingSuggestions}
-              inputValue={searchParams.query}
-              onInputChange={(_, newValue) => updateQuery(newValue)}
-              onChange={(_, newValue) => {
-                if (typeof newValue === "string") {
-                  updateQuery(newValue);
-                  setTimeout(() => handleSearch(1), 0);
-                }
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+                flexGrow: 1,
+                minWidth: 320,
               }}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label="Buscar pedidos"
-                  variant="outlined"
-                  size="small"
-                  placeholder="Ex.: motor 123"
-                  onKeyDown={handleKeyDown}
-                  InputProps={{
-                    ...params.InputProps,
-                    endAdornment: (
-                      <>
-                        {loadingSuggestions ? (
-                          <CircularProgress
-                            color="inherit"
-                            size={18}
-                            sx={{ mr: 1 }}
-                          />
-                        ) : null}
-                        {params.InputProps.endAdornment}
-                      </>
-                    ),
-                  }}
-                />
-              )}
-            />
+            >
+              <Autocomplete
+                sx={{ flexGrow: 1 }}
+                fullWidth
+                freeSolo
+                options={showSuggestionsToggle ? suggestions : []}
+                loading={showSuggestionsToggle && loadingSuggestions}
+                inputValue={searchParams.query}
+                onInputChange={(_, newValue) => updateQuery(newValue)}
+                onChange={(_, newValue, reason) => {
+                  if (typeof newValue === "string") {
+                    updateQuery(newValue);
+                    if (reason === "selectOption") {
+                      setTimeout(() => handleSearch(1), 0);
+                    }
+                  }
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Buscar pedidos"
+                    variant="outlined"
+                    size="small"
+                    placeholder="Ex.: motor 123"
+                    onKeyDown={handleKeyDown}
+                    InputProps={{
+                      ...params.InputProps,
+                      endAdornment: (
+                        <>
+                          {showSuggestionsToggle && loadingSuggestions ? (
+                            <CircularProgress
+                              color="inherit"
+                              size={18}
+                              sx={{ mr: 1 }}
+                            />
+                          ) : null}
+                          {params.InputProps.endAdornment}
+                        </>
+                      ),
+                    }}
+                  />
+                )}
+              />
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => handleSearch(1)}
+                startIcon={<SearchIcon />}
+                sx={{ whiteSpace: "nowrap" }}
+              >
+                Buscar
+              </Button>
+            </Box>
+          </Box>
+          <Box
+            sx={{
+              display: "flex",
+              gap: 4,
+              mb: 3,
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
             <FormControlLabel
               control={
                 <Switch
@@ -1327,13 +1398,35 @@ const UnifiedSearch = ({ onLogout }) => {
               label={usingEnhanced ? "Busca aprimorada" : "Busca clássica"}
               sx={{ mr: 1 }}
             />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={showSuggestionsToggle}
+                  onChange={(event) => {
+                    const enabled = event.target.checked;
+                    setShowSuggestionsToggle(enabled);
+                    if (!enabled) {
+                      setSuggestions([]);
+                    }
+                  }}
+                  color="primary"
+                  disabled={!usingEnhanced}
+                />
+              }
+              label={
+                usingEnhanced
+                  ? "Mostrar sugestões"
+                  : "Mostrar sugestões (somente busca aprimorada)"
+              }
+              sx={{ mr: 1 }}
+            />
             <Button
-              variant="contained"
-              color="primary"
-              onClick={() => handleSearch(1)}
-              startIcon={<SearchIcon />}
+              variant="outlined"
+              color="inherit"
+              size="small"
+              onClick={handleRestoreDefaults}
             >
-              Buscar
+              Restaurar filtros
             </Button>
           </Box>
 
@@ -1592,23 +1685,55 @@ const UnifiedSearch = ({ onLogout }) => {
             </Table>
           </TableContainer>
 
-          <div className="pagination">
-            <button
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage === 1}
+          <Box
+            sx={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 2,
+              mt: 3,
+            }}
+          >
+            <div
+              className="pagination"
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                width: "100%",
+              }}
             >
-              Anterior
-            </button>
-            <span>
-              Página {currentPage} de {totalPages}
-            </span>
-            <button
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage === totalPages}
-            >
-              Próxima
-            </button>
-          </div>
+              <button
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+              >
+                Anterior
+              </button>
+              <span>
+                Página {currentPage} de {totalPages}
+              </span>
+              <button
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+              >
+                Próxima
+              </button>
+            </div>
+            <FormControl sx={{ minWidth: 180 }} size="small">
+              <FormLabel component="legend">Resultados por página</FormLabel>
+              <Select
+                value={perPage}
+                onChange={handlePerPageChange}
+                size="small"
+              >
+                {PER_PAGE_OPTIONS.map((option) => (
+                  <MenuItem key={option} value={option}>
+                    {option}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
 
           {selectedItemId && (
             <ItemScreen
