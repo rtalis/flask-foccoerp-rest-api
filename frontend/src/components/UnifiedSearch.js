@@ -47,6 +47,10 @@ import {
   Slide,
   useScrollTrigger,
   Switch,
+  Grid,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
@@ -61,6 +65,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import LogoutIcon from "@mui/icons-material/Logout";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import ReceiptIcon from "@mui/icons-material/Receipt";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 
 const DRAWER_WIDTH_OPEN = 260;
 const DRAWER_WIDTH_COLLAPSED = 60;
@@ -1040,6 +1045,9 @@ const UnifiedSearch = ({ onLogout }) => {
 
   const handleRestoreDefaults = () => {
     setSearchParams({ ...DEFAULT_SEARCH_PARAMS });
+    setShowFulfilled(true);
+    setSearchMode("enhanced");
+    setShowSuggestionsToggle(false);
   };
 
   const handleKeyDown = (e) => {
@@ -1205,6 +1213,45 @@ const UnifiedSearch = ({ onLogout }) => {
     handleSearch(1, value);
   };
 
+  const searchFieldColumns = [
+    [
+      {
+        name: "searchByCodPedc",
+        label: "Código do Pedido de Compra",
+        disabled: searchParams.searchPrecision !== "precisa",
+      },
+      {
+        name: "searchByFornecedor",
+        label: "Nome do Fornecedor",
+        disabled: searchParams.searchPrecision !== "precisa",
+      },
+    ],
+    [
+      {
+        name: "searchByObservacao",
+        label: "Observação do Pedido de Compra",
+        disabled: false,
+      },
+      {
+        name: "searchByItemId",
+        label: "Código do Item",
+        disabled: searchParams.searchPrecision !== "precisa",
+      },
+    ],
+    [
+      {
+        name: "searchByDescricao",
+        label: "Descrição do Item",
+        disabled: false,
+      },
+      {
+        name: "searchByNumNF",
+        label: "Número da Nota Fiscal",
+        disabled: false,
+      },
+    ],
+  ];
+
   return (
     <Box sx={{ display: "flex" }}>
       {/* AppBar */}
@@ -1361,6 +1408,7 @@ const UnifiedSearch = ({ onLogout }) => {
                   <TextField
                     {...params}
                     label="Buscar pedidos"
+                    sx={{ bgcolor: "#ffffff" }}
                     variant="outlined"
                     size="small"
                     placeholder="Ex.: motor 123"
@@ -1372,8 +1420,8 @@ const UnifiedSearch = ({ onLogout }) => {
                           {showSuggestionsToggle && loadingSuggestions ? (
                             <CircularProgress
                               color="inherit"
-                              size={18}
                               sx={{ mr: 1 }}
+                              size={18}
                             />
                           ) : null}
                           {params.InputProps.endAdornment}
@@ -1446,113 +1494,44 @@ const UnifiedSearch = ({ onLogout }) => {
             </Button>
           </Box>
 
-          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 5, mb: 5 }}>
+          <Box
+            sx={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 4,
+              mb: 3,
+            }}
+          >
             {/* Search fields section */}
-            <FormControl component="fieldset" sx={{ minWidth: "200px" }}>
+            <FormControl component="fieldset" sx={{ flex: 1, minWidth: 280 }}>
               <FormLabel component="legend">Pesquisar por...</FormLabel>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    name="searchByCodPedc"
-                    checked={searchParams.searchByCodPedc}
-                    onChange={handleChange}
-                    disabled={searchParams.searchPrecision !== "precisa"}
-                  />
-                }
-                label="Código do Pedido de Compra"
-                sx={{ marginBottom: "-10px" }}
-              />
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    name="searchByFornecedor"
-                    checked={searchParams.searchByFornecedor}
-                    onChange={handleChange}
-                    disabled={searchParams.searchPrecision !== "precisa"}
-                  />
-                }
-                label="Nome do Fornecedor"
-                sx={{ marginBottom: "-10px" }}
-              />
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    name="searchByObservacao"
-                    checked={searchParams.searchByObservacao}
-                    onChange={handleChange}
-                  />
-                }
-                label="Observação do Pedido de Compra"
-                sx={{ marginBottom: "-10px" }}
-              />
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    name="searchByItemId"
-                    checked={searchParams.searchByItemId}
-                    onChange={handleChange}
-                    disabled={searchParams.searchPrecision !== "precisa"}
-                  />
-                }
-                label="Código do Item"
-                sx={{ marginBottom: "-10px" }}
-              />
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    name="searchByDescricao"
-                    checked={searchParams.searchByDescricao}
-                    onChange={handleChange}
-                  />
-                }
-                label="Descrição do Item"
-                sx={{ marginBottom: "-10px" }}
-              />
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    name="searchByNumNF"
-                    checked={searchParams.searchByNumNF}
-                    onChange={handleChange}
-                  />
-                }
-                label="Número da Nota Fiscal"
-                sx={{ marginBottom: "-10px" }}
-              />
+              <Grid container spacing={2} sx={{ mt: 1 }}>
+                {searchFieldColumns.map((column, columnIndex) => (
+                  <Grid item xs={12} sm={4} key={`column-${columnIndex}`}>
+                    <Box sx={{ display: "flex", flexDirection: "column" }}>
+                      {column.map((field) => (
+                        <FormControlLabel
+                          key={field.name}
+                          control={
+                            <Checkbox
+                              name={field.name}
+                              checked={searchParams[field.name]}
+                              onChange={handleChange}
+                              disabled={field.disabled}
+                            />
+                          }
+                          label={field.label}
+                          sx={{ marginBottom: "-10px" }}
+                        />
+                      ))}
+                    </Box>
+                  </Grid>
+                ))}
+              </Grid>
             </FormControl>
 
-            {/* Search precision section */}
-            {!usingEnhanced && (
-              <FormControl component="fieldset" sx={{ minWidth: "200px" }}>
-                <FormLabel component="legend">Precisão da busca</FormLabel>
-                <RadioGroup
-                  name="searchPrecision"
-                  value={searchParams.searchPrecision}
-                  onChange={handleChange}
-                >
-                  <FormControlLabel
-                    value="precisa"
-                    control={<Radio />}
-                    label="Precisa"
-                    sx={{ marginBottom: "-10px" }}
-                  />
-                  <FormControlLabel
-                    value="fuzzy"
-                    control={<Radio />}
-                    label="Busca com erro de digitação"
-                    sx={{ marginBottom: "-10px" }}
-                  />
-                  <FormControlLabel
-                    value="tentar_a_sorte"
-                    control={<Radio />}
-                    label="Estou sem sorte"
-                    sx={{ marginBottom: "-10px" }}
-                  />
-                </RadioGroup>
-              </FormControl>
-            )}
             {/* Purchaser section */}
-            <FormControl sx={{ minWidth: "200px" }}>
+            <FormControl sx={{ flex: 1, minWidth: 240 }}>
               <FormLabel component="legend">Mostrar compradores</FormLabel>
               <Select
                 sx={{ mt: 1, marginBottom: 2 }}
@@ -1570,85 +1549,153 @@ const UnifiedSearch = ({ onLogout }) => {
                 ))}
               </Select>
             </FormControl>
-            {/* Value filter section */}
-            <FormControl component="fieldset" sx={{ minWidth: "200px" }}>
-              <FormLabel component="legend">Filtrar por valor</FormLabel>
+          </Box>
+
+          {/* Search precision section */}
+          {!usingEnhanced && (
+            <FormControl component="fieldset" sx={{ minWidth: "200px", mb: 3 }}>
+              <FormLabel component="legend">Precisão da busca</FormLabel>
               <RadioGroup
-                name="valueSearchType"
-                value={searchParams.valueSearchType}
+                name="searchPrecision"
+                value={searchParams.searchPrecision}
                 onChange={handleChange}
               >
                 <FormControlLabel
-                  value="item"
+                  value="precisa"
                   control={<Radio />}
-                  label="Valor do Item"
+                  label="Precisa"
                   sx={{ marginBottom: "-10px" }}
                 />
                 <FormControlLabel
-                  value="order"
+                  value="fuzzy"
                   control={<Radio />}
-                  label="Valor do Pedido"
+                  label="Busca com erro de digitação"
+                  sx={{ marginBottom: "-10px" }}
+                />
+                <FormControlLabel
+                  value="tentar_a_sorte"
+                  control={<Radio />}
+                  label="Estou sem sorte"
                   sx={{ marginBottom: "-10px" }}
                 />
               </RadioGroup>
+            </FormControl>
+          )}
 
-              <TextField
-                sx={{ mb: 2, mt: 2 }}
-                label="Valor mínimo"
-                name="min_value"
-                type="number"
-                value={searchParams.min_value}
-                onChange={handleChange}
-                size="small"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">R$</InputAdornment>
-                  ),
-                }}
-              />
-              <TextField
-                label="Valor máximo"
-                name="max_value"
-                type="number"
-                value={searchParams.max_value}
-                onChange={handleChange}
-                size="small"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">R$</InputAdornment>
-                  ),
-                }}
-              />
-            </FormControl>
-            <FormControl component="fieldset" sx={{ minWidth: "200px" }}>
-              <FormLabel component="legend">Filtrar por...</FormLabel>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={!showFulfilled}
-                    onChange={() => setShowFulfilled(!showFulfilled)}
-                    color="primary"
-                  />
-                }
-                label={
-                  showFulfilled ? "Mostrar concluidos" : "Ocultar concluidos"
-                }
-                sx={{ mr: 1 }}
-              />
-              <Divider sx={{ my: 1 }} />
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    name="ignoreDiacritics"
-                    checked={searchParams.ignoreDiacritics}
+          <Accordion
+            sx={{
+              mb: 5,
+              bgcolor: (theme) => theme.palette.background.paper,
+              borderRadius: 2,
+              boxShadow: (theme) => theme.shadows[1],
+            }}
+            disableGutters
+          >
+            <AccordionSummary
+              expandIcon={<ExpandMoreIcon />}
+              sx={{
+                bgcolor: (theme) => theme.palette.background.paper,
+                borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
+                borderTopLeftRadius: 8,
+                borderTopRightRadius: 8,
+              }}
+            >
+              <Typography variant="subtitle1">Filtros avançados</Typography>
+            </AccordionSummary>
+            <AccordionDetails
+              sx={{
+                bgcolor: (theme) => theme.palette.background.paper,
+                borderBottomLeftRadius: 8,
+                borderBottomRightRadius: 8,
+              }}
+            >
+              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {/* Value filter section */}
+                <FormControl
+                  component="fieldset"
+                  sx={{ flex: 1, minWidth: 240 }}
+                >
+                  <FormLabel component="legend">Filtrar por valor</FormLabel>
+                  <RadioGroup
+                    name="valueSearchType"
+                    value={searchParams.valueSearchType}
                     onChange={handleChange}
+                  >
+                    <FormControlLabel
+                      value="item"
+                      control={<Radio />}
+                      label="Valor do Item"
+                      sx={{ marginBottom: "-10px" }}
+                    />
+                    <FormControlLabel
+                      value="order"
+                      control={<Radio />}
+                      label="Valor do Pedido"
+                      sx={{ marginBottom: "-10px" }}
+                    />
+                  </RadioGroup>
+
+                  <TextField
+                    sx={{ mb: 2, mt: 2 }}
+                    label="Valor mínimo"
+                    name="min_value"
+                    type="number"
+                    value={searchParams.min_value}
+                    onChange={handleChange}
+                    size="small"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">R$</InputAdornment>
+                      ),
+                    }}
                   />
-                }
-                label="Ignorar acentuação (diacríticos)"
-                sx={{ marginBottom: "-10px" }}
-              />
-            </FormControl>
-          </Box>
+                  <TextField
+                    label="Valor máximo"
+                    name="max_value"
+                    type="number"
+                    value={searchParams.max_value}
+                    onChange={handleChange}
+                    size="small"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">R$</InputAdornment>
+                      ),
+                    }}
+                  />
+                </FormControl>
+
+                <FormControl
+                  component="fieldset"
+                  sx={{ flex: 1, minWidth: 240 }}
+                >
+                  <FormLabel component="legend">Filtrar por...</FormLabel>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={!showFulfilled}
+                        onChange={() => setShowFulfilled(!showFulfilled)}
+                        color="primary"
+                      />
+                    }
+                    label={"Ocultar concluidos"}
+                    sx={{ mr: 1 }}
+                  />
+                  <Divider sx={{ my: 1 }} />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        name="ignoreDiacritics"
+                        checked={searchParams.ignoreDiacritics}
+                        onChange={handleChange}
+                      />
+                    }
+                    label="Ignorar acentuação (diacríticos)"
+                    sx={{ marginBottom: "-10px" }}
+                  />
+                </FormControl>
+              </Box>
+            </AccordionDetails>
+          </Accordion>
 
           {loading && (
             <Box
@@ -1675,7 +1722,9 @@ const UnifiedSearch = ({ onLogout }) => {
             </Box>
           )}
 
-          <Typography variant="h6" gutterBottom ref={resultsRef}>
+          <br></br>
+
+          <Typography align="right" variant="h6" gutterBottom ref={resultsRef}>
             Mostrando {noResults} resultados. Pagina {currentPage} de{" "}
             {totalPages}
           </Typography>
@@ -1700,23 +1749,22 @@ const UnifiedSearch = ({ onLogout }) => {
               </TableBody>
             </Table>
           </TableContainer>
-
           <Box
             sx={{
               display: "flex",
               flexWrap: "wrap",
               alignItems: "center",
-              justifyContent: "space-between",
               gap: 2,
               mt: 3,
             }}
           >
-            <div
+            <Box
               className="pagination"
-              style={{
+              sx={{
                 display: "flex",
                 justifyContent: "center",
-                width: "100%",
+                flexGrow: 1,
+                mb: { xs: 2, sm: 0 },
               }}
             >
               <button
@@ -1734,8 +1782,11 @@ const UnifiedSearch = ({ onLogout }) => {
               >
                 Próxima
               </button>
-            </div>
-            <FormControl sx={{ minWidth: 180 }} size="small">
+            </Box>
+            <FormControl
+              sx={{ minWidth: 180, ml: { xs: 0, sm: "auto" } }}
+              size="small"
+            >
               <FormLabel component="legend">Resultados por página</FormLabel>
               <Select
                 value={perPage}
