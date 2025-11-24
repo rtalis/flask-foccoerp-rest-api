@@ -670,6 +670,7 @@ def search_advanced():
     min_value = request.args.get('minValue', type=float)
     max_value = request.args.get('maxValue', type=float)
     value_search_type = request.args.get('valueSearchType', 'item').lower()
+    exact_search = request.args.get('exactSearch', 'false').lower() == 'true'
 
     default_fields = {'cod_pedc', 'fornecedor', 'observacao', 'item_id', 'descricao', 'num_nf'}
     fields = {field.strip().lower() for field in fields_param.split(',') if field.strip()} or default_fields
@@ -680,11 +681,12 @@ def search_advanced():
         'observacao': PurchaseOrder.observacao,
         'item_id': PurchaseItem.item_id,
         'descricao': PurchaseItem.descricao,
+        
     }
 
     include_nf = 'num_nf' in fields
     search_columns = [column_map[key] for key in fields if key in column_map]
-    if not search_columns:
+    if not search_columns and not include_nf:
         search_columns = [PurchaseItem.descricao]
 
     remove_accents = None
@@ -694,6 +696,8 @@ def search_advanced():
     
     def build_like_pattern(term: str) -> str:
         pattern = term.replace('*', '%')
+        if exact_search:
+            return pattern
         if '%' not in pattern:
             pattern = f'%{pattern}%'
         return pattern
