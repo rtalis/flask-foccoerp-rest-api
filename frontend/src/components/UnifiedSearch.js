@@ -677,6 +677,7 @@ function PurchaseRow(props) {
 const UnifiedSearch = ({ onLogout }) => {
   const SEARCH_MODE_STORAGE_KEY = "searchModePreference";
   const SEARCH_PARAMS_STORAGE_KEY = "searchParamsPreference";
+  const SHOW_SUGGESTIONS_STORAGE_KEY = "showSuggestionsPreference";
   const PER_PAGE_OPTIONS = [50, 100, 200];
   const DEFAULT_ENHANCED_FIELDS = [
     "descricao",
@@ -746,7 +747,13 @@ const UnifiedSearch = ({ onLogout }) => {
   });
   const [suggestions, setSuggestions] = useState([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
-  const [showSuggestionsToggle, setShowSuggestionsToggle] = useState(false);
+  const [showSuggestionsToggle, setShowSuggestionsToggle] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    const stored = localStorage.getItem(SHOW_SUGGESTIONS_STORAGE_KEY);
+    return stored === "true";
+  });
   const [showFulfilled, setShowFulfilled] = useState(true);
 
   const usingEnhanced = searchMode === "enhanced";
@@ -759,6 +766,15 @@ const UnifiedSearch = ({ onLogout }) => {
       );
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(
+        SHOW_SUGGESTIONS_STORAGE_KEY,
+        JSON.stringify(showSuggestionsToggle)
+      );
+    }
+  }, [showSuggestionsToggle]);
 
   const menuItems = React.useMemo(
     () => [
@@ -1426,7 +1442,7 @@ const UnifiedSearch = ({ onLogout }) => {
               size="small"
               onClick={handleRestoreDefaults}
             >
-              Restaurar filtros
+              ⎚ Limpar filtros
             </Button>
           </Box>
 
