@@ -55,13 +55,10 @@ import MenuIcon from "@mui/icons-material/Menu";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import CompareIcon from "@mui/icons-material/Compare";
 import UploadIcon from "@mui/icons-material/Upload";
-import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
-import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import SearchIcon from "@mui/icons-material/Search";
 import LogoutIcon from "@mui/icons-material/Logout";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import ReceiptIcon from "@mui/icons-material/Receipt";
-import ManageSearchIcon from "@mui/icons-material/ManageSearch";
 
 const DRAWER_WIDTH_OPEN = 260;
 const DRAWER_WIDTH_COLLAPSED = 60;

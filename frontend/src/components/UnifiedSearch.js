@@ -1724,9 +1724,9 @@ const UnifiedSearch = ({ onLogout }) => {
 
           <br></br>
 
-          <Typography align="right" variant="h6" gutterBottom ref={resultsRef}>
+          <Typography align="center" variant="h6" gutterBottom ref={resultsRef}>
             Mostrando {noResults} resultados. Pagina {currentPage} de{" "}
-            {totalPages}
+            {totalPages}⠀⠀⠀⠀⠀⠀⠀⠀⠀
           </Typography>
 
           <TableContainer component={Paper}>
@@ -1758,6 +1758,7 @@ const UnifiedSearch = ({ onLogout }) => {
               mt: 3,
             }}
           >
+            <Box sx={{ paddingRight: 10 }} />
             <Box
               className="pagination"
               sx={{
