@@ -1,4 +1,5 @@
 from datetime import datetime
+import string
 from urllib import response
 import re
 from fuzzywuzzy import process, fuzz
@@ -2129,9 +2130,9 @@ def sync_nfe_api():
     
 
 
-@bp.route('/match_purchase_nfe/<int:purchase_id>', methods=['GET'])
+@bp.route('/match_purchase_nfe', methods=['GET'])
 @login_required
-def match_purchase_nfe(purchase_id):
+def match_purchase_nfe():
     """
     Find NFEs that match a purchase order and score their similarity.
     
@@ -2140,11 +2141,12 @@ def match_purchase_nfe(purchase_id):
     - max_results (optional): Maximum number of matches to return
     """
     from app.utils import score_purchase_nfe_match
-    
+    cod_pedc = request.args.get('cod_pedc', type=int)
+    cod_emp1 = request.args.get('cod_emp1')
     nfe_id = request.args.get('nfe_id', type=int)
     max_results = request.args.get('max_results', default=5, type=int)
     
-    results = score_purchase_nfe_match(purchase_id, nfe_id)
+    results = score_purchase_nfe_match(cod_pedc, nfe_id, cod_emp1)
     
     # Handle error responses
     if isinstance(results, dict) and 'error' in results:
@@ -2155,12 +2157,10 @@ def match_purchase_nfe(purchase_id):
         results = results[:max_results]
     
     return jsonify({
-        'purchase_id': purchase_id,
+        'purchase_id': cod_pedc,
         'matches_found': len(results),
         'results': results
     }), 200
-
-# Add these endpoints
 
 @bp.route('/user_purchases', methods=['GET'])
 @login_required

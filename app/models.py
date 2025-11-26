@@ -121,6 +121,23 @@ class LoginHistory(db.Model):
     logout_ip = db.Column(db.String(45), nullable=True)
     logout_user_agent = db.Column(db.Text, nullable=True)
     login_method = db.Column(db.String(32), nullable=True)
+
+
+class UserToken(db.Model):
+    __tablename__ = 'user_tokens'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    token = db.Column(db.Text, nullable=False, unique=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    created_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    disabled_at = db.Column(db.DateTime, nullable=True)
+    disabled_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+
+    user = db.relationship('User', foreign_keys=[user_id])
+    created_by = db.relationship('User', foreign_keys=[created_by_id])
+    disabled_by = db.relationship('User', foreign_keys=[disabled_by_id])
     
 class Quotation(db.Model):
     __tablename__ = 'quotations'
