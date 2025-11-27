@@ -14,7 +14,6 @@ import {
   Checkbox,
   FormControlLabel,
   Paper,
-  Grid,
   Snackbar,
   Alert,
   IconButton,
@@ -24,13 +23,22 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Stack,
+  Chip,
+  Skeleton,
+  Tooltip,
+  Collapse,
 } from "@mui/material";
 import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
   Save as SaveIcon,
-  Cancel as CancelIcon,
+  Close as CloseIcon,
+  People as PeopleIcon,
+  Key as KeyIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
 } from "@mui/icons-material";
 
 const Register = () => {
@@ -54,6 +62,8 @@ const Register = () => {
   const [error, setError] = useState("");
   const [purchaserNames, setPurchaserNames] = useState([]);
   const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [alert, setAlert] = useState({
     open: false,
     message: "",
@@ -70,7 +80,6 @@ const Register = () => {
   ];
 
   useEffect(() => {
-    // Check if user is admin
     const checkAdminStatus = async () => {
       try {
         const response = await axios.get(
@@ -82,12 +91,12 @@ const Register = () => {
           setIsAdmin(false);
         } else {
           setIsAdmin(true);
-          // Fetch data only if admin
-          fetchPurchaserNames();
-          fetchUsers();
+          await Promise.all([fetchPurchaserNames(), fetchUsers()]);
         }
       } catch (err) {
         navigate("/login");
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -148,24 +157,19 @@ const Register = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      let response;
-
       if (isEditing && editUserId) {
-        // Update existing user
-        response = await axios.put(
+        await axios.put(
           `${process.env.REACT_APP_API_URL}/auth/users/${editUserId}`,
           formData,
           { withCredentials: true }
         );
-
         setAlert({
           open: true,
-          message: "Usuário atualizado com sucesso!",
+          message: "Usuário atualizado!",
           severity: "success",
         });
       } else {
-        // Create new user
-        response = await axios.post(
+        const response = await axios.post(
           `${process.env.REACT_APP_API_URL}/auth/register`,
           formData,
           { withCredentials: true }
@@ -173,19 +177,16 @@ const Register = () => {
         if (response.status === 201) {
           setAlert({
             open: true,
-            message: "Usuário criado com sucesso!",
+            message: "Usuário criado!",
             severity: "success",
           });
         } else {
           throw new Error("Falha ao criar usuário");
         }
       }
-
-      // Reset form and refresh users list
       resetForm();
       fetchUsers();
     } catch (error) {
-      console.error("Operation failed", error);
       setAlert({
         open: true,
         message: error.response?.data?.error || "Operação falhou",
@@ -197,10 +198,11 @@ const Register = () => {
   const handleEditUser = (user) => {
     setIsEditing(true);
     setEditUserId(user.id);
+    setShowAdvanced(true);
     setFormData({
       username: user.username,
       email: user.email,
-      password: "", // Don't show password
+      password: "",
       role: user.role || "viewer",
       purchaser_name: user.purchaser_name || "",
       system_name: user.system_name || "",
@@ -210,28 +212,22 @@ const Register = () => {
   };
 
   const handleDeleteUser = async (userId) => {
-    if (!window.confirm("Tem certeza que deseja excluir este usuário?")) {
-      return;
-    }
-
+    if (!window.confirm("Excluir este usuário?")) return;
     try {
       await axios.delete(
         `${process.env.REACT_APP_API_URL}/auth/users/${userId}`,
         { withCredentials: true }
       );
-
       setAlert({
         open: true,
-        message: "Usuário excluído com sucesso!",
+        message: "Usuário excluído!",
         severity: "success",
       });
-
       fetchUsers();
     } catch (error) {
-      console.error("Failed to delete user", error);
       setAlert({
         open: true,
-        message: error.response?.data?.error || "Falha ao excluir usuário",
+        message: error.response?.data?.error || "Falha ao excluir",
         severity: "error",
       });
     }
@@ -250,22 +246,40 @@ const Register = () => {
     });
     setIsEditing(false);
     setEditUserId(null);
+    setShowAdvanced(false);
     setError("");
   };
 
-  const handleCloseAlert = () => {
-    setAlert({ ...alert, open: false });
+  const handleCloseAlert = () => setAlert({ ...alert, open: false });
+
+  const getRoleLabel = (role) => {
+    const labels = { admin: "Admin", purchaser: "Comprador", viewer: "Viewer" };
+    return labels[role] || role;
   };
+
+  const getRoleColor = (role) => {
+    const colors = { admin: "error", purchaser: "primary", viewer: "default" };
+    return colors[role] || "default";
+  };
+
+  if (loading) {
+    return (
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Skeleton variant="rounded" height={200} sx={{ mb: 3 }} />
+        <Skeleton variant="rounded" height={300} />
+      </Container>
+    );
+  }
 
   if (!isAdmin) {
     return (
-      <Container maxWidth="md" sx={{ mt: 4, mb: 4 }}>
-        <Paper className="p-6 flex flex-col shadow-md rounded-lg">
-          <Typography variant="h5" color="error" className="mb-3 font-bold">
-            Acesso Restrito
+      <Container maxWidth="sm" sx={{ mt: 10 }}>
+        <Paper sx={{ p: 4, textAlign: "center" }}>
+          <Typography variant="h6" color="error" gutterBottom>
+            Acesso restrito
           </Typography>
-          <Typography variant="body1">
-            {error || "Somente administradores podem acessar esta página."}
+          <Typography variant="body2" color="text.secondary">
+            {error || "Apenas administradores podem acessar esta página."}
           </Typography>
         </Paper>
       </Container>
@@ -273,95 +287,112 @@ const Register = () => {
   }
 
   return (
-    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }} className="transition-all">
-      <Paper className="p-6 mb-6 rounded-lg shadow-md hover:shadow-lg transition-shadow">
-        <Typography
-          variant="h5"
-          className="pb-3 mb-4 border-b-2 border-gray-200 text-gray-800"
+    <Container maxWidth="lg" sx={{ py: 4 }}>
+      {/* Header */}
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          mb: 3,
+        }}
+      >
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          <PeopleIcon color="primary" />
+          <Typography variant="h5" fontWeight={600}>
+            Usuários
+          </Typography>
+        </Box>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<KeyIcon />}
+          onClick={() => navigate("/token-manager")}
         >
-          {isEditing ? "Editar Usuário" : "Cadastrar Novo Usuário"}
-        </Typography>
+          Tokens
+        </Button>
+      </Box>
 
-        <Box component="form" onSubmit={handleSubmit} className="mt-6">
-          <Grid container spacing={3}>
-            {/* Username - full width */}
-            <Grid item xs={12}>
+      {/* User Form */}
+      <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            mb: 2,
+          }}
+        >
+          <Typography variant="subtitle2" color="text.secondary">
+            {isEditing ? "Editar usuário" : "Novo usuário"}
+          </Typography>
+          {isEditing && (
+            <IconButton size="small" onClick={resetForm}>
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          )}
+        </Box>
+
+        <Box component="form" onSubmit={handleSubmit}>
+          <Stack spacing={2}>
+            {/* Row 1: Username, Email, Password */}
+            <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
               <TextField
                 required
-                fullWidth
-                label="Nome de Usuário"
+                size="small"
+                label="Usuário"
                 name="username"
                 value={formData.username}
                 onChange={handleInputChange}
-                autoFocus
+                sx={{ flex: 1 }}
               />
-            </Grid>
-
-            {/* Email and Password - half width on desktop, full on mobile */}
-            <Grid item xs={12} md={6}>
               <TextField
                 required
-                fullWidth
+                size="small"
                 label="Email"
                 name="email"
                 type="email"
                 value={formData.email}
                 onChange={handleInputChange}
+                sx={{ flex: 1 }}
               />
-            </Grid>
-            <Grid item xs={12} md={6}>
               <TextField
-                fullWidth
+                size="small"
                 label="Senha"
                 name="password"
                 type="password"
                 value={formData.password}
                 onChange={handleInputChange}
                 required={!isEditing}
-                helperText={
-                  isEditing ? "Deixe em branco para manter a senha atual" : ""
-                }
+                placeholder={isEditing ? "Manter atual" : ""}
+                sx={{ flex: 1 }}
               />
-            </Grid>
+            </Stack>
 
-            {/* User type - full width */}
-            <Grid item xs={12}>
-              <FormControl fullWidth>
-                <InputLabel>Tipo de Usuário</InputLabel>
+            {/* Row 2: Role + System Name */}
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+              <FormControl size="small" sx={{ minWidth: 150 }}>
+                <InputLabel>Tipo</InputLabel>
                 <Select
                   name="role"
+                  label="Tipo"
                   value={formData.role}
                   onChange={handleInputChange}
                 >
-                  <MenuItem value="admin">Administrador</MenuItem>
+                  <MenuItem value="admin">Admin</MenuItem>
                   <MenuItem value="purchaser">Comprador</MenuItem>
-                  <MenuItem value="viewer">Visualizador</MenuItem>
+                  <MenuItem value="viewer">Viewer</MenuItem>
                 </Select>
               </FormControl>
-            </Grid>
-
-            {/* Purchaser name and System name - half width on desktop */}
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Nome"
-                name="purchaser_name"
-                value={formData.purchaser_name}
-                onChange={handleInputChange}
-              />
-            </Grid>
-
-            <Grid item xs={12} md={6}>
-              <FormControl fullWidth>
+              <FormControl size="small" sx={{ flex: 1 }}>
                 <InputLabel>Nome no Sistema</InputLabel>
                 <Select
                   name="system_name"
+                  label="Nome no Sistema"
                   value={formData.system_name}
                   onChange={handleInputChange}
                 >
-                  <MenuItem value="">
-                    <em>Nenhum</em>
-                  </MenuItem>
+                  <MenuItem value="">Nenhum</MenuItem>
                   {purchaserNames.map((name) => (
                     <MenuItem key={name} value={name}>
                       {name}
@@ -369,138 +400,167 @@ const Register = () => {
                   ))}
                 </Select>
               </FormControl>
-              <Typography variant="caption" className="text-gray-600 mt-1">
-                Nome utilizado para filtrar pedidos por comprador
-              </Typography>
-            </Grid>
+            </Stack>
 
-            {/* Initial screen - full width */}
-            <Grid item xs={12}>
-              <FormControl fullWidth>
-                <InputLabel>Tela Inicial</InputLabel>
-                <Select
-                  name="initial_screen"
-                  value={formData.initial_screen}
-                  onChange={handleInputChange}
-                >
-                  {availableScreens.map((screen) => (
-                    <MenuItem key={screen.path} value={screen.path}>
-                      {screen.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-          </Grid>
-
-          {/* Screens permission checkboxes */}
-          <Box className="mt-6 mb-6 p-4 bg-gray-50 rounded-md border border-gray-200">
-            <Typography variant="subtitle1" className="mb-3 font-medium">
-              Telas Permitidas
-            </Typography>
-            <Box className="flex flex-wrap">
-              {availableScreens.map((screen) => (
-                <FormControlLabel
-                  key={screen.path}
-                  className="w-full md:w-1/2 py-2"
-                  control={
-                    <Checkbox
-                      checked={formData.allowed_screens.includes(screen.path)}
-                      onChange={() => handleScreensChange(screen.path)}
-                    />
-                  }
-                  label={screen.label}
-                />
-              ))}
-            </Box>
-          </Box>
-
-          <Box className="mt-6 flex flex-col sm:flex-row gap-3">
+            {/* Advanced toggle */}
             <Button
-              type="submit"
-              variant="contained"
-              className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-6"
-              startIcon={isEditing ? <SaveIcon /> : <AddIcon />}
+              size="small"
+              variant="text"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              endIcon={showAdvanced ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+              sx={{ alignSelf: "flex-start", textTransform: "none" }}
             >
-              {isEditing ? "Atualizar" : "Cadastrar"}
+              {showAdvanced ? "Menos opções" : "Mais opções"}
             </Button>
 
-            {isEditing && (
+            <Collapse in={showAdvanced}>
+              <Stack spacing={2}>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                  <TextField
+                    size="small"
+                    label="Nome Exibição"
+                    name="purchaser_name"
+                    value={formData.purchaser_name}
+                    onChange={handleInputChange}
+                    sx={{ flex: 1 }}
+                  />
+                  <FormControl size="small" sx={{ minWidth: 180 }}>
+                    <InputLabel>Tela Inicial</InputLabel>
+                    <Select
+                      name="initial_screen"
+                      label="Tela Inicial"
+                      value={formData.initial_screen}
+                      onChange={handleInputChange}
+                    >
+                      {availableScreens.map((s) => (
+                        <MenuItem key={s.path} value={s.path}>
+                          {s.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Stack>
+
+                <Box sx={{ p: 2, bgcolor: "grey.50", borderRadius: 1 }}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ mb: 1, display: "block" }}
+                  >
+                    Telas permitidas
+                  </Typography>
+                  <Stack direction="row" flexWrap="wrap" gap={1}>
+                    {availableScreens.map((screen) => (
+                      <FormControlLabel
+                        key={screen.path}
+                        control={
+                          <Checkbox
+                            size="small"
+                            checked={formData.allowed_screens.includes(
+                              screen.path
+                            )}
+                            onChange={() => handleScreensChange(screen.path)}
+                          />
+                        }
+                        label={
+                          <Typography variant="body2">
+                            {screen.label}
+                          </Typography>
+                        }
+                      />
+                    ))}
+                  </Stack>
+                </Box>
+              </Stack>
+            </Collapse>
+
+            {/* Actions */}
+            <Stack direction="row" spacing={1} sx={{ pt: 1 }}>
               <Button
-                type="button"
-                variant="outlined"
-                className="border border-gray-400 text-gray-700 py-2 px-6"
-                startIcon={<CancelIcon />}
-                onClick={resetForm}
+                type="submit"
+                variant="contained"
+                disableElevation
+                startIcon={isEditing ? <SaveIcon /> : <AddIcon />}
               >
-                Cancelar
+                {isEditing ? "Salvar" : "Criar"}
               </Button>
-            )}
-          </Box>
+              {isEditing && (
+                <Button variant="text" onClick={resetForm}>
+                  Cancelar
+                </Button>
+              )}
+            </Stack>
+          </Stack>
         </Box>
       </Paper>
 
       {/* Users Table */}
-      <Paper className="mt-8 p-6 rounded-lg shadow-md overflow-hidden">
-        <Typography
-          variant="h5"
-          className="pb-3 mb-4 border-b-2 border-gray-200 text-gray-800"
-        >
-          Usuários Cadastrados
-        </Typography>
-
-        <TableContainer className="overflow-x-auto">
-          <Table>
+      <Paper sx={{ borderRadius: 2, overflow: "hidden" }}>
+        <TableContainer>
+          <Table size="small">
             <TableHead>
-              <TableRow className="bg-gray-100">
-                <TableCell className="font-medium">Nome de Usuário</TableCell>
-                <TableCell className="font-medium">Email</TableCell>
-                <TableCell className="font-medium">Tipo</TableCell>
-                <TableCell className="font-medium">Comprador</TableCell>
-                <TableCell className="font-medium whitespace-nowrap">
+              <TableRow sx={{ bgcolor: "grey.50" }}>
+                <TableCell sx={{ fontWeight: 600 }}>Usuário</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Email</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Tipo</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Sistema</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 600 }}>
                   Ações
                 </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {users.map((user) => (
-                <TableRow
-                  key={user.id}
-                  className="hover:bg-gray-50 transition-colors"
-                >
-                  <TableCell>{user.username}</TableCell>
-                  <TableCell>{user.email}</TableCell>
-                  <TableCell>
-                    {user.role === "admin"
-                      ? "Administrador"
-                      : user.role === "purchaser"
-                      ? "Comprador"
-                      : "Visualizador"}
-                  </TableCell>
-                  <TableCell>
-                    {user.purchaser_name || user.system_name || "—"}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap">
-                    <IconButton
-                      color="primary"
-                      onClick={() => handleEditUser(user)}
-                      title="Editar"
-                      className="p-2"
-                    >
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton
-                      color="error"
-                      onClick={() => handleDeleteUser(user.id)}
-                      title="Excluir"
-                      disabled={user.id === 1} // Prevent deleting the main admin
-                      className="p-2"
-                    >
-                      <DeleteIcon />
-                    </IconButton>
+              {users.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={5}
+                    sx={{ textAlign: "center", py: 4, color: "text.secondary" }}
+                  >
+                    Nenhum usuário cadastrado.
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                users.map((user) => (
+                  <TableRow key={user.id} hover>
+                    <TableCell>{user.username}</TableCell>
+                    <TableCell sx={{ color: "text.secondary" }}>
+                      {user.email}
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={getRoleLabel(user.role)}
+                        color={getRoleColor(user.role)}
+                        size="small"
+                        variant="outlined"
+                      />
+                    </TableCell>
+                    <TableCell>{user.system_name || "—"}</TableCell>
+                    <TableCell align="right">
+                      <Tooltip title="Editar">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleEditUser(user)}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Excluir">
+                        <span>
+                          <IconButton
+                            size="small"
+                            color="error"
+                          
+                            onClick={() => handleDeleteUser(user.id)}
+                            disabled={user.id === 1}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </TableContainer>
@@ -508,14 +568,14 @@ const Register = () => {
 
       <Snackbar
         open={alert.open}
-        autoHideDuration={6000}
+        autoHideDuration={3000}
         onClose={handleCloseAlert}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
         <Alert
           onClose={handleCloseAlert}
           severity={alert.severity}
-          className="rounded-md"
+          variant="filled"
         >
           {alert.message}
         </Alert>

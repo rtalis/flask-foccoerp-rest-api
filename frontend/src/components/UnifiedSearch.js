@@ -683,7 +683,7 @@ const UnifiedSearch = ({ onLogout }) => {
   const SEARCH_MODE_STORAGE_KEY = "searchModePreference";
   const SEARCH_PARAMS_STORAGE_KEY = "searchParamsPreference";
   const SHOW_SUGGESTIONS_STORAGE_KEY = "showSuggestionsPreference";
-  const PER_PAGE_OPTIONS = [50, 100, 200];
+  const PER_PAGE_OPTIONS = [50, 100, 200, 300, 500];
   const DEFAULT_ENHANCED_FIELDS = [
     "descricao",
     "item_id",
@@ -1461,7 +1461,7 @@ const UnifiedSearch = ({ onLogout }) => {
                   color="primary"
                 />
               }
-              label={usingEnhanced ? "Busca aprimorada" : "Busca clássica"}
+              label={"Busca aprimorada"}
               sx={{ mr: 1 }}
             />
             <FormControlLabel
@@ -1533,10 +1533,15 @@ const UnifiedSearch = ({ onLogout }) => {
             </FormControl>
 
             {/* Purchaser section */}
-            <FormControl sx={{ flex: 1, minWidth: 240 }}>
-              <FormLabel component="legend">Mostrar compradores</FormLabel>
+            <FormControl
+              component="fieldset"
+              sx={{ flex: 1, minWidth: 240, xs: 12, sm: 2 }}
+            >
+              <FormLabel component="legend" sx={{ mb: 1, maxWidth: 400 }}>
+                Mostrar compradores
+              </FormLabel>
               <Select
-                sx={{ mt: 1, marginBottom: 2 }}
+                sx={{ mt: 1, mb: 2 }}
                 name="selectedFuncName"
                 value={searchParams.selectedFuncName}
                 onChange={handleChange}

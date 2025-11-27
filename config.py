@@ -13,7 +13,7 @@ class Config:
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SECURE = False  # Defina como True em produção
     SESSION_COOKIE_SAMESITE = 'Lax'  # Pode ser 'Strict', 'Lax' ou 'None'
-    PERMANENT_SESSION_LIFETIME = timedelta(hours=1)  # Tempo de vida da sessão
+    PERMANENT_SESSION_LIFETIME = timedelta(minutes=60)  # Tempo de vida da sessão
     SESSION_COOKIE_DOMAIN = None
     JWT_EXPIRATION_MINUTES = int(os.getenv('JWT_EXPIRATION_MINUTES', 90))  # Tempo de expiração do JWT em minutos
     SIEG_API_KEY = os.getenv('SIEG_API_KEY')

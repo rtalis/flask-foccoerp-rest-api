@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -40,6 +40,7 @@ def create_app():
         from .routes import auth
         app.register_blueprint(routes.bp, url_prefix='/api')
         app.register_blueprint(auth.auth_bp, url_prefix='/auth')
+
         db.create_all()
     CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
@@ -50,3 +51,6 @@ def load_user(user_id):
     from app.models import User
     return User.query.get(int(user_id))
 
+@login_manager.unauthorized_handler
+def unauthorized():
+    return jsonify({"error": "Unauthorized", "message": "Authentication required"}), 401

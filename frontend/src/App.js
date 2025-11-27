@@ -1,13 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
-import UnifiedSearch from './components/UnifiedSearch';
-import Login from './components/Login';
-import ImportFile from './components/ImportFile';
-import Register from './components/Register';
-import QuotationAnalyzer from './components/QuotationAnalyzer';
-import Dashboard from './components/Dashboard';
-import AdvancedSearch from './components/AdvancedSearch';
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+import {
+  BrowserRouter as Router,
+  Route,
+  Routes,
+  Navigate,
+} from "react-router-dom";
+import UnifiedSearch from "./components/UnifiedSearch";
+import Login from "./components/Login";
+import ImportFile from "./components/ImportFile";
+import Register from "./components/Register";
+import QuotationAnalyzer from "./components/QuotationAnalyzer";
+import Dashboard from "./components/Dashboard";
+import AdvancedSearch from "./components/AdvancedSearch";
+import TokenManager from "./components/TokenManager";
 
 const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -15,7 +21,10 @@ const App = () => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const response = await axios.get(`${process.env.REACT_APP_API_URL}/auth/protected`, { withCredentials: true });
+        const response = await axios.get(
+          `${process.env.REACT_APP_API_URL}/auth/protected`,
+          { withCredentials: true }
+        );
         if (response.status === 200) {
           setIsAuthenticated(true);
 
@@ -31,6 +40,25 @@ const App = () => {
     checkAuth();
   }, []);
 
+  useEffect(() => {
+    const interceptorId = axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error?.response?.status === 401) {
+          setIsAuthenticated(false);
+          if (window.location.pathname !== "/login") {
+            window.location.href = "/login";
+          }
+        }
+        return Promise.reject(error);
+      }
+    );
+
+    return () => {
+      axios.interceptors.response.eject(interceptorId);
+    };
+  }, []);
+
   const handleLogin = () => {
     setIsAuthenticated(true);
     setTimeout(handleLogout, 3600000);
@@ -38,9 +66,13 @@ const App = () => {
 
   const handleLogout = async () => {
     try {
-      await axios.post(`${process.env.REACT_APP_API_URL}/auth/logout`, {}, { withCredentials: true });
+      await axios.post(
+        `${process.env.REACT_APP_API_URL}/auth/logout`,
+        {},
+        { withCredentials: true }
+      );
     } catch (error) {
-      console.error('Error logging out:', error);
+      console.error("Error logging out:", error);
     } finally {
       setIsAuthenticated(false);
     }
@@ -49,14 +81,68 @@ const App = () => {
   return (
     <Router>
       <Routes>
-        <Route path="/login" element={isAuthenticated ? <Navigate to="/search" /> : <Login onLogin={handleLogin} />} />
-  <Route path="/register" element={isAuthenticated ? <Register /> : <Login />} />
-  <Route path="/dashboard" element={isAuthenticated ? <Dashboard onLogout={handleLogout} /> : <Navigate to="/login" />} />
-  <Route path="/search" element={isAuthenticated ? <UnifiedSearch onLogout={handleLogout} /> : <Navigate to="/login" />} />
-  <Route path="/advanced-search" element={isAuthenticated ? <AdvancedSearch onLogout={handleLogout} /> : <Navigate to="/login" />} />
-        <Route path="/quotation-analyzer" element={isAuthenticated ? <QuotationAnalyzer /> : <Navigate to="/login" />} />
-        <Route path="/import" element={isAuthenticated ? <ImportFile /> : <Navigate to="/login" />} />
-        <Route path="*" element={<Navigate to={isAuthenticated ? "/search" : "/login"} />} />
+        <Route
+          path="/login"
+          element={
+            isAuthenticated ? (
+              <Navigate to="/search" />
+            ) : (
+              <Login onLogin={handleLogin} />
+            )
+          }
+        />
+        <Route
+          path="/register"
+          element={isAuthenticated ? <Register /> : <Login />}
+        />
+        <Route
+          path="/token-manager"
+          element={isAuthenticated ? <TokenManager /> : <Login />}
+        />
+        <Route
+          path="/dashboard"
+          element={
+            isAuthenticated ? (
+              <Dashboard onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/login" />
+            )
+          }
+        />
+        <Route
+          path="/search"
+          element={
+            isAuthenticated ? (
+              <UnifiedSearch onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/login" />
+            )
+          }
+        />
+        <Route
+          path="/advanced-search"
+          element={
+            isAuthenticated ? (
+              <AdvancedSearch onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/login" />
+            )
+          }
+        />
+        <Route
+          path="/quotation-analyzer"
+          element={
+            isAuthenticated ? <QuotationAnalyzer /> : <Navigate to="/login" />
+          }
+        />
+        <Route
+          path="/import"
+          element={isAuthenticated ? <ImportFile /> : <Navigate to="/login" />}
+        />
+        <Route
+          path="*"
+          element={<Navigate to={isAuthenticated ? "/search" : "/login"} />}
+        />
       </Routes>
     </Router>
   );

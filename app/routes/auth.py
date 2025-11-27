@@ -2,12 +2,12 @@ from flask import Blueprint, request, jsonify, make_response
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 import jwt
-from app.models import User, LoginHistory
+from app.models import User, LoginHistory, UserToken
 from app import db, login_manager
 
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import datetime as dt
 from app.utils import send_login_notification_email
 from config import Config
@@ -179,7 +179,85 @@ def _user_from_authorization(req):
     except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, Exception):
         return None
 
+    token_record = UserToken.query.filter_by(token=token).first()
+    if token_record:
+        if token_record.disabled_at is not None:
+            return None
+        if token_record.expires_at and token_record.expires_at <= datetime.utcnow():
+            return None
+
     return User.query.filter_by(email=data.get('sub')).first()
+
+
+def _build_jwt_for_user(user, expires_minutes=None):
+    if not user:
+        return None
+
+    minutes = expires_minutes or Config.JWT_EXPIRATION_MINUTES
+    try:
+        minutes = int(minutes)
+    except (TypeError, ValueError):
+        minutes = Config.JWT_EXPIRATION_MINUTES
+
+    minutes = max(1, minutes)
+
+    now = datetime.now(timezone.utc)
+    payload = {
+        'sub': user.email,
+        'iat': now,
+        'exp': now + timedelta(minutes=minutes)
+    }
+
+    token = jwt.encode(payload, Config.SECRET_KEY, algorithm='HS256')
+    return token, minutes
+
+
+def _issue_token_for_user(user, expires_minutes=None, created_by=None):
+    token, actual_minutes = _build_jwt_for_user(user, expires_minutes)
+    if not token:
+        return None, None, None
+
+    now = datetime.utcnow()
+    record = UserToken(
+        user_id=user.id,
+        token=token,
+        created_by_id=(created_by.id if created_by else user.id),
+        created_at=now,
+        expires_at=now + timedelta(minutes=actual_minutes)
+    )
+    db.session.add(record)
+    db.session.commit()
+    return token, actual_minutes, record
+
+
+def _serialize_token_record(record):
+    if not record:
+        return None
+
+    duration_minutes = None
+    if record.created_at and record.expires_at:
+        duration_minutes = int((record.expires_at - record.created_at).total_seconds() // 60)
+
+    def _user_payload(u):
+        if not u:
+            return None
+        return {
+            'id': u.id,
+            'username': u.username,
+            'email': u.email,
+        }
+
+    return {
+        'id': record.id,
+        'token': record.token,
+        'user': _user_payload(record.user),
+        'created_at': record.created_at.isoformat() if record.created_at else None,
+        'expires_at': record.expires_at.isoformat() if record.expires_at else None,
+        'duration_minutes': duration_minutes,
+        'created_by': _user_payload(record.created_by),
+        'disabled_at': record.disabled_at.isoformat() if record.disabled_at else None,
+        'disabled_by': _user_payload(record.disabled_by),
+    }
 
 
 @login_manager.request_loader
@@ -205,15 +283,52 @@ def login_by_token():
 @login_required
 @limiter.limit("5 per 5 seconds")
 def generate_jwt_token():
-    from flask_login import current_user
-    
-    token = jwt.encode({
-        'sub': current_user.email,
-        'iat': dt.datetime.now(dt.timezone.utc),
-        'exp': dt.datetime.now(tz=dt.timezone.utc) + timedelta(minutes=Config.JWT_EXPIRATION_MINUTES)
-    }, Config.SECRET_KEY, algorithm='HS256')
-    
-    return jsonify({'token': token}), 200
+    minutes = (request.get_json() or {}).get('expires_in')
+    token, actual_minutes, record = _issue_token_for_user(current_user, minutes, current_user)
+
+    return jsonify({
+        'token': token,
+        'token_id': record.id,
+        'expires_in_minutes': actual_minutes,
+        'expires_at': record.expires_at.isoformat()
+    }), 200
+
+
+@auth_bp.route('/tokens', methods=['GET'])
+@login_required
+@limiter.limit("10 per minute")
+def list_tokens():
+    if getattr(current_user, 'role', 'viewer') != 'admin':
+        return jsonify({'error': 'Forbidden'}), 403
+
+    tokens = (
+        UserToken.query
+        .order_by(UserToken.created_at.desc())
+        .all()
+    )
+
+    return jsonify([_serialize_token_record(t) for t in tokens]), 200
+
+@auth_bp.route('/tokens/<int:token_id>/disable', methods=['POST'])
+@login_required
+@limiter.limit("5 per 5 seconds")
+def disable_token(token_id):
+    if getattr(current_user, 'role', 'viewer') != 'admin':
+        return jsonify({'error': 'Forbidden'}), 403
+
+    token_record = UserToken.query.get(token_id)
+    if not token_record:
+        return jsonify({'error': 'Token not found'}), 404
+
+    if token_record.disabled_at is None:
+        token_record.disabled_at = datetime.utcnow()
+        token_record.disabled_by_id = current_user.id
+        db.session.commit()
+
+    return jsonify({
+        'message': 'Token disabled',
+        'token': _serialize_token_record(token_record)
+    }), 200
 
 @auth_bp.route('/protected', methods=['GET'])
 @login_required

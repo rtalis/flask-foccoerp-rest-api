@@ -23,6 +23,7 @@ build/
 tests/*.xml
 /*.xml
 cookies.txt
+nfe_example/
 
 # Flask specific
 instance/
