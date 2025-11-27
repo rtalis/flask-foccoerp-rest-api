@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import ItemScreen from "./ItemScreen";
 import "./UnifiedSearch.css";
 
@@ -28,13 +28,6 @@ import {
   Select,
   MenuItem,
   InputAdornment,
-  AppBar,
-  Toolbar,
-  Drawer,
-  List,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
   Divider,
   CircularProgress,
   Dialog,
@@ -44,8 +37,6 @@ import {
   Card,
   CardContent,
   CardActions,
-  Slide,
-  useScrollTrigger,
   Switch,
   Grid,
   Accordion,
@@ -55,47 +46,10 @@ import {
 import Autocomplete from "@mui/material/Autocomplete";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
-import MenuIcon from "@mui/icons-material/Menu";
-import DashboardIcon from "@mui/icons-material/Dashboard";
-import CompareIcon from "@mui/icons-material/Compare";
-import UploadIcon from "@mui/icons-material/Upload";
-import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
-import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import SearchIcon from "@mui/icons-material/Search";
-import LogoutIcon from "@mui/icons-material/Logout";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import ReceiptIcon from "@mui/icons-material/Receipt";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-
-const DRAWER_WIDTH_OPEN = 260;
-const DRAWER_WIDTH_COLLAPSED = 60;
-
-function HideOnScroll(props) {
-  const { children, threshold = 100 } = props;
-  const trigger = useScrollTrigger({
-    disableHysteresis: true,
-    threshold: threshold,
-  });
-
-  return (
-    <Slide appear={false} direction="down" in={!trigger}>
-      {children}
-    </Slide>
-  );
-}
-function HideSidebar(props) {
-  const { children, threshold = 100 } = props;
-  const trigger = useScrollTrigger({
-    disableHysteresis: true,
-    threshold: threshold,
-  });
-
-  return (
-    <Slide appear={false} direction="left" in={!trigger}>
-      {children}
-    </Slide>
-  );
-}
 
 function PurchaseRow(props) {
   const {
@@ -679,7 +633,7 @@ function PurchaseRow(props) {
   );
 }
 
-const UnifiedSearch = ({ onLogout }) => {
+const UnifiedSearch = () => {
   const SEARCH_MODE_STORAGE_KEY = "searchModePreference";
   const SEARCH_PARAMS_STORAGE_KEY = "searchParamsPreference";
   const SHOW_SUGGESTIONS_STORAGE_KEY = "showSuggestionsPreference";
@@ -739,12 +693,7 @@ const UnifiedSearch = ({ onLogout }) => {
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState("");
   const [estimatedResults, setEstimatedResults] = useState(0);
-  const navigate = useNavigate();
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const resultsRef = useRef(null);
-  const [scrollThreshold, setScrollThreshold] = useState(300);
-  const [sidebarVisible, setSidebarVisible] = useState(true);
   const [searchMode, setSearchMode] = useState(() => {
     if (typeof window === "undefined") {
       return "enhanced";
@@ -782,120 +731,9 @@ const UnifiedSearch = ({ onLogout }) => {
     }
   }, [showSuggestionsToggle]);
 
-  const menuItems = React.useMemo(
-    () => [
-      { text: "Dashboard", icon: <DashboardIcon />, path: "/dashboard" },
-      { text: "Buscar Pedidos", icon: <SearchIcon />, path: "/search" },
-      {
-        text: "Analisar Cotações",
-        icon: <CompareIcon />,
-        path: "/quotation-analyzer",
-      },
-      { text: "Importar Dados", icon: <UploadIcon />, path: "/import" },
-    ],
-    []
-  );
-
-  const handleDrawerToggle = () => setMobileOpen((prev) => !prev);
-  const handleSidebarToggle = () => setSidebarOpen((prev) => !prev);
-  const handleNavigate = (path) => navigate(path);
-  const handleLogoutClick = () => {
-    onLogout?.();
-    navigate("/login");
-  };
-
-  const handleLogoutTop = () => {
-    onLogout();
-    try {
-      navigate("/login", { replace: true });
-    } catch {
-      window.location.replace("/login");
-    }
-  };
-
-  const isScrolledToResults = useScrollTrigger({
-    disableHysteresis: true,
-    threshold: scrollThreshold,
-  });
-
-  // Set sidebar visibility based on scroll position
-  useEffect(() => {
-    setSidebarVisible(!isScrolledToResults);
-  }, [isScrolledToResults]);
-
-  const baseDrawerWidth = sidebarOpen
-    ? DRAWER_WIDTH_OPEN
-    : DRAWER_WIDTH_COLLAPSED;
-  const drawerWidth = sidebarVisible ? baseDrawerWidth : 0;
-
-  const drawerContent = (
-    <>
-      <Toolbar
-        sx={{
-          display: "flex",
-          justifyContent: sidebarOpen ? "space-between" : "center",
-          px: 2,
-        }}
-      >
-        {sidebarOpen && (
-          <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-            Sistema de Compras
-          </Typography>
-        )}
-        <IconButton size="small" onClick={handleSidebarToggle}>
-          {sidebarOpen ? <MenuIcon /> : <MenuIcon />}
-        </IconButton>
-      </Toolbar>
-      <Divider />
-      <List sx={{ px: sidebarOpen ? 1 : 0 }}>
-        {menuItems.map((item) => (
-          <ListItemButton
-            key={item.text}
-            selected={item.path === "/nfe-tracking"}
-            onClick={() => handleNavigate(item.path)}
-            sx={{
-              borderRadius: 2,
-              mx: sidebarOpen ? 1 : 0.5,
-              my: 0.5,
-              minHeight: 44,
-              justifyContent: sidebarOpen ? "flex-start" : "center",
-              "&.Mui-selected": {
-                bgcolor: "primary.light",
-                "&:hover": { bgcolor: "primary.light" },
-              },
-            }}
-          >
-            <ListItemIcon
-              sx={{
-                minWidth: 0,
-                mr: sidebarOpen ? 2 : "auto",
-                justifyContent: "center",
-              }}
-            >
-              {item.icon}
-            </ListItemIcon>
-            {sidebarOpen && <ListItemText primary={item.text} />}
-          </ListItemButton>
-        ))}
-      </List>
-      <Divider />
-      <Box sx={{ px: sidebarOpen ? 2 : 1, py: 2 }}>
-        <Button
-          variant="outlined"
-          startIcon={<LogoutIcon />}
-          fullWidth
-          color="inherit"
-          onClick={handleLogoutClick}
-        >
-          {sidebarOpen ? "Sair" : ""}
-        </Button>
-      </Box>
-    </>
-  );
   useEffect(() => {
     if (resultsRef.current) {
       const resultsPosition = resultsRef.current.offsetTop - 100;
-      setScrollThreshold(resultsPosition > 100 ? resultsPosition : 300);
     }
   }, [results.length]);
 
@@ -1255,580 +1093,501 @@ const UnifiedSearch = ({ onLogout }) => {
   ];
 
   return (
-    <Box sx={{ display: "flex" }}>
-      {/* AppBar */}
-      <HideOnScroll threshold={scrollThreshold}>
-        <AppBar
-          position="fixed"
-          elevation={0}
+    <Box sx={{ minHeight: "100%", bgcolor: "#f7f9fc", p: 3 }}>
+      {/* Header with title and last updated info */}
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          mb: 3,
+          pb: 2,
+          borderBottom: "1px solid #e0e0e0",
+          position: "relative",
+        }}
+      >
+        {/* Spacer for centering */}
+        <Box sx={{ flex: 1 }} />
+
+        <Typography
+          variant="h5"
+          fontWeight={600}
+          color="text.primary"
+          sx={{ textAlign: "center" }}
+        >
+          Buscar Pedidos
+        </Typography>
+
+        <Box
           sx={{
-            width: { sm: `calc(100% - ${drawerWidth}px)` },
-            ml: { sm: `${drawerWidth}px` },
-            bgcolor: "transparent",
-            color: "text.primary",
-            backdropFilter: "blur(6px)",
+            flex: 1,
+            display: "flex",
+            justifyContent: "flex-end",
+            alignItems: "center",
+            gap: 1,
           }}
         >
-          <Toolbar>
-            <IconButton
-              color="inherit"
-              edge="start"
-              onClick={handleDrawerToggle}
-              sx={{ mr: 2, display: { sm: "none" } }}
-            >
-              <MenuIcon />
-            </IconButton>
-            <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: "bold" }}>
-              Buscar Pedidos
-            </Typography>
-            <Typography
-              variant="body1"
-              sx={{ flexGrow: 1, alignContent: "left" }}
-            >
-              Pedidos de compras Ruah - atualizado em {lastUpdated} -
-              <Link
-                to="/import"
-                style={{ marginLeft: 8, textDecoration: "none" }}
-              >
-                {" "}
-                Atualizar{" "}
-              </Link>
-            </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Atualizado em: {lastUpdated || "—"}
+          </Typography>
+          <Link
+            to="/import"
+            style={{
+              marginLeft: 8,
+              textDecoration: "none",
+              color: "#1976d2",
+              fontWeight: 500,
+            }}
+          >
+            Atualizar
+          </Link>
+        </Box>
+      </Box>
+
+      <div className="unified-search">
+        <Box
+          sx={{
+            display: "flex",
+            mb: 3,
+            alignItems: "center",
+            gap: 2,
+            flexWrap: "wrap",
+          }}
+        >
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 1,
+              flexGrow: 1,
+              minWidth: 320,
+            }}
+          >
+            <Autocomplete
+              sx={{ flexGrow: 1 }}
+              fullWidth
+              freeSolo
+              options={showSuggestionsToggle ? suggestions : []}
+              loading={showSuggestionsToggle && loadingSuggestions}
+              inputValue={searchParams.query}
+              onInputChange={(_, newValue) => updateQuery(newValue)}
+              onChange={(_, newValue, reason) => {
+                if (typeof newValue === "string") {
+                  updateQuery(newValue);
+                  if (reason === "selectOption") {
+                    setTimeout(() => handleSearch(1), 0);
+                  }
+                }
+              }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Buscar pedidos"
+                  sx={{ bgcolor: "#ffffff" }}
+                  variant="outlined"
+                  size="small"
+                  placeholder="Ex.: motor 123"
+                  onKeyDown={handleKeyDown}
+                  InputProps={{
+                    ...params.InputProps,
+                    endAdornment: (
+                      <>
+                        {showSuggestionsToggle && loadingSuggestions ? (
+                          <CircularProgress
+                            color="inherit"
+                            sx={{ mr: 1 }}
+                            size={18}
+                          />
+                        ) : null}
+                        {params.InputProps.endAdornment}
+                      </>
+                    ),
+                  }}
+                />
+              )}
+            />
             <Button
               variant="contained"
               color="primary"
-              onClick={handleLogoutTop}
-              startIcon={<LogoutIcon />}
-              sx={{ borderRadius: 2, textTransform: "none" }}
+              onClick={() => handleSearch(1)}
+              startIcon={<SearchIcon />}
+              sx={{ whiteSpace: "nowrap" }}
             >
-              Logout
+              Buscar
             </Button>
-          </Toolbar>
-        </AppBar>
-      </HideOnScroll>
-
-      {/* Navigation drawers */}
-      <Box
-        component="nav"
-        sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}
-      >
-        {/* Mobile temporary drawer or when sidebar is hidden */}
-        <Drawer
-          variant="temporary"
-          open={mobileOpen}
-          onClose={handleDrawerToggle}
-          ModalProps={{ keepMounted: true }}
+          </Box>
+        </Box>
+        <Box
           sx={{
-            display: { xs: "block", sm: sidebarVisible ? "none" : "block" },
-            "& .MuiDrawer-paper": {
-              boxSizing: "border-box",
-              width: DRAWER_WIDTH_OPEN,
-            },
+            display: "flex",
+            gap: 4,
+            mb: 3,
+            alignItems: "center",
+            flexWrap: "wrap",
           }}
         >
-          {drawerContent}
-        </Drawer>
-
-        {/* Desktop permanent drawer that hides on scroll */}
-        {sidebarVisible && (
-          <HideSidebar threshold={scrollThreshold}>
-            <Drawer
-              variant="permanent"
-              sx={{
-                display: { xs: "none", sm: "block" },
-                "& .MuiDrawer-paper": {
-                  boxSizing: "border-box",
-                  width: baseDrawerWidth,
-                  transition: (theme) =>
-                    theme.transitions.create("width", {
-                      easing: theme.transitions.easing.sharp,
-                      duration: theme.transitions.duration.shortest,
-                    }),
-                },
-              }}
-              open
-            >
-              {drawerContent}
-            </Drawer>
-          </HideSidebar>
-        )}
-      </Box>
-
-      {/* Main content - adjust width based on drawer visibility */}
-      <Box
-        component="main"
-        sx={{
-          flexGrow: 1,
-          p: 3,
-          width: `calc(100% - ${drawerWidth}px)`,
-          minHeight: "100vh",
-          transition: (theme) =>
-            theme.transitions.create("width", {
-              easing: theme.transitions.easing.sharp,
-              duration: theme.transitions.duration.shortest,
-            }),
-          bgcolor: "linear-gradient(180deg, #f7f9fc 0%, #f2f4f7 100%)",
-        }}
-      >
-        <Toolbar />
-        <div className="unified-search">
-          <Box
-            sx={{
-              display: "flex",
-              mb: 3,
-              alignItems: "center",
-              gap: 2,
-              flexWrap: "wrap",
-            }}
-          >
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                gap: 1,
-                flexGrow: 1,
-                minWidth: 320,
-              }}
-            >
-              <Autocomplete
-                sx={{ flexGrow: 1 }}
-                fullWidth
-                freeSolo
-                options={showSuggestionsToggle ? suggestions : []}
-                loading={showSuggestionsToggle && loadingSuggestions}
-                inputValue={searchParams.query}
-                onInputChange={(_, newValue) => updateQuery(newValue)}
-                onChange={(_, newValue, reason) => {
-                  if (typeof newValue === "string") {
-                    updateQuery(newValue);
-                    if (reason === "selectOption") {
-                      setTimeout(() => handleSearch(1), 0);
-                    }
+          <FormControlLabel
+            control={
+              <Switch
+                checked={usingEnhanced}
+                onChange={handleModeToggle}
+                color="primary"
+              />
+            }
+            label={"Busca aprimorada"}
+            sx={{ mr: 1 }}
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={showSuggestionsToggle}
+                onChange={(event) => {
+                  const enabled = event.target.checked;
+                  setShowSuggestionsToggle(enabled);
+                  if (!enabled) {
+                    setSuggestions([]);
                   }
                 }}
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    label="Buscar pedidos"
-                    sx={{ bgcolor: "#ffffff" }}
-                    variant="outlined"
-                    size="small"
-                    placeholder="Ex.: motor 123"
-                    onKeyDown={handleKeyDown}
-                    InputProps={{
-                      ...params.InputProps,
-                      endAdornment: (
-                        <>
-                          {showSuggestionsToggle && loadingSuggestions ? (
-                            <CircularProgress
-                              color="inherit"
-                              sx={{ mr: 1 }}
-                              size={18}
-                            />
-                          ) : null}
-                          {params.InputProps.endAdornment}
-                        </>
-                      ),
-                    }}
-                  />
-                )}
-              />
-              <Button
-                variant="contained"
                 color="primary"
-                onClick={() => handleSearch(1)}
-                startIcon={<SearchIcon />}
-                sx={{ whiteSpace: "nowrap" }}
-              >
-                Buscar
-              </Button>
-            </Box>
-          </Box>
-          <Box
-            sx={{
-              display: "flex",
-              gap: 4,
-              mb: 3,
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
+                disabled={!usingEnhanced}
+              />
+            }
+            label={
+              usingEnhanced
+                ? "Mostrar sugestões"
+                : "Mostrar sugestões (somente busca aprimorada)"
+            }
+            sx={{ mr: 1 }}
+          />
+          <Button
+            variant="outlined"
+            color="inherit"
+            size="small"
+            onClick={handleRestoreDefaults}
           >
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={usingEnhanced}
-                  onChange={handleModeToggle}
-                  color="primary"
-                />
-              }
-              label={"Busca aprimorada"}
-              sx={{ mr: 1 }}
-            />
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={showSuggestionsToggle}
-                  onChange={(event) => {
-                    const enabled = event.target.checked;
-                    setShowSuggestionsToggle(enabled);
-                    if (!enabled) {
-                      setSuggestions([]);
-                    }
-                  }}
-                  color="primary"
-                  disabled={!usingEnhanced}
-                />
-              }
-              label={
-                usingEnhanced
-                  ? "Mostrar sugestões"
-                  : "Mostrar sugestões (somente busca aprimorada)"
-              }
-              sx={{ mr: 1 }}
-            />
-            <Button
-              variant="outlined"
-              color="inherit"
+            ⎚ Limpar filtros
+          </Button>
+        </Box>
+
+        <Box
+          sx={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 4,
+            mb: 3,
+          }}
+        >
+          {/* Search fields section */}
+          <FormControl component="fieldset" sx={{ flex: 1, minWidth: 280 }}>
+            <FormLabel component="legend">Pesquisar por...</FormLabel>
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+              {searchFieldColumns.map((column, columnIndex) => (
+                <Grid item xs={12} sm={4} key={`column-${columnIndex}`}>
+                  <Box sx={{ display: "flex", flexDirection: "column" }}>
+                    {column.map((field) => (
+                      <FormControlLabel
+                        key={field.name}
+                        control={
+                          <Checkbox
+                            name={field.name}
+                            checked={searchParams[field.name]}
+                            onChange={handleChange}
+                            disabled={field.disabled}
+                          />
+                        }
+                        label={field.label}
+                        sx={{ marginBottom: "-10px" }}
+                      />
+                    ))}
+                  </Box>
+                </Grid>
+              ))}
+            </Grid>
+          </FormControl>
+
+          {/* Purchaser section */}
+          <FormControl
+            component="fieldset"
+            sx={{ flex: 1, minWidth: 240, xs: 12, sm: 2 }}
+          >
+            <FormLabel component="legend" sx={{ mb: 1, maxWidth: 400 }}>
+              Mostrar compradores
+            </FormLabel>
+            <Select
+              sx={{ mt: 1, mb: 2 }}
+              name="selectedFuncName"
+              value={searchParams.selectedFuncName}
+              onChange={handleChange}
               size="small"
-              onClick={handleRestoreDefaults}
+              fullWidth
             >
-              ⎚ Limpar filtros
-            </Button>
-          </Box>
+              <MenuItem value="todos">Todos os compradores</MenuItem>
+              {funcNames.map((funcName) => (
+                <MenuItem key={funcName} value={funcName}>
+                  {funcName}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Box>
 
-          <Box
-            sx={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 4,
-              mb: 3,
-            }}
-          >
-            {/* Search fields section */}
-            <FormControl component="fieldset" sx={{ flex: 1, minWidth: 280 }}>
-              <FormLabel component="legend">Pesquisar por...</FormLabel>
-              <Grid container spacing={2} sx={{ mt: 1 }}>
-                {searchFieldColumns.map((column, columnIndex) => (
-                  <Grid item xs={12} sm={4} key={`column-${columnIndex}`}>
-                    <Box sx={{ display: "flex", flexDirection: "column" }}>
-                      {column.map((field) => (
-                        <FormControlLabel
-                          key={field.name}
-                          control={
-                            <Checkbox
-                              name={field.name}
-                              checked={searchParams[field.name]}
-                              onChange={handleChange}
-                              disabled={field.disabled}
-                            />
-                          }
-                          label={field.label}
-                          sx={{ marginBottom: "-10px" }}
-                        />
-                      ))}
-                    </Box>
-                  </Grid>
-                ))}
-              </Grid>
-            </FormControl>
-
-            {/* Purchaser section */}
-            <FormControl
-              component="fieldset"
-              sx={{ flex: 1, minWidth: 240, xs: 12, sm: 2 }}
+        {/* Search precision section */}
+        {!usingEnhanced && (
+          <FormControl component="fieldset" sx={{ minWidth: "200px", mb: 3 }}>
+            <FormLabel component="legend">Precisão da busca</FormLabel>
+            <RadioGroup
+              name="searchPrecision"
+              value={searchParams.searchPrecision}
+              onChange={handleChange}
             >
-              <FormLabel component="legend" sx={{ mb: 1, maxWidth: 400 }}>
-                Mostrar compradores
-              </FormLabel>
-              <Select
-                sx={{ mt: 1, mb: 2 }}
-                name="selectedFuncName"
-                value={searchParams.selectedFuncName}
-                onChange={handleChange}
-                size="small"
-                fullWidth
-              >
-                <MenuItem value="todos">Todos os compradores</MenuItem>
-                {funcNames.map((funcName) => (
-                  <MenuItem key={funcName} value={funcName}>
-                    {funcName}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Box>
+              <FormControlLabel
+                value="precisa"
+                control={<Radio />}
+                label="Precisa"
+                sx={{ marginBottom: "-10px" }}
+              />
+              <FormControlLabel
+                value="fuzzy"
+                control={<Radio />}
+                label="Busca com erro de digitação"
+                sx={{ marginBottom: "-10px" }}
+              />
+              <FormControlLabel
+                value="tentar_a_sorte"
+                control={<Radio />}
+                label="Estou sem sorte"
+                sx={{ marginBottom: "-10px" }}
+              />
+            </RadioGroup>
+          </FormControl>
+        )}
 
-          {/* Search precision section */}
-          {!usingEnhanced && (
-            <FormControl component="fieldset" sx={{ minWidth: "200px", mb: 3 }}>
-              <FormLabel component="legend">Precisão da busca</FormLabel>
-              <RadioGroup
-                name="searchPrecision"
-                value={searchParams.searchPrecision}
-                onChange={handleChange}
-              >
-                <FormControlLabel
-                  value="precisa"
-                  control={<Radio />}
-                  label="Precisa"
-                  sx={{ marginBottom: "-10px" }}
-                />
-                <FormControlLabel
-                  value="fuzzy"
-                  control={<Radio />}
-                  label="Busca com erro de digitação"
-                  sx={{ marginBottom: "-10px" }}
-                />
-                <FormControlLabel
-                  value="tentar_a_sorte"
-                  control={<Radio />}
-                  label="Estou sem sorte"
-                  sx={{ marginBottom: "-10px" }}
-                />
-              </RadioGroup>
-            </FormControl>
-          )}
-
-          <Accordion
+        <Accordion
+          sx={{
+            mb: 5,
+            bgcolor: (theme) => theme.palette.background.paper,
+            borderRadius: 2,
+            boxShadow: (theme) => theme.shadows[1],
+          }}
+          disableGutters
+        >
+          <AccordionSummary
+            expandIcon={<ExpandMoreIcon />}
             sx={{
-              mb: 5,
               bgcolor: (theme) => theme.palette.background.paper,
-              borderRadius: 2,
-              boxShadow: (theme) => theme.shadows[1],
+              borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
+              borderTopLeftRadius: 8,
+              borderTopRightRadius: 8,
             }}
-            disableGutters
           >
-            <AccordionSummary
-              expandIcon={<ExpandMoreIcon />}
-              sx={{
-                bgcolor: (theme) => theme.palette.background.paper,
-                borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
-                borderTopLeftRadius: 8,
-                borderTopRightRadius: 8,
-              }}
-            >
-              <Typography variant="subtitle1">Filtros avançados</Typography>
-            </AccordionSummary>
-            <AccordionDetails
-              sx={{
-                bgcolor: (theme) => theme.palette.background.paper,
-                borderBottomLeftRadius: 8,
-                borderBottomRightRadius: 8,
-              }}
-            >
-              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                {/* Value filter section */}
-                <FormControl
-                  component="fieldset"
-                  sx={{ flex: 1, minWidth: 240 }}
+            <Typography variant="subtitle1">Filtros avançados</Typography>
+          </AccordionSummary>
+          <AccordionDetails
+            sx={{
+              bgcolor: (theme) => theme.palette.background.paper,
+              borderBottomLeftRadius: 8,
+              borderBottomRightRadius: 8,
+            }}
+          >
+            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+              {/* Value filter section */}
+              <FormControl component="fieldset" sx={{ flex: 1, minWidth: 240 }}>
+                <FormLabel component="legend">Filtrar por valor</FormLabel>
+                <RadioGroup
+                  name="valueSearchType"
+                  value={searchParams.valueSearchType}
+                  onChange={handleChange}
                 >
-                  <FormLabel component="legend">Filtrar por valor</FormLabel>
-                  <RadioGroup
-                    name="valueSearchType"
-                    value={searchParams.valueSearchType}
-                    onChange={handleChange}
-                  >
-                    <FormControlLabel
-                      value="item"
-                      control={<Radio />}
-                      label="Valor do Item"
-                      sx={{ marginBottom: "-10px" }}
-                    />
-                    <FormControlLabel
-                      value="order"
-                      control={<Radio />}
-                      label="Valor do Pedido"
-                      sx={{ marginBottom: "-10px" }}
-                    />
-                  </RadioGroup>
-
-                  <TextField
-                    sx={{ mb: 2, mt: 2 }}
-                    label="Valor mínimo"
-                    name="min_value"
-                    type="number"
-                    value={searchParams.min_value}
-                    onChange={handleChange}
-                    size="small"
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">R$</InputAdornment>
-                      ),
-                    }}
-                  />
-                  <TextField
-                    label="Valor máximo"
-                    name="max_value"
-                    type="number"
-                    value={searchParams.max_value}
-                    onChange={handleChange}
-                    size="small"
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">R$</InputAdornment>
-                      ),
-                    }}
-                  />
-                </FormControl>
-
-                <FormControl
-                  component="fieldset"
-                  sx={{ flex: 1, minWidth: 240 }}
-                >
-                  <FormLabel component="legend">Filtrar por...</FormLabel>
                   <FormControlLabel
-                    control={
-                      <Switch
-                        checked={!showFulfilled}
-                        onChange={() => setShowFulfilled(!showFulfilled)}
-                        color="primary"
-                      />
-                    }
-                    label={"Ocultar concluidos"}
-                    sx={{ mr: 1 }}
-                  />
-                  <Divider sx={{ my: 1 }} />
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        name="ignoreDiacritics"
-                        checked={searchParams.ignoreDiacritics}
-                        onChange={handleChange}
-                      />
-                    }
-                    label="Ignorar acentuação (diacríticos)"
+                    value="item"
+                    control={<Radio />}
+                    label="Valor do Item"
                     sx={{ marginBottom: "-10px" }}
                   />
                   <FormControlLabel
-                    control={
-                      <Checkbox
-                        name="exactSearch"
-                        checked={searchParams.exactSearch}
-                        onChange={handleChange}
-                      />
-                    }
-                    label="Busca por texto exato"
+                    value="order"
+                    control={<Radio />}
+                    label="Valor do Pedido"
                     sx={{ marginBottom: "-10px" }}
                   />
-                </FormControl>
-              </Box>
-            </AccordionDetails>
-          </Accordion>
+                </RadioGroup>
 
-          {loading && (
-            <Box
-              sx={{
-                position: "fixed",
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexDirection: "column",
-                backgroundColor: "rgba(255, 255, 255, 0.8)",
-                zIndex: 9999,
-              }}
-            >
-              <Box sx={{ display: "flex", justifyContent: "center", mb: 2 }}>
-                <div className="spinner"></div>
-              </Box>
-              <Typography>
-                Buscando em aproximadamente {estimatedResults} resultados...
-              </Typography>
+                <TextField
+                  sx={{ mb: 2, mt: 2 }}
+                  label="Valor mínimo"
+                  name="min_value"
+                  type="number"
+                  value={searchParams.min_value}
+                  onChange={handleChange}
+                  size="small"
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">R$</InputAdornment>
+                    ),
+                  }}
+                />
+                <TextField
+                  label="Valor máximo"
+                  name="max_value"
+                  type="number"
+                  value={searchParams.max_value}
+                  onChange={handleChange}
+                  size="small"
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">R$</InputAdornment>
+                    ),
+                  }}
+                />
+              </FormControl>
+
+              <FormControl component="fieldset" sx={{ flex: 1, minWidth: 240 }}>
+                <FormLabel component="legend">Filtrar por...</FormLabel>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={!showFulfilled}
+                      onChange={() => setShowFulfilled(!showFulfilled)}
+                      color="primary"
+                    />
+                  }
+                  label={"Ocultar concluidos"}
+                  sx={{ mr: 1 }}
+                />
+                <Divider sx={{ my: 1 }} />
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      name="ignoreDiacritics"
+                      checked={searchParams.ignoreDiacritics}
+                      onChange={handleChange}
+                    />
+                  }
+                  label="Ignorar acentuação (diacríticos)"
+                  sx={{ marginBottom: "-10px" }}
+                />
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      name="exactSearch"
+                      checked={searchParams.exactSearch}
+                      onChange={handleChange}
+                    />
+                  }
+                  label="Busca por texto exato"
+                  sx={{ marginBottom: "-10px" }}
+                />
+              </FormControl>
             </Box>
-          )}
+          </AccordionDetails>
+        </Accordion>
 
-          <br></br>
-
-          <Typography align="center" variant="h6" gutterBottom ref={resultsRef}>
-            Mostrando {noResults} resultados. Pagina {currentPage} de{" "}
-            {totalPages}⠀⠀⠀⠀⠀⠀⠀⠀⠀
-          </Typography>
-
-          <TableContainer component={Paper}>
-            <Table aria-label="collapsible table">
-              <TableBody>
-                {results.map((purchase) => (
-                  <PurchaseRow
-                    key={purchase.order.cod_pedc}
-                    purchase={purchase}
-                    formatDate={formatDate}
-                    formatNumber={formatNumber}
-                    formatCurrency={formatCurrency}
-                    getFirstWords={getFirstWords}
-                    handleItemClick={handleItemClick}
-                    hideFulfilledItems={
-                      !showFulfilled && purchase.order.is_fulfilled
-                    }
-                  />
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+        {loading && (
           <Box
             sx={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
               display: "flex",
-              flexWrap: "wrap",
               alignItems: "center",
-              gap: 2,
-              mt: 3,
+              justifyContent: "center",
+              flexDirection: "column",
+              backgroundColor: "rgba(255, 255, 255, 0.8)",
+              zIndex: 9999,
             }}
           >
-            <Box sx={{ paddingRight: 10 }} />
-            <Box
-              className="pagination"
-              sx={{
-                display: "flex",
-                justifyContent: "center",
-                flexGrow: 1,
-                mb: { xs: 2, sm: 0 },
-              }}
-            >
-              <button
-                onClick={() => handlePageChange(currentPage - 1)}
-                disabled={currentPage === 1}
-              >
-                Anterior
-              </button>
-              <span>
-                Página {currentPage} de {totalPages}
-              </span>
-              <button
-                onClick={() => handlePageChange(currentPage + 1)}
-                disabled={currentPage === totalPages}
-              >
-                Próxima
-              </button>
+            <Box sx={{ display: "flex", justifyContent: "center", mb: 2 }}>
+              <div className="spinner"></div>
             </Box>
-            <FormControl
-              sx={{ minWidth: 180, ml: { xs: 0, sm: "auto" } }}
-              size="small"
-            >
-              <FormLabel component="legend">Resultados por página</FormLabel>
-              <Select
-                value={perPage}
-                onChange={handlePerPageChange}
-                size="small"
-              >
-                {PER_PAGE_OPTIONS.map((option) => (
-                  <MenuItem key={option} value={option}>
-                    {option}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <Typography>
+              Buscando em aproximadamente {estimatedResults} resultados...
+            </Typography>
           </Box>
+        )}
 
-          {selectedItemId && (
-            <ItemScreen
-              itemId={selectedItemId}
-              onClose={handleCloseItemScreen}
-            />
-          )}
-        </div>
-      </Box>
+        <br></br>
+
+        <Typography align="center" variant="h6" gutterBottom ref={resultsRef}>
+          Mostrando {noResults} resultados. Pagina {currentPage} de {totalPages}
+          ⠀⠀⠀⠀⠀⠀⠀⠀⠀
+        </Typography>
+
+        <TableContainer component={Paper}>
+          <Table aria-label="collapsible table">
+            <TableBody>
+              {results.map((purchase) => (
+                <PurchaseRow
+                  key={purchase.order.cod_pedc}
+                  purchase={purchase}
+                  formatDate={formatDate}
+                  formatNumber={formatNumber}
+                  formatCurrency={formatCurrency}
+                  getFirstWords={getFirstWords}
+                  handleItemClick={handleItemClick}
+                  hideFulfilledItems={
+                    !showFulfilled && purchase.order.is_fulfilled
+                  }
+                />
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+        <Box
+          sx={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 2,
+            mt: 3,
+          }}
+        >
+          <Box sx={{ paddingRight: 10 }} />
+          <Box
+            className="pagination"
+            sx={{
+              display: "flex",
+              justifyContent: "center",
+              flexGrow: 1,
+              mb: { xs: 2, sm: 0 },
+            }}
+          >
+            <button
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+            >
+              Anterior
+            </button>
+            <span>
+              Página {currentPage} de {totalPages}
+            </span>
+            <button
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+            >
+              Próxima
+            </button>
+          </Box>
+          <FormControl
+            sx={{ minWidth: 180, ml: { xs: 0, sm: "auto" } }}
+            size="small"
+          >
+            <FormLabel component="legend">Resultados por página</FormLabel>
+            <Select value={perPage} onChange={handlePerPageChange} size="small">
+              {PER_PAGE_OPTIONS.map((option) => (
+                <MenuItem key={option} value={option}>
+                  {option}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Box>
+
+        {selectedItemId && (
+          <ItemScreen itemId={selectedItemId} onClose={handleCloseItemScreen} />
+        )}
+      </div>
     </Box>
   );
 };

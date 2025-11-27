@@ -6,6 +6,7 @@ import {
   Routes,
   Navigate,
 } from "react-router-dom";
+import Layout from "./components/Layout";
 import UnifiedSearch from "./components/UnifiedSearch";
 import Login from "./components/Login";
 import ImportFile from "./components/ImportFile";
@@ -81,67 +82,41 @@ const App = () => {
   return (
     <Router>
       <Routes>
+        {/* Public routes - no sidebar */}
         <Route
           path="/login"
           element={
             isAuthenticated ? (
-              <Navigate to="/search" />
+              <Navigate to="/dashboard" />
             ) : (
               <Login onLogin={handleLogin} />
             )
           }
         />
+
+        {/* Protected routes with shared Layout */}
         <Route
-          path="/register"
-          element={isAuthenticated ? <Register /> : <Login />}
-        />
-        <Route
-          path="/token-manager"
-          element={isAuthenticated ? <TokenManager /> : <Login />}
-        />
-        <Route
-          path="/dashboard"
           element={
             isAuthenticated ? (
-              <Dashboard onLogout={handleLogout} />
+              <Layout onLogout={handleLogout} />
             ) : (
               <Navigate to="/login" />
             )
           }
-        />
-        <Route
-          path="/search"
-          element={
-            isAuthenticated ? (
-              <UnifiedSearch onLogout={handleLogout} />
-            ) : (
-              <Navigate to="/login" />
-            )
-          }
-        />
-        <Route
-          path="/advanced-search"
-          element={
-            isAuthenticated ? (
-              <AdvancedSearch onLogout={handleLogout} />
-            ) : (
-              <Navigate to="/login" />
-            )
-          }
-        />
-        <Route
-          path="/quotation-analyzer"
-          element={
-            isAuthenticated ? <QuotationAnalyzer /> : <Navigate to="/login" />
-          }
-        />
-        <Route
-          path="/import"
-          element={isAuthenticated ? <ImportFile /> : <Navigate to="/login" />}
-        />
+        >
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/search" element={<UnifiedSearch />} />
+          <Route path="/advanced-search" element={<AdvancedSearch />} />
+          <Route path="/quotation-analyzer" element={<QuotationAnalyzer />} />
+          <Route path="/import" element={<ImportFile />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/token-manager" element={<TokenManager />} />
+        </Route>
+
+        {/* Default redirect */}
         <Route
           path="*"
-          element={<Navigate to={isAuthenticated ? "/search" : "/login"} />}
+          element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} />}
         />
       </Routes>
     </Router>

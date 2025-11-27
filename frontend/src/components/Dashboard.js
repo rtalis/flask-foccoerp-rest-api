@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useCallback } from "react";
 import axios from "axios";
-import { useNavigate } from "react-router-dom";
 import {
   Box,
   Container,
@@ -9,16 +8,6 @@ import {
   Typography,
   Card,
   CardContent,
-  AppBar,
-  Toolbar,
-  Button,
-  Drawer,
-  List,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
-  IconButton,
-  Divider,
   CircularProgress,
   Alert,
   MenuItem,
@@ -30,31 +19,22 @@ import {
   Chip,
   LinearProgress,
   TextField,
-  Collapse,
+  Button,
+  Divider,
 } from "@mui/material";
 import {
-  Menu as MenuIcon,
-  Dashboard as DashboardIcon,
-  Search as SearchIcon,
-  Compare as CompareIcon,
-  Upload as UploadIcon,
-  Logout as LogoutIcon,
   ShoppingCart as ShoppingCartIcon,
   Receipt as ReceiptIcon,
   Business as BusinessIcon,
   TrendingUp as TrendingUpIcon,
-  ChevronLeft as ChevronLeftIcon,
-  ChevronRight as ChevronRightIcon,
   PlayArrow as PlayArrowIcon,
   FilterList as FilterListIcon,
-  People as PeopleIcon,
   LocalShipping as LocalShippingIcon,
   Inventory as InventoryIcon,
   CheckCircle as CheckCircleIcon,
   Pending as PendingIcon,
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon,
   DateRange as DateRangeIcon,
+  Dashboard as DashboardIcon,
 } from "@mui/icons-material";
 import {
   Chart as ChartJS,
@@ -92,11 +72,8 @@ const PERIOD_OPTIONS = [
   { value: 0, label: "Personalizado" },
 ];
 
-const DRAWER_WIDTH_OPEN = 240;
-const DRAWER_WIDTH_COLLAPSED = 72;
-
 // Helper to format date as YYYY-MM-DD
-const formatDate = (date) => {
+const formatDateValue = (date) => {
   if (!date) return "";
   const d = new Date(date);
   return d.toISOString().split("T")[0];
@@ -109,14 +86,12 @@ const getDefaultDates = (months) => {
   start.setMonth(start.getMonth() - months);
   start.setDate(1);
   return {
-    start: formatDate(start),
-    end: formatDate(end),
+    start: formatDateValue(start),
+    end: formatDateValue(end),
   };
 };
 
-const Dashboard = ({ onLogout }) => {
-  const navigate = useNavigate();
-
+const Dashboard = () => {
   // Filter state
   const [months, setMonths] = useState(6);
   const [buyerFilter, setBuyerFilter] = useState("all");
@@ -126,26 +101,10 @@ const Dashboard = ({ onLogout }) => {
 
   // Data state
   const [data, setData] = useState(null);
-  const [allBuyerNames, setAllBuyerNames] = useState([]); // Store all buyer names for dropdown
+  const [allBuyerNames, setAllBuyerNames] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [hasLoaded, setHasLoaded] = useState(false);
-
-  // UI state
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-
-  const drawerWidth = sidebarOpen ? DRAWER_WIDTH_OPEN : DRAWER_WIDTH_COLLAPSED;
-
-  const menuItems = useMemo(
-    () => [
-      { text: "Dashboard", icon: <DashboardIcon />, path: "/dashboard" },
-      { text: "Pedidos", icon: <SearchIcon />, path: "/search" },
-      { text: "Cotações", icon: <CompareIcon />, path: "/quotation-analyzer" },
-      { text: "Importar", icon: <UploadIcon />, path: "/import" },
-    ],
-    []
-  );
 
   const fetchData = useCallback(async () => {
     try {
@@ -449,58 +408,6 @@ const Dashboard = ({ onLogout }) => {
       currency: "BRL",
     }).format(Number(v || 0));
 
-  const handleNav = (path) => navigate(path);
-  const handleLogout = () => {
-    onLogout();
-    navigate("/login");
-  };
-
-  const drawerContent = (
-    <>
-      <Toolbar
-        sx={{ justifyContent: sidebarOpen ? "space-between" : "center", px: 2 }}
-      >
-        {sidebarOpen && (
-          <Typography variant="subtitle1" fontWeight={600} noWrap>
-            Compras
-          </Typography>
-        )}
-        <IconButton size="small" onClick={() => setSidebarOpen((v) => !v)}>
-          {sidebarOpen ? <ChevronLeftIcon /> : <ChevronRightIcon />}
-        </IconButton>
-      </Toolbar>
-      <Divider />
-      <List sx={{ px: 0.5, pt: 1 }}>
-        {menuItems.map((item) => (
-          <ListItemButton
-            key={item.text}
-            onClick={() => handleNav(item.path)}
-            selected={item.path === "/dashboard"}
-            sx={{
-              borderRadius: 2,
-              mb: 0.5,
-              minHeight: 44,
-              justifyContent: sidebarOpen ? "flex-start" : "center",
-              px: sidebarOpen ? 2 : 1,
-            }}
-          >
-            <ListItemIcon
-              sx={{
-                minWidth: 0,
-                mr: sidebarOpen ? 1.5 : 0,
-                justifyContent: "center",
-                color: item.path === "/dashboard" ? "primary.main" : "inherit",
-              }}
-            >
-              {item.icon}
-            </ListItemIcon>
-            {sidebarOpen && <ListItemText primary={item.text} />}
-          </ListItemButton>
-        ))}
-      </List>
-    </>
-  );
-
   const doughnutOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -607,750 +514,829 @@ const Dashboard = ({ onLogout }) => {
   };
 
   return (
-    <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "#f8f9fb" }}>
-      {/* AppBar */}
-      <AppBar
-        position="fixed"
-        elevation={0}
-        sx={{
-          width: { sm: `calc(100% - ${drawerWidth}px)` },
-          ml: { sm: `${drawerWidth}px` },
-          bgcolor: "rgba(255,255,255,0.9)",
-          backdropFilter: "blur(8px)",
-          borderBottom: "1px solid #eee",
-        }}
-      >
-        <Toolbar sx={{ gap: 2 }}>
-          <IconButton
-            edge="start"
-            onClick={() => setMobileOpen(!mobileOpen)}
-            sx={{ display: { sm: "none" } }}
+    <Box sx={{ minHeight: "100%", bgcolor: "#f8f9fb", p: 3 }}>
+      <Container maxWidth="xl" disableGutters>
+        {/* Filters Card */}
+        <Paper sx={{ p: 2.5, mb: 3, borderRadius: 2 }}>
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={2}
+            alignItems={{ sm: "center" }}
+            justifyContent="space-between"
           >
-            <MenuIcon />
-          </IconButton>
-          <Typography
-            variant="h6"
-            fontWeight={600}
-            sx={{ flexGrow: 1, color: "text.primary" }}
-          >
-            Dashboard
-          </Typography>
-          <Button
-            variant="text"
-            color="inherit"
-            onClick={handleLogout}
-            startIcon={<LogoutIcon />}
-            sx={{ color: "text.secondary" }}
-          >
-            Sair
-          </Button>
-        </Toolbar>
-      </AppBar>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <FilterListIcon color="action" />
+              <Typography variant="subtitle2" color="text.secondary">
+                Filtros do Relatório
+              </Typography>
+            </Box>
 
-      {/* Drawer */}
-      <Box
-        component="nav"
-        sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}
-      >
-        <Drawer
-          variant="temporary"
-          open={mobileOpen}
-          onClose={() => setMobileOpen(false)}
-          ModalProps={{ keepMounted: true }}
-          sx={{
-            display: { xs: "block", sm: "none" },
-            "& .MuiDrawer-paper": { width: DRAWER_WIDTH_OPEN },
-          }}
-        >
-          {drawerContent}
-        </Drawer>
-        <Drawer
-          variant="permanent"
-          sx={{
-            display: { xs: "none", sm: "block" },
-            "& .MuiDrawer-paper": {
-              width: drawerWidth,
-              transition: "width 0.2s",
-            },
-          }}
-          open
-        >
-          {drawerContent}
-        </Drawer>
-      </Box>
-
-      {/* Main */}
-      <Box
-        component="main"
-        sx={{
-          flexGrow: 1,
-          p: 3,
-          width: { sm: `calc(100% - ${drawerWidth}px)` },
-        }}
-      >
-        <Toolbar />
-
-        <Container maxWidth="xl" disableGutters>
-          {/* Filters Card */}
-          <Paper sx={{ p: 2.5, mb: 3, borderRadius: 2 }}>
             <Stack
               direction={{ xs: "column", sm: "row" }}
               spacing={2}
-              alignItems={{ sm: "center" }}
-              justifyContent="space-between"
+              alignItems="center"
+              flexWrap="wrap"
             >
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                <FilterListIcon color="action" />
-                <Typography variant="subtitle2" color="text.secondary">
-                  Filtros do Relatório
-                </Typography>
-              </Box>
-
-              <Stack
-                direction={{ xs: "column", sm: "row" }}
-                spacing={2}
-                alignItems="center"
-                flexWrap="wrap"
-              >
-                <FormControl size="small" sx={{ minWidth: 130 }}>
-                  <InputLabel>Período</InputLabel>
-                  <Select
-                    label="Período"
-                    value={months}
-                    onChange={(e) => handleMonthsChange(Number(e.target.value))}
-                  >
-                    {PERIOD_OPTIONS.map((o) => (
-                      <MenuItem key={o.value} value={o.value}>
-                        {o.label}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-
-                {/* Custom Date Range */}
-                {showCustomDates && (
-                  <>
-                    <TextField
-                      size="small"
-                      type="date"
-                      label="Data Início"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                      sx={{ minWidth: 140 }}
-                    />
-                    <TextField
-                      size="small"
-                      type="date"
-                      label="Data Fim"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                      sx={{ minWidth: 140 }}
-                    />
-                  </>
-                )}
-
-                <FormControl size="small" sx={{ minWidth: 200 }}>
-                  <InputLabel>Comprador</InputLabel>
-                  <Select
-                    label="Comprador"
-                    value={buyerFilter}
-                    onChange={(e) => setBuyerFilter(e.target.value)}
-                  >
-                    <MenuItem value="all">Todos</MenuItem>
-                    {buyerNames.map((name) => (
-                      <MenuItem key={name} value={name}>
-                        {name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-
-                <Button
-                  variant="contained"
-                  disableElevation
-                  startIcon={
-                    loading ? (
-                      <CircularProgress size={18} color="inherit" />
-                    ) : (
-                      <PlayArrowIcon />
-                    )
-                  }
-                  onClick={fetchData}
-                  disabled={
-                    loading || (months === 0 && (!startDate || !endDate))
-                  }
-                  sx={{ height: 40 }}
+              <FormControl size="small" sx={{ minWidth: 130 }}>
+                <InputLabel>Período</InputLabel>
+                <Select
+                  label="Período"
+                  value={months}
+                  onChange={(e) => handleMonthsChange(Number(e.target.value))}
                 >
-                  {hasLoaded ? "ATUALIZAR" : "CARREGAR"}
-                </Button>
-              </Stack>
-            </Stack>
-          </Paper>
+                  {PERIOD_OPTIONS.map((o) => (
+                    <MenuItem key={o.value} value={o.value}>
+                      {o.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
 
-          {/* Error */}
-          {error && (
-            <Alert severity="error" sx={{ mb: 3 }}>
-              {error}
-            </Alert>
-          )}
-
-          {/* Empty state */}
-          {!hasLoaded && !loading && (
-            <Paper sx={{ p: 6, textAlign: "center", borderRadius: 2 }}>
-              <DashboardIcon
-                sx={{ fontSize: 48, color: "action.disabled", mb: 2 }}
-              />
-              <Typography variant="h6" color="text.secondary" gutterBottom>
-                Selecione o período e clique em Carregar
-              </Typography>
-              <Typography variant="body2" color="text.disabled">
-                Os dados serão carregados sob demanda para melhor performance.
-              </Typography>
-            </Paper>
-          )}
-
-          {/* Loading skeleton */}
-          {loading && (
-            <Grid container spacing={3}>
-              <Grid item xs={12}>
-                <Skeleton variant="rounded" height={100} />
-              </Grid>
-              {[1, 2, 3, 4].map((i) => (
-                <Grid item xs={6} md={3} key={i}>
-                  <Skeleton variant="rounded" height={100} />
-                </Grid>
-              ))}
-              <Grid item xs={12}>
-                <Skeleton variant="rounded" height={300} />
-              </Grid>
-            </Grid>
-          )}
-
-          {/* Data loaded */}
-          {hasLoaded && !loading && data && (
-            <>
-              {/* Period indicator */}
-              <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap", gap: 1 }}>
-                <Chip
-                  label={
-                    months === 0 && startDate && endDate
-                      ? `${new Date(startDate).toLocaleDateString(
-                          "pt-BR"
-                        )} - ${new Date(endDate).toLocaleDateString("pt-BR")}`
-                      : `Últimos ${months} meses`
-                  }
-                  size="small"
-                  color="primary"
-                  variant="outlined"
-                  icon={<DateRangeIcon />}
-                />
-                {buyerFilter !== "all" && (
-                  <Chip
-                    label={buyerFilter}
+              {/* Custom Date Range */}
+              {showCustomDates && (
+                <>
+                  <TextField
                     size="small"
-                    color="secondary"
-                    onDelete={() => setBuyerFilter("all")}
+                    type="date"
+                    label="Data Início"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ minWidth: 140 }}
                   />
-                )}
-              </Box>
-
-              {/* KPIs*/}
-              <Grid container spacing={2} sx={{ mb: 3 }}>
-                {[
-                  {
-                    label: "Pedidos",
-                    value: data.summary.total_orders,
-                    icon: ShoppingCartIcon,
-                    color: "#5b8def",
-                  },
-                  {
-                    label: "Itens",
-                    value: data.summary.total_items,
-                    icon: ReceiptIcon,
-                    color: "#68c2ff",
-                  },
-                  {
-                    label: "Quantidade",
-                    value: data.summary.total_quantity.toLocaleString("pt-BR"),
-                    icon: InventoryIcon,
-                    color: "#6dd3c2",
-                  },
-                  {
-                    label: "Fornecedores",
-                    value: data.summary.total_suppliers,
-                    icon: LocalShippingIcon,
-                    color: "#c69df6",
-                  },
-                  {
-                    label: "Total Compras",
-                    value: fmtCurrency(data.summary.total_value),
-                    icon: TrendingUpIcon,
-                    color: "#f57c00",
-                  },
-                  {
-                    label: "Média/Pedido",
-                    value: fmtCurrency(data.summary.avg_order_value),
-                    icon: BusinessIcon,
-                    color: "#7b1fa2",
-                  },
-                  {
-                    label: "Atendidos",
-                    value: data.summary.fulfilled_orders,
-                    icon: CheckCircleIcon,
-                    color: "#4caf50",
-                  },
-                  {
-                    label: "Pendentes",
-                    value: data.summary.pending_orders,
-                    icon: PendingIcon,
-                    color: "#ff9800",
-                  },
-                ].map((kpi) => (
-                  <Grid item xs={6} sm={4} md={3} lg={1.5} key={kpi.label}>
-                    <Card sx={{ borderRadius: 2, height: "100%" }}>
-                      <CardContent
-                        sx={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 1.5,
-                          py: 1.5,
-                          px: 2,
-                        }}
-                      >
-                        <Box
-                          sx={{
-                            width: 40,
-                            height: 40,
-                            borderRadius: 1.5,
-                            bgcolor: `${kpi.color}15`,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            flexShrink: 0,
-                          }}
-                        >
-                          <kpi.icon sx={{ color: kpi.color, fontSize: 20 }} />
-                        </Box>
-                        <Box sx={{ minWidth: 0 }}>
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            noWrap
-                          >
-                            {kpi.label}
-                          </Typography>
-                          <Typography
-                            variant="subtitle1"
-                            fontWeight={600}
-                            noWrap
-                          >
-                            {kpi.value}
-                          </Typography>
-                        </Box>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-              </Grid>
-
-              {/* Fulfillment Rate Bar */}
-              {data.summary.total_orders > 0 && (
-                <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      mb: 1,
-                    }}
-                  >
-                    <Typography variant="subtitle2">
-                      Taxa de Atendimento
-                    </Typography>
-                    <Typography variant="subtitle2" fontWeight={600}>
-                      {data.summary.fulfillment_rate}%
-                    </Typography>
-                  </Box>
-                  <LinearProgress
-                    variant="determinate"
-                    value={data.summary.fulfillment_rate}
-                    sx={{
-                      height: 8,
-                      borderRadius: 4,
-                      bgcolor: "#e0e0e0",
-                      "& .MuiLinearProgress-bar": {
-                        bgcolor:
-                          data.summary.fulfillment_rate >= 80
-                            ? "#4caf50"
-                            : data.summary.fulfillment_rate >= 50
-                            ? "#ff9800"
-                            : "#f44336",
-                      },
-                    }}
+                  <TextField
+                    size="small"
+                    type="date"
+                    label="Data Fim"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ minWidth: 140 }}
                   />
-                </Paper>
+                </>
               )}
 
-              {/* Monthly Value Chart */}
-              <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
-                <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                  Evolução Mensal - Valor
-                </Typography>
-                <Box sx={{ height: 260 }}>
-                  {data.monthly_data?.length > 0 ? (
-                    <Line data={monthlyChart} options={lineOptions} />
+              <FormControl size="small" sx={{ minWidth: 200 }}>
+                <InputLabel>Comprador</InputLabel>
+                <Select
+                  label="Comprador"
+                  value={buyerFilter}
+                  onChange={(e) => setBuyerFilter(e.target.value)}
+                >
+                  <MenuItem value="all">Todos</MenuItem>
+                  {buyerNames.map((name) => (
+                    <MenuItem key={name} value={name}>
+                      {name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <Button
+                variant="contained"
+                disableElevation
+                startIcon={
+                  loading ? (
+                    <CircularProgress size={18} color="inherit" />
                   ) : (
-                    <Box
+                    <PlayArrowIcon />
+                  )
+                }
+                onClick={fetchData}
+                disabled={loading || (months === 0 && (!startDate || !endDate))}
+                sx={{ height: 40 }}
+              >
+                {hasLoaded ? "ATUALIZAR" : "CARREGAR"}
+              </Button>
+            </Stack>
+          </Stack>
+        </Paper>
+
+        {/* Error */}
+        {error && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {error}
+          </Alert>
+        )}
+
+        {/* Empty state */}
+        {!hasLoaded && !loading && (
+          <Paper sx={{ p: 6, textAlign: "center", borderRadius: 2 }}>
+            <DashboardIcon
+              sx={{ fontSize: 48, color: "action.disabled", mb: 2 }}
+            />
+            <Typography variant="h6" color="text.secondary" gutterBottom>
+              Selecione o período e clique em Carregar
+            </Typography>
+            <Typography variant="body2" color="text.disabled">
+              Os dados serão carregados sob demanda para melhor performance.
+            </Typography>
+          </Paper>
+        )}
+
+        {/* Loading skeleton with shimmer */}
+        {loading && (
+          <>
+            {/* Period chip skeleton */}
+            <Box sx={{ mb: 2 }}>
+              <Skeleton
+                variant="rounded"
+                width={120}
+                height={24}
+                animation="wave"
+              />
+            </Box>
+
+            {/* KPI Cards - 8 cards matching the real layout */}
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                <Grid item xs={6} sm={4} md={3} lg={1.5} key={i}>
+                  <Card sx={{ borderRadius: 2 }}>
+                    <CardContent
                       sx={{
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "center",
-                        height: "100%",
+                        gap: 1.5,
+                        py: 1.5,
+                        px: 2,
                       }}
                     >
-                      <Typography color="text.secondary">Sem dados</Typography>
-                    </Box>
-                  )}
-                </Box>
-              </Paper>
+                      <Skeleton
+                        variant="rounded"
+                        width={40}
+                        height={40}
+                        animation="wave"
+                      />
+                      <Box sx={{ flex: 1 }}>
+                        <Skeleton
+                          variant="text"
+                          width="70%"
+                          height={14}
+                          animation="wave"
+                        />
+                        <Skeleton
+                          variant="text"
+                          width="90%"
+                          height={24}
+                          animation="wave"
+                        />
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
 
-              {/* Itens por Mês */}
-              <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
-                <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                  Itens por Mês
-                </Typography>
-                <Box sx={{ height: 220 }}>
-                  {data.monthly_data?.length > 0 ? (
-                    <Bar
-                      data={monthlyItemsChart}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: { legend: { display: false } },
-                        scales: {
-                          y: {
-                            beginAtZero: true,
-                            grid: { color: "rgba(0,0,0,0.05)" },
-                          },
-                          x: { grid: { display: false } },
-                        },
-                      }}
-                    />
-                  ) : (
-                    <Box
-                      sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        height: "100%",
-                      }}
-                    >
-                      <Typography color="text.secondary">Sem dados</Typography>
-                    </Box>
-                  )}
-                </Box>
-              </Paper>
+            {/* Taxa de Atendimento skeleton */}
+            <Paper sx={{ p: 2.5, mb: 3, borderRadius: 2 }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  mb: 1,
+                }}
+              >
+                <Skeleton
+                  variant="text"
+                  width={150}
+                  height={24}
+                  animation="wave"
+                />
+                <Skeleton
+                  variant="text"
+                  width={50}
+                  height={24}
+                  animation="wave"
+                />
+              </Box>
+              <Skeleton
+                variant="rounded"
+                height={8}
+                animation="wave"
+                sx={{ borderRadius: 4 }}
+              />
+            </Paper>
 
-              {/* Buyer & Supplier Charts */}
-              <Grid container spacing={3} sx={{ mb: 3 }}>
-                <Grid item xs={12} md={4}>
-                  <Paper
-                    sx={{
-                      p: 3,
-                      borderRadius: 2,
-                      height: 400,
-                      display: "flex",
-                      flexDirection: "column",
-                    }}
-                  >
-                    <Typography
-                      variant="subtitle1"
-                      fontWeight={600}
-                      gutterBottom
-                    >
-                      Valor por Comprador
-                    </Typography>
-                    <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
-                      {buyerValueChart ? (
-                        <Doughnut
-                          data={buyerValueChart}
-                          options={doughnutOptions}
-                        />
-                      ) : (
-                        <Box
-                          sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            height: "100%",
-                          }}
-                        >
-                          <Typography color="text.secondary">
-                            Sem dados
-                          </Typography>
-                        </Box>
-                      )}
-                    </Box>
-                  </Paper>
-                </Grid>
-                <Grid item xs={12} md={4}>
-                  <Paper
-                    sx={{
-                      p: 3,
-                      borderRadius: 2,
-                      height: 400,
-                      display: "flex",
-                      flexDirection: "column",
-                    }}
-                  >
-                    <Typography
-                      variant="subtitle1"
-                      fontWeight={600}
-                      gutterBottom
-                    >
-                      Pedidos por Comprador
-                    </Typography>
-                    <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
-                      {buyerOrdersChart ? (
-                        <Doughnut
-                          data={buyerOrdersChart}
-                          options={{
-                            ...doughnutOptions,
-                            plugins: {
-                              ...doughnutOptions.plugins,
-                              tooltip: {
-                                ...doughnutOptions.plugins.tooltip,
-                                callbacks: {
-                                  label: (ctx) => `${ctx.raw} pedidos`,
-                                },
-                              },
-                            },
-                          }}
-                        />
-                      ) : (
-                        <Box
-                          sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            height: "100%",
-                          }}
-                        >
-                          <Typography color="text.secondary">
-                            Sem dados
-                          </Typography>
-                        </Box>
-                      )}
-                    </Box>
-                  </Paper>
-                </Grid>
-                <Grid item xs={12} md={4}>
-                  <Paper
-                    sx={{
-                      p: 3,
-                      borderRadius: 2,
-                      height: 400,
-                      display: "flex",
-                      flexDirection: "column",
-                    }}
-                  >
-                    <Typography
-                      variant="subtitle1"
-                      fontWeight={600}
-                      gutterBottom
-                    >
-                      Valor por Fornecedor
-                    </Typography>
-                    <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
-                      {supplierChart ? (
-                        <Doughnut
-                          data={supplierChart}
-                          options={doughnutOptions}
-                        />
-                      ) : (
-                        <Box
-                          sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            height: "100%",
-                          }}
-                        >
-                          <Typography color="text.secondary">
-                            Sem dados
-                          </Typography>
-                        </Box>
-                      )}
-                    </Box>
-                  </Paper>
-                </Grid>
+            {/* Main chart - Evolução Mensal */}
+            <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
+              <Skeleton
+                variant="text"
+                width={200}
+                height={28}
+                animation="wave"
+                sx={{ mb: 2 }}
+              />
+              <Skeleton
+                variant="rectangular"
+                height={350}
+                animation="wave"
+                sx={{ borderRadius: 1 }}
+              />
+            </Paper>
+
+            {/* Two charts side by side - Itens por Mês & Valor por Fornecedor */}
+            <Grid container spacing={3} sx={{ mb: 3 }}>
+              <Grid item xs={12} md={6}>
+                <Paper sx={{ p: 3, borderRadius: 2, height: 380 }}>
+                  <Skeleton
+                    variant="text"
+                    width={120}
+                    height={28}
+                    animation="wave"
+                    sx={{ mb: 2 }}
+                  />
+                  <Skeleton
+                    variant="rectangular"
+                    height={300}
+                    animation="wave"
+                    sx={{ borderRadius: 1 }}
+                  />
+                </Paper>
               </Grid>
-
-              {/* Top Items */}
-              <Grid container spacing={3} sx={{ mb: 3 }}>
-                <Grid item xs={12} md={8}>
-                  <Paper
-                    sx={{
-                      p: 3,
-                      borderRadius: 2,
-                      height: 420,
-                      display: "flex",
-                      flexDirection: "column",
-                    }}
-                  >
-                    <Typography
-                      variant="subtitle1"
-                      fontWeight={600}
-                      gutterBottom
-                    >
-                      Top Itens por Valor
-                    </Typography>
-                    <Box sx={{ flex: 1, minHeight: 0 }}>
-                      {topItemsChart ? (
-                        <Bar data={topItemsChart} options={barOptions} />
-                      ) : (
-                        <Box
-                          sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            height: "100%",
-                          }}
-                        >
-                          <Typography color="text.secondary">
-                            Sem dados
-                          </Typography>
-                        </Box>
-                      )}
-                    </Box>
-                  </Paper>
-                </Grid>
-                <Grid item xs={12} md={4}>
-                  <Paper
-                    sx={{
-                      p: 3,
-                      borderRadius: 2,
-                      height: 420,
-                      display: "flex",
-                      flexDirection: "column",
-                    }}
-                  >
-                    <Typography
-                      variant="subtitle1"
-                      fontWeight={600}
-                      gutterBottom
-                    >
-                      Status dos Pedidos
-                    </Typography>
-                    <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
-                      {fulfillmentChart ? (
-                        <Doughnut
-                          data={fulfillmentChart}
-                          options={{
-                            ...doughnutOptions,
-                            plugins: {
-                              ...doughnutOptions.plugins,
-                              tooltip: {
-                                ...doughnutOptions.plugins.tooltip,
-                                callbacks: {
-                                  label: (ctx) => `${ctx.raw} pedidos`,
-                                },
-                              },
-                            },
-                          }}
-                        />
-                      ) : (
-                        <Box
-                          sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            height: "100%",
-                          }}
-                        >
-                          <Typography color="text.secondary">
-                            Sem dados
-                          </Typography>
-                        </Box>
-                      )}
-                    </Box>
-                  </Paper>
-                </Grid>
+              <Grid item xs={12} md={6}>
+                <Paper sx={{ p: 3, borderRadius: 2, height: 380 }}>
+                  <Skeleton
+                    variant="text"
+                    width={160}
+                    height={28}
+                    animation="wave"
+                    sx={{ mb: 2 }}
+                  />
+                  <Skeleton
+                    variant="rectangular"
+                    height={300}
+                    animation="wave"
+                    sx={{ borderRadius: 1 }}
+                  />
+                </Paper>
               </Grid>
+            </Grid>
 
-              {/* Uso Diário do Sistema */}
-              <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
-                <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                  Uso Diário do Sistema (30 dias)
-                </Typography>
-                <Box sx={{ height: 220 }}>
-                  {data.daily_usage?.length > 0 ? (
-                    <Line data={dailyUsageChart} options={usageLineOptions} />
-                  ) : (
-                    <Box
-                      sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        height: "100%",
-                      }}
-                    >
-                      <Typography color="text.secondary">Sem dados</Typography>
-                    </Box>
-                  )}
-                </Box>
-              </Paper>
-
-              {/* NFE Stats (if available) */}
-              {data.summary.nfe_count > 0 && (
-                <Paper sx={{ p: 4, borderRadius: 2 }}>
-                  <Typography
-                    variant="subtitle1"
-                    fontWeight={600}
-                    gutterBottom
-                    textAlign="center"
-                  >
-                    Notas Fiscais Recebidas
-                  </Typography>
+            {/* Two more charts - Top Itens & Pedidos por Comprador */}
+            <Grid container spacing={3} sx={{ mb: 3 }}>
+              <Grid item xs={12} md={6}>
+                <Paper sx={{ p: 3, borderRadius: 2, height: 380 }}>
+                  <Skeleton
+                    variant="text"
+                    width={150}
+                    height={28}
+                    animation="wave"
+                    sx={{ mb: 2 }}
+                  />
+                  <Skeleton
+                    variant="rectangular"
+                    height={300}
+                    animation="wave"
+                    sx={{ borderRadius: 1 }}
+                  />
+                </Paper>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <Paper sx={{ p: 3, borderRadius: 2, height: 380 }}>
+                  <Skeleton
+                    variant="text"
+                    width={180}
+                    height={28}
+                    animation="wave"
+                    sx={{ mb: 2 }}
+                  />
                   <Box
                     sx={{
                       display: "flex",
                       justifyContent: "center",
                       alignItems: "center",
-                      gap: 8,
-                      py: 3,
-                      flexWrap: "wrap",
+                      height: 300,
                     }}
                   >
-                    <Box sx={{ textAlign: "center" }}>
-                      <Typography variant="h4" fontWeight={600} color="primary">
-                        {data.summary.nfe_count}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        NFes no período
-                      </Typography>
-                    </Box>
-                    <Divider orientation="vertical" flexItem />
-                    <Box sx={{ textAlign: "center" }}>
-                      <Typography
-                        variant="h5"
-                        fontWeight={600}
-                        color="success.main"
-                      >
-                        {fmtCurrency(data.summary.nfe_total_value)}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Valor total NFes
-                      </Typography>
-                    </Box>
+                    <Skeleton
+                      variant="circular"
+                      width={220}
+                      height={220}
+                      animation="wave"
+                    />
                   </Box>
                 </Paper>
+              </Grid>
+            </Grid>
+
+            {/* Uso Diário skeleton */}
+            <Paper sx={{ p: 3, borderRadius: 2 }}>
+              <Skeleton
+                variant="text"
+                width={220}
+                height={28}
+                animation="wave"
+                sx={{ mb: 2 }}
+              />
+              <Skeleton
+                variant="rectangular"
+                height={200}
+                animation="wave"
+                sx={{ borderRadius: 1 }}
+              />
+            </Paper>
+          </>
+        )}
+
+        {/* Data loaded */}
+        {hasLoaded && !loading && data && (
+          <>
+            {/* Period indicator */}
+            <Box sx={{ mb: 2, display: "flex", flexWrap: "wrap", gap: 1 }}>
+              <Chip
+                label={
+                  months === 0 && startDate && endDate
+                    ? `${new Date(startDate).toLocaleDateString(
+                        "pt-BR"
+                      )} - ${new Date(endDate).toLocaleDateString("pt-BR")}`
+                    : `Últimos ${months} meses`
+                }
+                size="small"
+                color="primary"
+                variant="outlined"
+                icon={<DateRangeIcon />}
+              />
+              {buyerFilter !== "all" && (
+                <Chip
+                  label={buyerFilter}
+                  size="small"
+                  color="secondary"
+                  onDelete={() => setBuyerFilter("all")}
+                />
               )}
-            </>
-          )}
-        </Container>
-      </Box>
+            </Box>
+
+            {/* KPIs*/}
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              {[
+                {
+                  label: "Pedidos",
+                  value: data.summary.total_orders,
+                  icon: ShoppingCartIcon,
+                  color: "#5b8def",
+                },
+                {
+                  label: "Itens",
+                  value: data.summary.total_items,
+                  icon: ReceiptIcon,
+                  color: "#68c2ff",
+                },
+                {
+                  label: "Quantidade",
+                  value: data.summary.total_quantity.toLocaleString("pt-BR"),
+                  icon: InventoryIcon,
+                  color: "#6dd3c2",
+                },
+                {
+                  label: "Fornecedores",
+                  value: data.summary.total_suppliers,
+                  icon: LocalShippingIcon,
+                  color: "#c69df6",
+                },
+                {
+                  label: "Total Compras",
+                  value: fmtCurrency(data.summary.total_value),
+                  icon: TrendingUpIcon,
+                  color: "#f57c00",
+                },
+                {
+                  label: "Média/Pedido",
+                  value: fmtCurrency(data.summary.avg_order_value),
+                  icon: BusinessIcon,
+                  color: "#7b1fa2",
+                },
+                {
+                  label: "Atendidos",
+                  value: data.summary.fulfilled_orders,
+                  icon: CheckCircleIcon,
+                  color: "#4caf50",
+                },
+                {
+                  label: "Pendentes",
+                  value: data.summary.pending_orders,
+                  icon: PendingIcon,
+                  color: "#ff9800",
+                },
+              ].map((kpi) => (
+                <Grid item xs={6} sm={4} md={3} lg={1.5} key={kpi.label}>
+                  <Card sx={{ borderRadius: 2, height: "100%" }}>
+                    <CardContent
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1.5,
+                        py: 1.5,
+                        px: 2,
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 1.5,
+                          bgcolor: `${kpi.color}15`,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <kpi.icon sx={{ color: kpi.color, fontSize: 20 }} />
+                      </Box>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          noWrap
+                        >
+                          {kpi.label}
+                        </Typography>
+                        <Typography variant="subtitle1" fontWeight={600} noWrap>
+                          {kpi.value}
+                        </Typography>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+
+            {/* Fulfillment Rate Bar */}
+            {data.summary.total_orders > 0 && (
+              <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    mb: 1,
+                  }}
+                >
+                  <Typography variant="subtitle2">
+                    Taxa de Atendimento
+                  </Typography>
+                  <Typography variant="subtitle2" fontWeight={600}>
+                    {data.summary.fulfillment_rate}%
+                  </Typography>
+                </Box>
+                <LinearProgress
+                  variant="determinate"
+                  value={data.summary.fulfillment_rate}
+                  sx={{
+                    height: 8,
+                    borderRadius: 4,
+                    bgcolor: "#e0e0e0",
+                    "& .MuiLinearProgress-bar": {
+                      bgcolor:
+                        data.summary.fulfillment_rate >= 80
+                          ? "#4caf50"
+                          : data.summary.fulfillment_rate >= 50
+                          ? "#ff9800"
+                          : "#f44336",
+                    },
+                  }}
+                />
+              </Paper>
+            )}
+
+            {/* Monthly Value Chart */}
+            <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
+              <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                Evolução Mensal - Valor
+              </Typography>
+              <Box sx={{ height: 260 }}>
+                {data.monthly_data?.length > 0 ? (
+                  <Line data={monthlyChart} options={lineOptions} />
+                ) : (
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      height: "100%",
+                    }}
+                  >
+                    <Typography color="text.secondary">Sem dados</Typography>
+                  </Box>
+                )}
+              </Box>
+            </Paper>
+
+            {/* Itens por Mês */}
+            <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
+              <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                Itens por Mês
+              </Typography>
+              <Box sx={{ height: 220 }}>
+                {data.monthly_data?.length > 0 ? (
+                  <Bar
+                    data={monthlyItemsChart}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: { legend: { display: false } },
+                      scales: {
+                        y: {
+                          beginAtZero: true,
+                          grid: { color: "rgba(0,0,0,0.05)" },
+                        },
+                        x: { grid: { display: false } },
+                      },
+                    }}
+                  />
+                ) : (
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      height: "100%",
+                    }}
+                  >
+                    <Typography color="text.secondary">Sem dados</Typography>
+                  </Box>
+                )}
+              </Box>
+            </Paper>
+
+            {/* Buyer & Supplier Charts */}
+            <Grid container spacing={3} sx={{ mb: 3 }}>
+              <Grid item xs={12} md={4}>
+                <Paper
+                  sx={{
+                    p: 3,
+                    borderRadius: 2,
+                    height: 400,
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                >
+                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                    Valor por Comprador
+                  </Typography>
+                  <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
+                    {buyerValueChart ? (
+                      <Doughnut
+                        data={buyerValueChart}
+                        options={doughnutOptions}
+                      />
+                    ) : (
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          height: "100%",
+                        }}
+                      >
+                        <Typography color="text.secondary">
+                          Sem dados
+                        </Typography>
+                      </Box>
+                    )}
+                  </Box>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Paper
+                  sx={{
+                    p: 3,
+                    borderRadius: 2,
+                    height: 400,
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                >
+                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                    Pedidos por Comprador
+                  </Typography>
+                  <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
+                    {buyerOrdersChart ? (
+                      <Doughnut
+                        data={buyerOrdersChart}
+                        options={{
+                          ...doughnutOptions,
+                          plugins: {
+                            ...doughnutOptions.plugins,
+                            tooltip: {
+                              ...doughnutOptions.plugins.tooltip,
+                              callbacks: {
+                                label: (ctx) => `${ctx.raw} pedidos`,
+                              },
+                            },
+                          },
+                        }}
+                      />
+                    ) : (
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          height: "100%",
+                        }}
+                      >
+                        <Typography color="text.secondary">
+                          Sem dados
+                        </Typography>
+                      </Box>
+                    )}
+                  </Box>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Paper
+                  sx={{
+                    p: 3,
+                    borderRadius: 2,
+                    height: 400,
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                >
+                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                    Valor por Fornecedor
+                  </Typography>
+                  <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
+                    {supplierChart ? (
+                      <Doughnut
+                        data={supplierChart}
+                        options={doughnutOptions}
+                      />
+                    ) : (
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          height: "100%",
+                        }}
+                      >
+                        <Typography color="text.secondary">
+                          Sem dados
+                        </Typography>
+                      </Box>
+                    )}
+                  </Box>
+                </Paper>
+              </Grid>
+            </Grid>
+
+            {/* Top Items */}
+            <Grid container spacing={3} sx={{ mb: 3 }}>
+              <Grid item xs={12} md={8}>
+                <Paper
+                  sx={{
+                    p: 3,
+                    borderRadius: 2,
+                    height: 420,
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                >
+                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                    Top Itens por Valor
+                  </Typography>
+                  <Box sx={{ flex: 1, minHeight: 0 }}>
+                    {topItemsChart ? (
+                      <Bar data={topItemsChart} options={barOptions} />
+                    ) : (
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          height: "100%",
+                        }}
+                      >
+                        <Typography color="text.secondary">
+                          Sem dados
+                        </Typography>
+                      </Box>
+                    )}
+                  </Box>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Paper
+                  sx={{
+                    p: 3,
+                    borderRadius: 2,
+                    height: 420,
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                >
+                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                    Status dos Pedidos
+                  </Typography>
+                  <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
+                    {fulfillmentChart ? (
+                      <Doughnut
+                        data={fulfillmentChart}
+                        options={{
+                          ...doughnutOptions,
+                          plugins: {
+                            ...doughnutOptions.plugins,
+                            tooltip: {
+                              ...doughnutOptions.plugins.tooltip,
+                              callbacks: {
+                                label: (ctx) => `${ctx.raw} pedidos`,
+                              },
+                            },
+                          },
+                        }}
+                      />
+                    ) : (
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          height: "100%",
+                        }}
+                      >
+                        <Typography color="text.secondary">
+                          Sem dados
+                        </Typography>
+                      </Box>
+                    )}
+                  </Box>
+                </Paper>
+              </Grid>
+            </Grid>
+
+            {/* Uso Diário do Sistema */}
+            <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
+              <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                Uso Diário do Sistema (30 dias)
+              </Typography>
+              <Box sx={{ height: 220 }}>
+                {data.daily_usage?.length > 0 ? (
+                  <Line data={dailyUsageChart} options={usageLineOptions} />
+                ) : (
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      height: "100%",
+                    }}
+                  >
+                    <Typography color="text.secondary">Sem dados</Typography>
+                  </Box>
+                )}
+              </Box>
+            </Paper>
+
+            {/* NFE Stats (if available) */}
+            {data.summary.nfe_count > 0 && (
+              <Paper sx={{ p: 4, borderRadius: 2 }}>
+                <Typography
+                  variant="subtitle1"
+                  fontWeight={600}
+                  gutterBottom
+                  textAlign="center"
+                >
+                  Notas Fiscais Recebidas
+                </Typography>
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    gap: 8,
+                    py: 3,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <Box sx={{ textAlign: "center" }}>
+                    <Typography variant="h4" fontWeight={600} color="primary">
+                      {data.summary.nfe_count}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      NFes no período
+                    </Typography>
+                  </Box>
+                  <Divider orientation="vertical" flexItem />
+                  <Box sx={{ textAlign: "center" }}>
+                    <Typography
+                      variant="h5"
+                      fontWeight={600}
+                      color="success.main"
+                    >
+                      {fmtCurrency(data.summary.nfe_total_value)}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Valor total NFes
+                    </Typography>
+                  </Box>
+                </Box>
+              </Paper>
+            )}
+          </>
+        )}
+      </Container>
     </Box>
   );
 };
