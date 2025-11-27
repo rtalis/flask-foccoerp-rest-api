@@ -87,7 +87,7 @@ const App = () => {
           path="/login"
           element={
             isAuthenticated ? (
-              <Navigate to="/dashboard" />
+              <Navigate to="/search" />
             ) : (
               <Login onLogin={handleLogin} />
             )
@@ -104,8 +104,8 @@ const App = () => {
             )
           }
         >
-          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/search" element={<UnifiedSearch />} />
+          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/advanced-search" element={<AdvancedSearch />} />
           <Route path="/quotation-analyzer" element={<QuotationAnalyzer />} />
           <Route path="/import" element={<ImportFile />} />
@@ -116,7 +116,7 @@ const App = () => {
         {/* Default redirect */}
         <Route
           path="*"
-          element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} />}
+          element={<Navigate to={isAuthenticated ? "/search" : "/login"} />}
         />
       </Routes>
     </Router>

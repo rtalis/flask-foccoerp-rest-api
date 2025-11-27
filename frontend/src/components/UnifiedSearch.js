@@ -42,6 +42,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Skeleton,
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
@@ -1273,12 +1274,16 @@ const UnifiedSearch = () => {
           sx={{
             display: "flex",
             flexWrap: "wrap",
-            gap: 4,
+            gap: { xs: 2, md: 4 },
             mb: 3,
+            alignItems: "flex-start",
           }}
         >
           {/* Search fields section */}
-          <FormControl component="fieldset" sx={{ flex: 1, minWidth: 280 }}>
+          <FormControl
+            component="fieldset"
+            sx={{ flex: "2 1 400px", minWidth: 280 }}
+          >
             <FormLabel component="legend">Pesquisar por...</FormLabel>
             <Grid container spacing={2} sx={{ mt: 1 }}>
               {searchFieldColumns.map((column, columnIndex) => (
@@ -1308,9 +1313,13 @@ const UnifiedSearch = () => {
           {/* Purchaser section */}
           <FormControl
             component="fieldset"
-            sx={{ flex: 1, minWidth: 240, xs: 12, sm: 2 }}
+            sx={{
+              flex: "1 1 200px",
+              minWidth: { xs: "100%", sm: 200 },
+              maxWidth: { xs: "100%", sm: 300, md: 550 },
+            }}
           >
-            <FormLabel component="legend" sx={{ mb: 1, maxWidth: 400 }}>
+            <FormLabel component="legend" sx={{ mb: 1 }}>
               Mostrar compradores
             </FormLabel>
             <Select
@@ -1483,27 +1492,178 @@ const UnifiedSearch = () => {
         </Accordion>
 
         {loading && (
-          <Box
-            sx={{
-              position: "fixed",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexDirection: "column",
-              backgroundColor: "rgba(255, 255, 255, 0.8)",
-              zIndex: 9999,
-            }}
-          >
-            <Box sx={{ display: "flex", justifyContent: "center", mb: 2 }}>
-              <div className="spinner"></div>
+          <Box sx={{ mt: 3 }}>
+            {/* Shimmer loading skeleton for search results */}
+            <Box sx={{ textAlign: "center", mb: 3 }}>
+              <Skeleton
+                variant="text"
+                width={300}
+                height={32}
+                sx={{ mx: "auto" }}
+                animation="wave"
+              />
             </Box>
-            <Typography>
-              Buscando em aproximadamente {estimatedResults} resultados...
-            </Typography>
+
+            {/* Fake result rows */}
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Paper key={i} sx={{ mb: 2, overflow: "hidden" }}>
+                {/* Order header */}
+                <Box
+                  sx={{
+                    bgcolor: "#e8f5e9",
+                    p: 2,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 2,
+                  }}
+                >
+                  <Skeleton
+                    variant="circular"
+                    width={24}
+                    height={24}
+                    animation="wave"
+                  />
+                  <Skeleton
+                    variant="text"
+                    width="80%"
+                    height={28}
+                    animation="wave"
+                  />
+                </Box>
+
+                {/* Table header */}
+                <Box
+                  sx={{
+                    display: "flex",
+                    gap: 2,
+                    p: 2,
+                    borderBottom: "1px solid #eee",
+                  }}
+                >
+                  <Skeleton
+                    variant="text"
+                    width={100}
+                    height={20}
+                    animation="wave"
+                  />
+                  <Skeleton
+                    variant="text"
+                    width={80}
+                    height={20}
+                    animation="wave"
+                  />
+                  <Skeleton
+                    variant="text"
+                    width={250}
+                    height={20}
+                    animation="wave"
+                  />
+                  <Skeleton
+                    variant="text"
+                    width={80}
+                    height={20}
+                    animation="wave"
+                  />
+                  <Skeleton
+                    variant="text"
+                    width={100}
+                    height={20}
+                    animation="wave"
+                  />
+                  <Skeleton
+                    variant="text"
+                    width={60}
+                    height={20}
+                    animation="wave"
+                  />
+                  <Skeleton
+                    variant="text"
+                    width={80}
+                    height={20}
+                    animation="wave"
+                  />
+                </Box>
+
+                {/* Table rows */}
+                {[1, 2].map((j) => (
+                  <Box
+                    key={j}
+                    sx={{
+                      display: "flex",
+                      gap: 2,
+                      p: 2,
+                      borderBottom: "1px solid #f5f5f5",
+                    }}
+                  >
+                    <Skeleton
+                      variant="text"
+                      width={100}
+                      height={20}
+                      animation="wave"
+                    />
+                    <Skeleton
+                      variant="text"
+                      width={80}
+                      height={20}
+                      animation="wave"
+                    />
+                    <Skeleton
+                      variant="text"
+                      width={250}
+                      height={20}
+                      animation="wave"
+                    />
+                    <Skeleton
+                      variant="text"
+                      width={80}
+                      height={20}
+                      animation="wave"
+                    />
+                    <Skeleton
+                      variant="text"
+                      width={100}
+                      height={20}
+                      animation="wave"
+                    />
+                    <Skeleton
+                      variant="text"
+                      width={60}
+                      height={20}
+                      animation="wave"
+                    />
+                    <Skeleton
+                      variant="text"
+                      width={80}
+                      height={20}
+                      animation="wave"
+                    />
+                  </Box>
+                ))}
+
+                {/* Footer with observation and totals */}
+                <Box
+                  sx={{
+                    bgcolor: "#fafafa",
+                    p: 2,
+                    display: "flex",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <Skeleton
+                    variant="text"
+                    width={300}
+                    height={20}
+                    animation="wave"
+                  />
+                  <Skeleton
+                    variant="text"
+                    width={250}
+                    height={20}
+                    animation="wave"
+                  />
+                </Box>
+              </Paper>
+            ))}
           </Box>
         )}
 

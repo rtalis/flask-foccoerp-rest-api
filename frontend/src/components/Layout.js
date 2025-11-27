@@ -391,6 +391,11 @@ const Layout = ({ onLogout }) => {
       {/* Main Content */}
       <Box
         component="main"
+        onClick={() => {
+          if (sidebarOpen) {
+            setSidebarOpen(false);
+          }
+        }}
         sx={{
           flexGrow: 1,
           minHeight: "100vh",
