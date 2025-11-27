@@ -1755,38 +1755,58 @@ def dashboard_summary():
     from datetime import datetime, timedelta
 
     try:
+        # Parse date filters - support both months and custom date range
         months = int(request.args.get('months', 6))
         top_limit = int(request.args.get('limit', 8))
-        end_date = datetime.now().date()
-        start_date = (end_date.replace(day=1) - timedelta(days=months * 31)).replace(day=1)
+        buyer_filter = request.args.get('buyer', '').strip() 
+        
+        # Custom date range (takes precedence over months if provided)
+        start_date_param = request.args.get('start_date', '').strip()
+        end_date_param = request.args.get('end_date', '').strip()
+        
+        if start_date_param and end_date_param:
+            try:
+                start_date = datetime.strptime(start_date_param, '%Y-%m-%d').date()
+                end_date = datetime.strptime(end_date_param, '%Y-%m-%d').date()
+            except ValueError:
+                end_date = datetime.now().date()
+                start_date = (end_date.replace(day=1) - timedelta(days=months * 31)).replace(day=1)
+        else:
+            end_date = datetime.now().date()
+            start_date = (end_date.replace(day=1) - timedelta(days=months * 31)).replace(day=1)
 
-        # Summary
+        # Build base filters for orders
+        order_filters = [PurchaseOrder.dt_emis >= start_date, PurchaseOrder.dt_emis <= end_date]
+        if buyer_filter and buyer_filter.lower() != 'all':
+            order_filters.append(PurchaseOrder.func_nome == buyer_filter)
+
+        # Summary - with buyer filter
         total_orders = db.session.query(func.count()).select_from(PurchaseOrder).filter(
-            PurchaseOrder.dt_emis >= start_date
+            *order_filters
         ).scalar() or 0
 
         total_items = db.session.query(func.count()).select_from(PurchaseItem).join(
             PurchaseOrder, PurchaseItem.purchase_order_id == PurchaseOrder.id
-        ).filter(PurchaseOrder.dt_emis >= start_date).scalar() or 0
+        ).filter(*order_filters).scalar() or 0
 
         total_value = db.session.query(func.coalesce(func.sum(PurchaseOrder.total_pedido_com_ipi), 0)).filter(
-            PurchaseOrder.dt_emis >= start_date
+            *order_filters
         ).scalar() or 0.0
 
         total_suppliers = db.session.query(func.count(func.distinct(PurchaseOrder.fornecedor_id))).filter(
-            PurchaseOrder.dt_emis >= start_date
+            *order_filters
         ).scalar() or 0
 
         avg_order_value = float(total_value) / total_orders if total_orders else 0.0
 
-        # Monthly totals (group by year/month)
+        # Monthly totals (group by year/month) - with buyer filter
         monthly_rows = db.session.query(
             extract('year', PurchaseOrder.dt_emis).label('y'),
             extract('month', PurchaseOrder.dt_emis).label('m'),
             func.count(PurchaseOrder.id).label('order_count'),
             func.coalesce(func.sum(PurchaseOrder.total_pedido_com_ipi), 0).label('total_value')
         ).filter(
-            PurchaseOrder.dt_emis >= start_date
+            *order_filters
         ).group_by(
             extract('year', PurchaseOrder.dt_emis),
             extract('month', PurchaseOrder.dt_emis)
@@ -1795,19 +1815,48 @@ def dashboard_summary():
             extract('month', PurchaseOrder.dt_emis)
         ).all()
 
-        # Normalize monthly data for last N months (fill missing with zeros)
+        # Monthly items quantity - with buyer filter
+        item_filters = [PurchaseOrder.dt_emis >= start_date, PurchaseOrder.dt_emis <= end_date]
+        if buyer_filter and buyer_filter.lower() != 'all':
+            item_filters.append(PurchaseOrder.func_nome == buyer_filter)
+            
+        monthly_items_rows = db.session.query(
+            extract('year', PurchaseItem.dt_emis).label('y'),
+            extract('month', PurchaseItem.dt_emis).label('m'),
+            func.count(PurchaseItem.id).label('item_count'),
+            func.coalesce(func.sum(PurchaseItem.quantidade), 0).label('total_qty')
+        ).join(
+            PurchaseOrder, PurchaseItem.purchase_order_id == PurchaseOrder.id
+        ).filter(
+            *item_filters
+        ).group_by(
+            extract('year', PurchaseItem.dt_emis),
+            extract('month', PurchaseItem.dt_emis)
+        ).order_by(
+            extract('year', PurchaseItem.dt_emis),
+            extract('month', PurchaseItem.dt_emis)
+        ).all()
+
+        monthly_items_map = {}
+        for r in monthly_items_rows:
+            k = (int(r.y), int(r.m))
+            monthly_items_map[k] = {
+                'item_count': int(r.item_count or 0),
+                'total_qty': float(r.total_qty or 0),
+            }
+
+        # Normalize monthly data for last N months
         months_labels = []
         monthly_map = {}
         cur = end_date.replace(day=1)
-        for _ in range(months + 1):  # +1 to include the first month
+        for _ in range(months + 1):  
             key = (cur.year, cur.month)
             months_labels.append(f"{cur.strftime('%b')}/{str(cur.year)[-2:]}")
             monthly_map[key] = {'order_count': 0, 'total_value': 0.0}
-            # go back one month safely
             prev = (cur.replace(day=1) - timedelta(days=1)).replace(day=1)
             cur = prev
 
-        # rows are ascending; map them
+
         for r in monthly_rows:
             k = (int(r.y), int(r.m))
             if k in monthly_map:
@@ -1816,21 +1865,24 @@ def dashboard_summary():
                     'total_value': float(r.total_value or 0),
                 }
 
-        # Build monthly list in chronological order for charts
+        #monthly list
         monthly_data = []
         cur = (end_date.replace(day=1) - timedelta(days=(months - 1) * 31)).replace(day=1)
         for _ in range(months):
             k = (cur.year, cur.month)
             label = f"{cur.strftime('%b')}/{str(cur.year)[-2:]}"
             v = monthly_map.get(k, {'order_count': 0, 'total_value': 0.0})
+            items_v = monthly_items_map.get(k, {'item_count': 0, 'total_qty': 0.0})
             monthly_data.append({
                 'month': label,
                 'order_count': v['order_count'],
                 'total_value': v['total_value'],
+                'item_count': items_v['item_count'],
+                'total_qty': items_v['total_qty'],
             })
             cur = (cur.replace(day=1) + timedelta(days=32)).replace(day=1)
 
-        # Daily usage based on login history
+        # Daily usage
         usage_days = max(int(request.args.get('usage_days', 14)), 1)
         usage_start_date = end_date - timedelta(days=usage_days - 1)
 
@@ -1873,28 +1925,52 @@ def dashboard_summary():
             })
 
         # Top buyers
-        buyer_rows = db.session.query(
-            PurchaseOrder.func_nome.label('name'),
-            func.count(PurchaseOrder.id).label('order_count'),
-            func.coalesce(func.sum(PurchaseOrder.total_pedido_com_ipi), 0).label('total_value'),
-            func.coalesce(func.avg(PurchaseOrder.total_pedido_com_ipi), 0).label('avg_value'),
-            # Add this subquery to count items per buyer
-            func.coalesce(
-                func.sum(
-                    db.session.query(func.count(PurchaseItem.id))
-                    .filter(PurchaseItem.purchase_order_id == PurchaseOrder.id)
-                    .correlate(PurchaseOrder)
-                    .scalar_subquery()
-                ), 0
-            ).label('item_count')
-        ).filter(
-            PurchaseOrder.dt_emis >= start_date,
-            PurchaseOrder.func_nome.isnot(None)
-        ).group_by(
-            PurchaseOrder.func_nome
-        ).order_by(
-            func.coalesce(func.sum(PurchaseOrder.total_pedido_com_ipi), 0).desc()
-        ).limit(top_limit).all()
+        if buyer_filter and buyer_filter.lower() != 'all':
+            # When filtering by a specific buyer, return only that buyer's data
+            buyer_rows = db.session.query(
+                PurchaseOrder.func_nome.label('name'),
+                func.count(PurchaseOrder.id).label('order_count'),
+                func.coalesce(func.sum(PurchaseOrder.total_pedido_com_ipi), 0).label('total_value'),
+                func.coalesce(func.avg(PurchaseOrder.total_pedido_com_ipi), 0).label('avg_value'),
+                func.coalesce(
+                    func.sum(
+                        db.session.query(func.count(PurchaseItem.id))
+                        .filter(PurchaseItem.purchase_order_id == PurchaseOrder.id)
+                        .correlate(PurchaseOrder)
+                        .scalar_subquery()
+                    ), 0
+                ).label('item_count')
+            ).filter(
+                *order_filters,
+                PurchaseOrder.func_nome.isnot(None)
+            ).group_by(
+                PurchaseOrder.func_nome
+            ).order_by(
+                func.coalesce(func.sum(PurchaseOrder.total_pedido_com_ipi), 0).desc()
+            ).limit(top_limit).all()
+        else:
+            buyer_rows = db.session.query(
+                PurchaseOrder.func_nome.label('name'),
+                func.count(PurchaseOrder.id).label('order_count'),
+                func.coalesce(func.sum(PurchaseOrder.total_pedido_com_ipi), 0).label('total_value'),
+                func.coalesce(func.avg(PurchaseOrder.total_pedido_com_ipi), 0).label('avg_value'),
+                func.coalesce(
+                    func.sum(
+                        db.session.query(func.count(PurchaseItem.id))
+                        .filter(PurchaseItem.purchase_order_id == PurchaseOrder.id)
+                        .correlate(PurchaseOrder)
+                        .scalar_subquery()
+                    ), 0
+                ).label('item_count')
+            ).filter(
+                PurchaseOrder.dt_emis >= start_date,
+                PurchaseOrder.dt_emis <= end_date,
+                PurchaseOrder.func_nome.isnot(None)
+            ).group_by(
+                PurchaseOrder.func_nome
+            ).order_by(
+                func.coalesce(func.sum(PurchaseOrder.total_pedido_com_ipi), 0).desc()
+            ).limit(top_limit).all()
 
         buyer_data = [{
             'name': r.name or '—',
@@ -1904,13 +1980,13 @@ def dashboard_summary():
             'item_count': int(r.item_count or 0)  
         } for r in buyer_rows]
 
-        # Top suppliers
+        # Top suppliers - with buyer filter
         supplier_rows = db.session.query(
             PurchaseOrder.fornecedor_descricao.label('name'),
             func.count(PurchaseOrder.id).label('order_count'),
             func.coalesce(func.sum(PurchaseOrder.total_pedido_com_ipi), 0).label('total_value')
         ).filter(
-            PurchaseOrder.dt_emis >= start_date,
+            *order_filters,
             PurchaseOrder.fornecedor_descricao.isnot(None)
         ).group_by(
             PurchaseOrder.fornecedor_descricao
@@ -1924,13 +2000,13 @@ def dashboard_summary():
             'total_value': float(r.total_value or 0.0)
         } for r in supplier_rows]
 
-        # Top items by spend
+        # Top items by spend - with buyer filter
         item_rows = db.session.query(
             PurchaseItem.item_id,
             PurchaseItem.descricao,
             func.coalesce(func.sum(PurchaseItem.total), 0).label('total_spend')
         ).join(PurchaseOrder, PurchaseItem.purchase_order_id == PurchaseOrder.id).filter(
-            PurchaseOrder.dt_emis >= start_date
+            *order_filters
         ).group_by(
             PurchaseItem.item_id, PurchaseItem.descricao
         ).order_by(
@@ -1943,9 +2019,9 @@ def dashboard_summary():
             'total_spend': float(r.total_spend or 0.0)
         } for r in item_rows]
 
-        # Recent orders
+        # Recent orders - with buyer filter
         recent_orders_q = db.session.query(PurchaseOrder).filter(
-            PurchaseOrder.dt_emis >= start_date
+            *order_filters
         ).order_by(PurchaseOrder.dt_emis.desc()).limit(10).all()
 
         recent_orders = [{
@@ -1955,19 +2031,75 @@ def dashboard_summary():
             'func_nome': o.func_nome,
             'total_value': float(o.total_pedido_com_ipi or 0.0)
         } for o in recent_orders_q]
+
+        # Order fulfillment stats - with buyer filter
+        fulfilled_count = db.session.query(func.count()).select_from(PurchaseOrder).filter(
+            *order_filters,
+            PurchaseOrder.is_fulfilled == True
+        ).scalar() or 0
+        
+        pending_count = total_orders - fulfilled_count
+        fulfillment_rate = (fulfilled_count / total_orders * 100) if total_orders > 0 else 0
+
+        # Total quantity of items purchased - with buyer filter
+        total_quantity = db.session.query(
+            func.coalesce(func.sum(PurchaseItem.quantidade), 0)
+        ).join(
+            PurchaseOrder, PurchaseItem.purchase_order_id == PurchaseOrder.id
+        ).filter(*order_filters).scalar() or 0.0
+
+        # NFE statistics (if available) - date filter only (NFE doesn't link to buyer directly)
+        nfe_count = 0
+        nfe_total_value = 0.0
+        try:
+            nfe_count = db.session.query(func.count()).select_from(NFEData).filter(
+                NFEData.data_emissao >= start_date,
+                NFEData.data_emissao <= end_date
+            ).scalar() or 0
+            nfe_total_value = db.session.query(
+                func.coalesce(func.sum(NFEData.valor_total), 0)
+            ).filter(
+                NFEData.data_emissao >= start_date,
+                NFEData.data_emissao <= end_date
+            ).scalar() or 0.0
+        except Exception:
+            pass 
+
+        # Always get all purchasers for dropdown (without buyer filter)
+        all_purchasers_rows = db.session.query(
+            PurchaseOrder.func_nome.label('name')
+        ).filter(
+            PurchaseOrder.dt_emis >= start_date,
+            PurchaseOrder.dt_emis <= end_date,
+            PurchaseOrder.func_nome.isnot(None)
+        ).group_by(
+            PurchaseOrder.func_nome
+        ).order_by(
+            PurchaseOrder.func_nome
+        ).all()
+        
+        all_purchasers = [r.name for r in all_purchasers_rows if r.name]
+
         summary = jsonify({ 'summary': {
                 'total_orders': int(total_orders),
                 'total_items': int(total_items),
                 'total_value': float(total_value),
                 'avg_order_value': float(avg_order_value),
-                'total_suppliers': int(total_suppliers)
+                'total_suppliers': int(total_suppliers),
+                'total_quantity': float(total_quantity),
+                'fulfilled_orders': int(fulfilled_count),
+                'pending_orders': int(pending_count),
+                'fulfillment_rate': round(fulfillment_rate, 1),
+                'nfe_count': int(nfe_count),
+                'nfe_total_value': float(nfe_total_value)
             },
             'monthly_data': monthly_data,
             'daily_usage': daily_usage,
             'buyer_data': buyer_data,
             'supplier_data': supplier_data,
             'top_items': top_items,
-            'recent_orders': recent_orders
+            'recent_orders': recent_orders,
+            'all_purchasers': all_purchasers
         })
         return summary, 200
  
