@@ -549,6 +549,7 @@ const Register = () => {
                           <IconButton
                             size="small"
                             color="error"
+                          
                             onClick={() => handleDeleteUser(user.id)}
                             disabled={user.id === 1}
                           >

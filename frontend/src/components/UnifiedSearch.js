@@ -683,7 +683,7 @@ const UnifiedSearch = ({ onLogout }) => {
   const SEARCH_MODE_STORAGE_KEY = "searchModePreference";
   const SEARCH_PARAMS_STORAGE_KEY = "searchParamsPreference";
   const SHOW_SUGGESTIONS_STORAGE_KEY = "showSuggestionsPreference";
-  const PER_PAGE_OPTIONS = [50, 100, 200];
+  const PER_PAGE_OPTIONS = [50, 100, 200, 300, 500];
   const DEFAULT_ENHANCED_FIELDS = [
     "descricao",
     "item_id",
