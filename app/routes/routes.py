@@ -1733,6 +1733,8 @@ def get_danfe_pdf():
                     }
                 }), 200
 
+        # Use SIEG API to generate DANFE PDF
+        # Even if NFE is in database, SIEG generates the official DANFE format
         pdf_response = requests.get(
             f'https://api.sieg.com/api/Arquivos/GerarDanfeViaChave?xmlKey={xml_key}&api_key={Config.SIEG_API_KEY}',
             headers={'Accept': 'application/json'}
@@ -1741,8 +1743,7 @@ def get_danfe_pdf():
         if pdf_response.status_code != 200:
             return jsonify({'error': f'Error fetching DaNFe: {pdf_response.status_code} - {pdf_response.text}'}), pdf_response.status_code
         
-        else:
-            return jsonify(pdf_response.json()), 200
+        return jsonify(pdf_response.json()), 200
     
     except Exception as e:
         return jsonify({'error': f'Error: {str(e)}'}), 500
@@ -2248,6 +2249,142 @@ def get_nfe_data():
     except Exception as e:
         return jsonify({'error': f'Error: {str(e)}'}), 500
 
+
+@bp.route('/get_nfe_by_number', methods=['GET'])
+@login_required
+def get_nfe_by_number():
+    """
+    Find NFE in the database by its number (num_nf).
+    Uses supplier name/CNPJ and date proximity for accurate matching when multiple NFEs exist.
+    
+    Parameters:
+    - num_nf (required): The NFE number
+    - fornecedor_id (optional): The supplier's ID from purchase order
+    - fornecedor_nome (optional): The supplier's name for fuzzy matching
+    - dt_ent (optional): The entry date for date proximity matching (YYYY-MM-DD)
+    
+    Returns the NFE chave if found, or an error if not found.
+    """
+    from app.models import NFEData, NFEEmitente, Supplier
+    from fuzzywuzzy import fuzz
+    from datetime import datetime, timedelta
+    
+    num_nf = request.args.get('num_nf')
+    fornecedor_id = request.args.get('fornecedor_id')
+    fornecedor_nome = request.args.get('fornecedor_nome')
+    dt_ent_str = request.args.get('dt_ent')
+    
+    if not num_nf:
+        return jsonify({'error': 'num_nf is required'}), 400
+    
+    try:
+        # Clean up num_nf - remove leading zeros for comparison
+        num_nf_clean = str(num_nf).lstrip('0')
+        
+        # Query NFEs with this number
+        nfes = NFEData.query.filter_by(numero=num_nf).all()
+        
+        # Also try with the cleaned version
+        if not nfes:
+            nfes = NFEData.query.filter(NFEData.numero == num_nf_clean).all()
+        
+        if not nfes:
+            return jsonify({'error': 'NFE not found in database', 'found': False}), 404
+        
+        # If only one NFE found, return it
+        if len(nfes) == 1:
+            nfe = nfes[0]
+            return jsonify({
+                'found': True,
+                'chave': nfe.chave,
+                'numero': nfe.numero,
+                'data_emissao': nfe.data_emissao.isoformat() if nfe.data_emissao else None,
+                'valor': nfe.valor_total,
+                'fornecedor': nfe.emitente.nome if nfe.emitente else None
+            }), 200
+        
+        # Multiple NFEs with same number - use supplier matching and date proximity
+        
+        # Get supplier CNPJ from database if fornecedor_id is provided
+        fornecedor_cnpj = None
+        if fornecedor_id:
+            supplier = Supplier.query.filter(Supplier.cod_for == str(fornecedor_id)).first()
+            if supplier and supplier.nvl_forn_cnpj_forn_cpf:
+                fornecedor_cnpj = ''.join(filter(str.isdigit, str(supplier.nvl_forn_cnpj_forn_cpf)))
+        
+        # Parse entry date if provided
+        dt_ent = None
+        if dt_ent_str:
+            try:
+                dt_ent = datetime.strptime(dt_ent_str[:10], '%Y-%m-%d')
+            except:
+                pass
+        
+        # Score each NFE based on supplier match and date proximity
+        scored_nfes = []
+        for nfe in nfes:
+            score = 0
+            
+            # 1. CNPJ match (highest priority - 100 points)
+            if fornecedor_cnpj and nfe.emitente and nfe.emitente.cnpj:
+                emit_cnpj_clean = ''.join(filter(str.isdigit, str(nfe.emitente.cnpj)))
+                if emit_cnpj_clean == fornecedor_cnpj:
+                    score += 100
+            
+            # 2. Supplier name fuzzy match (50 points max)
+            if fornecedor_nome and nfe.emitente and nfe.emitente.nome:
+                name_ratio = fuzz.token_set_ratio(
+                    fornecedor_nome.lower(),
+                    nfe.emitente.nome.lower()
+                )
+                score += (name_ratio / 100) * 50  # 0-50 points
+            
+            # 3. Date proximity (30 points max - closer dates score higher)
+            if dt_ent and nfe.data_emissao:
+                nfe_date = nfe.data_emissao
+                if isinstance(nfe_date, datetime):
+                    nfe_date = nfe_date.date() if hasattr(nfe_date, 'date') else nfe_date
+                if isinstance(dt_ent, datetime):
+                    dt_ent_date = dt_ent.date()
+                else:
+                    dt_ent_date = dt_ent
+                    
+                try:
+                    days_diff = abs((nfe_date - dt_ent_date).days)
+                    if days_diff <= 7:
+                        score += 30  # Within a week
+                    elif days_diff <= 30:
+                        score += 20  # Within a month
+                    elif days_diff <= 90:
+                        score += 10  # Within 3 months
+                    # More than 90 days = 0 points
+                except:
+                    pass
+            
+            scored_nfes.append((nfe, score))
+        
+        # Sort by score (highest first), then by date (most recent first)
+        scored_nfes.sort(key=lambda x: (-x[1], -(x[0].data_emissao.timestamp() if x[0].data_emissao else 0)))
+        
+        # Return the best match
+        best_nfe = scored_nfes[0][0]
+        best_score = scored_nfes[0][1]
+        
+        return jsonify({
+            'found': True,
+            'chave': best_nfe.chave,
+            'numero': best_nfe.numero,
+            'data_emissao': best_nfe.data_emissao.isoformat() if best_nfe.data_emissao else None,
+            'valor': best_nfe.valor_total,
+            'fornecedor': best_nfe.emitente.nome if best_nfe.emitente else None,
+            'match_score': best_score,
+            'total_matches': len(nfes)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Error: {str(e)}'}), 500
+
+
 @bp.route('/sync_nfe', methods=['POST'])
 @login_required
 def sync_nfe_api():
@@ -2269,29 +2406,31 @@ def match_purchase_nfe():
     Find NFEs that match a purchase order and score their similarity.
     
     Parameters:
-    - nfe_id (optional): If provided, only score that specific NFE
-    - max_results (optional): Maximum number of matches to return
+    - cod_pedc (required): The purchase order code
+    - cod_emp1 (required): The company code
+    - max_results (optional): Maximum number of matches to return (default: 10)
+    
+    Returns a list of NFEs scored by how well they fulfill the purchase order.
     """
     from app.utils import score_purchase_nfe_match
-    cod_pedc = request.args.get('cod_pedc', type=int)
+    cod_pedc = request.args.get('cod_pedc')
     cod_emp1 = request.args.get('cod_emp1')
-    nfe_id = request.args.get('nfe_id', type=int)
-    max_results = request.args.get('max_results', default=5, type=int)
+    max_results = request.args.get('max_results', default=10, type=int)
     
-    results = score_purchase_nfe_match(cod_pedc, nfe_id, cod_emp1)
+    result = score_purchase_nfe_match(cod_pedc, cod_emp1)
     
-    # Handle error responses
-    if isinstance(results, dict) and 'error' in results:
-        return jsonify(results), 400
-        
-    # Limit results if needed
-    if max_results and len(results) > max_results:
-        results = results[:max_results]
+    if isinstance(result, dict) and 'error' in result:
+        return jsonify(result), 400
+    
+    # Limit matches if needed
+    matches = result.get('matches', [])
+    if max_results and len(matches) > max_results:
+        result['matches'] = matches[:max_results]
     
     return jsonify({
-        'purchase_id': cod_pedc,
-        'matches_found': len(results),
-        'results': results
+        'purchase_order': result.get('purchase_order'),
+        'matches_found': len(result.get('matches', [])),
+        'matches': result.get('matches', [])
     }), 200
 
 @bp.route('/user_purchases', methods=['GET'])
@@ -2409,61 +2548,6 @@ def get_user_purchases():
     return jsonify(result), 200
 
 
-@bp.route('/assign_nfe_to_item', methods=['POST'])
-@login_required
-def assign_nfe_to_item():
-    data = request.json
-    
-    if not data or not all(k in data for k in ['purchase_id', 'item_id']):
-        return jsonify({'error': 'Missing required fields'}), 400
-    
-    purchase_id = data.get('purchase_id')
-    item_id = data.get('item_id')
-    nfe_id = data.get('nfe_id')
-    quantity = data.get('quantity', 0)
-    mark_as_completed = data.get('mark_as_completed', False)
-    
-    try:
-        purchase = PurchaseOrder.query.get(purchase_id)
-        if not purchase:
-            return jsonify({'error': 'Purchase order not found'}), 404
-            
-        item = PurchaseItem.query.get(item_id)
-        if not item:
-            return jsonify({'error': 'Purchase item not found'}), 404
-            
-        if nfe_id:
-            nfe = NFEData.query.get(nfe_id)
-            if not nfe:
-                return jsonify({'error': 'NFE not found'}), 404
-                
-            nf_entry = NFEntry(
-                cod_emp1=purchase.cod_emp1,
-                cod_pedc=item.cod_pedc,
-                linha=item.linha,
-                num_nf=nfe.numero,
-                dt_ent=nfe.data_emissao,
-                qtde=str(quantity)
-            )
-            db.session.add(nf_entry)
-            
-        # Update item's fulfilled quantity
-        if mark_as_completed or nfe_id:
-            if item.qtde_atendida is None:
-                item.qtde_atendida = quantity
-            else:
-                item.qtde_atendida += quantity
-                
-            # Check if order is now fulfilled
-            purchase.is_fulfilled = check_order_fulfillment(purchase.id)
-            
-        db.session.commit()
-        
-        return jsonify({'message': 'Item successfully marked as completed/invoiced'}), 200
-    
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
 
 @bp.route('/view_danfe_template/<int:nfe_id>', methods=['GET'])
 @login_required

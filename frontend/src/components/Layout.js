@@ -18,15 +18,15 @@ import {
   useTheme,
 } from "@mui/material";
 import {
-  Dashboard as DashboardIcon,
+  Assessment as AssessmentIcon,
   Search as SearchIcon,
-  Compare as CompareIcon,
-  Upload as UploadIcon,
+  RequestQuote as RequestQuoteIcon,
   Logout as LogoutIcon,
   Menu as MenuIcon,
   ChevronLeft as ChevronLeftIcon,
   Settings as SettingsIcon,
   Key as KeyIcon,
+  Sync as SyncIcon,
 } from "@mui/icons-material";
 
 const DRAWER_WIDTH = 260;
@@ -45,12 +45,6 @@ const Layout = ({ onLogout }) => {
 
   const menuItems = [
     {
-      text: "Dashboard",
-      icon: <DashboardIcon />,
-      path: "/dashboard",
-      description: "Visão geral e métricas",
-    },
-    {
       text: "Pedidos",
       icon: <SearchIcon />,
       path: "/search",
@@ -58,15 +52,21 @@ const Layout = ({ onLogout }) => {
     },
     {
       text: "Cotações",
-      icon: <CompareIcon />,
+      icon: <RequestQuoteIcon />,
       path: "/quotation-analyzer",
       description: "Analisar cotações",
     },
     {
-      text: "Importar",
-      icon: <UploadIcon />,
+      text: "Atualizar",
+      icon: <SyncIcon />,
       path: "/import",
-      description: "Importar arquivos XML",
+      description: "Atualizar base de dados",
+    },
+    {
+      text: "Relatórios",
+      icon: <AssessmentIcon />,
+      path: "/dashboard",
+      description: "Visão geral e métricas",
     },
   ];
 

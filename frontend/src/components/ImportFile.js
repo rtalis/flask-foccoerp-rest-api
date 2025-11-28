@@ -286,7 +286,10 @@ const ImportFile = () => {
       >
         <div className="import-header">
           <h1>Importar Arquivos</h1>
-          <p>Arraste e solte arquivos XML aqui ou clique para selecionar.</p>
+          <p>
+            Importe relatórios XML do FoccoERP para sincronizar pedidos de
+            compra, cotações e informações de fornecedores.
+          </p>
         </div>
 
         <div className="import-actions">
