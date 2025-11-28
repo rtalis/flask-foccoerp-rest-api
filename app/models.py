@@ -430,3 +430,62 @@ class NFEDuplicata(db.Model):
     numero = db.Column(db.String(50))  # nDup
     data_vencimento = db.Column(db.Date)  # dVenc
     valor = db.Column(db.Float)  # vDup
+
+
+class PurchaseItemNFEMatch(db.Model):
+    """
+    Auxiliary table to store potential NFE item matches for unfulfilled purchase items.
+    This table is populated by a background task and cleaned when items are fulfilled.
+    Each row represents a potential match between a purchase item and an NFE item.
+    """
+    __tablename__ = 'purchase_item_nfe_matches'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    
+    # Purchase item reference
+    purchase_item_id = db.Column(db.Integer, db.ForeignKey('purchase_items.id'), nullable=False, index=True)
+    cod_pedc = db.Column(db.String(50), nullable=False, index=True)
+    cod_emp1 = db.Column(db.String(20), nullable=False, index=True)
+    item_seq = db.Column(db.Integer)  # Item sequence in the purchase order
+    
+    # NFE reference
+    nfe_id = db.Column(db.Integer, db.ForeignKey('nfe_data.id'), nullable=False)
+    nfe_item_id = db.Column(db.Integer, db.ForeignKey('nfe_itens.id'))
+    nfe_chave = db.Column(db.String(44), nullable=False, index=True)
+    nfe_numero = db.Column(db.String(20))
+    
+    # Match details
+    match_score = db.Column(db.Float, nullable=False)  # 0-100 score
+    
+    # Item matching details
+    description_similarity = db.Column(db.Float)  # 0-100 fuzzy match score
+    quantity_match = db.Column(db.Boolean)  # True if quantities match
+    price_diff_pct = db.Column(db.Float)  # Price difference percentage
+    
+    # PO item info for quick access
+    po_item_descricao = db.Column(db.String(500))
+    po_item_quantidade = db.Column(db.Float)
+    po_item_preco = db.Column(db.Float)
+    
+    # NFE item info for quick access
+    nfe_item_descricao = db.Column(db.String(500))
+    nfe_item_quantidade = db.Column(db.Float)
+    nfe_item_preco = db.Column(db.Float)
+    
+    # NFE general info
+    nfe_fornecedor = db.Column(db.String(255))
+    nfe_data_emissao = db.Column(db.DateTime)
+    
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    
+    # Relationships
+    purchase_item = db.relationship('PurchaseItem', backref=db.backref('nfe_matches', lazy='dynamic'))
+    nfe = db.relationship('NFEData', backref=db.backref('purchase_item_matches', lazy='dynamic'))
+    nfe_item = db.relationship('NFEItem', backref=db.backref('purchase_matches', lazy='dynamic'))
+    
+    __table_args__ = (
+        db.UniqueConstraint('purchase_item_id', 'nfe_item_id', name='uq_purchase_item_nfe_match'),
+        db.Index('ix_purchase_item_nfe_match_score', 'purchase_item_id', 'match_score'),
+    )
