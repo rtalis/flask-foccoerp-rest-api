@@ -443,7 +443,7 @@ class PurchaseItemNFEMatch(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     
     # Purchase item reference
-    purchase_item_id = db.Column(db.Integer, db.ForeignKey('purchase_items.id'), nullable=False, index=True)
+    purchase_item_id = db.Column(db.Integer, db.ForeignKey('purchase_items.id', ondelete='CASCADE'), nullable=False, index=True)
     cod_pedc = db.Column(db.String(50), nullable=False, index=True)
     cod_emp1 = db.Column(db.String(20), nullable=False, index=True)
     item_seq = db.Column(db.Integer)  # Item sequence in the purchase order
@@ -452,7 +452,7 @@ class PurchaseItemNFEMatch(db.Model):
     nfe_id = db.Column(db.Integer, db.ForeignKey('nfe_data.id'), nullable=False)
     nfe_item_id = db.Column(db.Integer, db.ForeignKey('nfe_itens.id'))
     nfe_chave = db.Column(db.String(44), nullable=False, index=True)
-    nfe_numero = db.Column(db.String(20))
+    nfe_numero = db.Column(db.String(100)) 
     
     # Match details
     match_score = db.Column(db.Float, nullable=False)  # 0-100 score

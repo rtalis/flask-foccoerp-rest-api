@@ -39,7 +39,7 @@ def sync_nfe_for_yesterday():
         
         # Calculate date range for yesterday
         today = datetime.now().date()
-        yesterday = today - timedelta(days=4) 
+        yesterday = today - timedelta(days=8) 
         start_date_str = yesterday.strftime('%Y-%m-%d')
         end_date_str = today.strftime('%Y-%m-%d')
         
@@ -68,17 +68,10 @@ def sync_nfe_for_yesterday():
                 # Prepare request to SIEG API
                 sieg_request_data = {
                     "XmlType": 1,  # 1 for NFE
-                    "Take": 0,
-                    "Skip": 0,
                     "DataEmissaoInicio": start_date_str,
                     "DataEmissaoFim": end_date_str,
-                    "CnpjDest": cnpj,  # Company as recipient
-                    "CnpjEmit": "",
-                    "CnpjRem": "",
-                    "CnpjTom": "",
-                    "Tag": "",
-                    "Downloadevent": True,
-                    "TypeEvent": 0
+                    "CnpjDest": cnpj,  
+                
                 }
                 
                 # Make request to SIEG API
