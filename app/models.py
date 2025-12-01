@@ -443,7 +443,7 @@ class PurchaseItemNFEMatch(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     
     # Purchase item reference
-    purchase_item_id = db.Column(db.Integer, db.ForeignKey('purchase_items.id', ondelete='CASCADE'), nullable=False, index=True)
+    purchase_item_id = db.Column(db.Integer, db.ForeignKey('purchase_items.id'), nullable=False, index=True)
     cod_pedc = db.Column(db.String(50), nullable=False, index=True)
     cod_emp1 = db.Column(db.String(20), nullable=False, index=True)
     item_seq = db.Column(db.Integer)  # Item sequence in the purchase order

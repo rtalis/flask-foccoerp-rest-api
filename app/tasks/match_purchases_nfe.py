@@ -84,11 +84,29 @@ def get_unfulfilled_items_for_order(order):
 def clean_fulfilled_items():
     """
     Remove entries from PurchaseItemNFEMatch for items that are now fulfilled.
+    Also cleans matches for orders that are now fulfilled.
     """
+    deleted_count = 0
+    
+    # First, clean matches for fulfilled orders
+    fulfilled_order_matches = db.session.query(PurchaseItemNFEMatch).join(
+        PurchaseItem, PurchaseItemNFEMatch.purchase_item_id == PurchaseItem.id
+    ).join(
+        PurchaseOrder, PurchaseItem.purchase_order_id == PurchaseOrder.id
+    ).filter(
+        PurchaseOrder.is_fulfilled == True
+    ).all()
+    
+    for match in fulfilled_order_matches:
+        db.session.delete(match)
+        deleted_count += 1
+    
+    if fulfilled_order_matches:
+        db.session.commit()
+        logger.info(f"Cleaned {len(fulfilled_order_matches)} matches from fulfilled orders")
+    
     # Get all unique purchase_item_ids from the match table
     matches = db.session.query(PurchaseItemNFEMatch.purchase_item_id).distinct().all()
-    
-    deleted_count = 0
     
     for (item_id,) in matches:
         # Check if the purchase item is now fulfilled
@@ -233,20 +251,29 @@ def store_item_matches(order, nfe_match, unfulfilled_items, min_score=80):
                     price_diff = abs(item_match['nfe_price'] - item_match['po_price']) / item_match['po_price'] * 100
             
             if existing:
-                # Update if new score is better
+                # Always update existing match with latest data
+                # Update score only if new score is better
                 if item_score > existing.match_score:
                     existing.match_score = item_score
-                    existing.description_similarity = desc_similarity
-                    existing.quantity_match = qty_match
-                    existing.price_diff_pct = price_diff
-                    existing.nfe_item_id = nfe_item_id
-                    existing.nfe_item_descricao = item_match.get('nfe_item_desc', '')
-                    existing.nfe_item_quantidade = item_match.get('nfe_qty')
-                    existing.nfe_item_preco = item_match.get('nfe_price')
-                    existing.nfe_fornecedor = nfe_supplier
-                    existing.nfe_data_emissao = nfe.data_emissao if nfe else None
-                    existing.updated_at = datetime.now()
-                    stored_count += 1
+                
+                # Always update these fields with latest data
+                existing.description_similarity = desc_similarity
+                existing.quantity_match = qty_match
+                existing.price_diff_pct = price_diff
+                existing.nfe_item_id = nfe_item_id
+                existing.nfe_item_descricao = item_match.get('nfe_item_desc', '')
+                existing.nfe_item_quantidade = item_match.get('nfe_qty')
+                existing.nfe_item_preco = item_match.get('nfe_price')
+                existing.nfe_fornecedor = nfe_supplier
+                existing.nfe_data_emissao = nfe.data_emissao if nfe else None
+                existing.nfe_numero = nfe_numero
+                existing.nfe_chave = nfe_chave
+                existing.po_item_descricao = item.descricao
+                existing.po_item_quantidade = float(item.quantidade or 0)
+                existing.po_item_preco = float(item.preco_unitario or 0)
+                existing.updated_at = datetime.now()
+                stored_count += 1
+                logger.debug(f"Updated existing match for item {item.id}")
             else:
                 # Create new entry
                 new_match = PurchaseItemNFEMatch(
@@ -324,18 +351,6 @@ def match_purchases_with_nfes(days=60, min_score=80):
                 unfulfilled_items = get_unfulfilled_items_for_order(order)
                 
                 if not unfulfilled_items:
-                    stats['orders_processed'] += 1
-                    continue
-                
-                # Check if we already have matches for this order's unfulfilled items
-                # Skip if all unfulfilled items already have a match
-                unfulfilled_item_ids = [item_data['item'].id for item_data in unfulfilled_items]
-                existing_matches = PurchaseItemNFEMatch.query.filter(
-                    PurchaseItemNFEMatch.purchase_item_id.in_(unfulfilled_item_ids)
-                ).count()
-                
-                if existing_matches >= len(unfulfilled_items):
-                    # All items already have matches, skip
                     stats['orders_processed'] += 1
                     continue
                 

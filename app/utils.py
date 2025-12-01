@@ -1110,7 +1110,17 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
     
     supplier_name = po_data['fornecedor'].lower()
     
-    all_nfes = NFEData.query.all()
+    po_date = po_data.get('dt_emis')
+    if po_date:
+        from datetime import timedelta
+        date_start = po_date - timedelta(days=30)
+        date_end = po_date + timedelta(days=90)
+        all_nfes = NFEData.query.filter(
+            NFEData.data_emissao >= date_start,
+            NFEData.data_emissao <= date_end
+        ).all()
+    else:
+      return {'error': 'Purchase order emission date is required for NFe matching'}
     
     # Helper functions
     def clean_digits(text):
