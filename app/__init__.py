@@ -35,6 +35,8 @@ def create_app():
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'
 
+    CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
+
     with app.app_context():
         from .routes import routes
         from .routes import auth
@@ -42,7 +44,6 @@ def create_app():
         app.register_blueprint(auth.auth_bp, url_prefix='/auth')
 
         db.create_all()
-    CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
     return app
 

@@ -294,6 +294,29 @@ def generate_jwt_token():
     }), 200
 
 
+@auth_bp.route('/users/<int:user_id>/token', methods=['POST'])
+@login_required
+@limiter.limit("5 per 5 seconds")
+def generate_token_for_user(user_id):
+    """Generate a token for a specific user (admin only)"""
+    if getattr(current_user, 'role', 'viewer') != 'admin':
+        return jsonify({'error': 'Forbidden'}), 403
+
+    target_user = User.query.get(user_id)
+    if not target_user:
+        return jsonify({'error': 'User not found'}), 404
+
+    minutes = (request.get_json() or {}).get('expires_in')
+    token, actual_minutes, record = _issue_token_for_user(target_user, minutes, current_user)
+
+    return jsonify({
+        'token': token,
+        'token_id': record.id,
+        'expires_in_minutes': actual_minutes,
+        'expires_at': record.expires_at.isoformat()
+    }), 200
+
+
 @auth_bp.route('/tokens', methods=['GET'])
 @login_required
 @limiter.limit("10 per minute")

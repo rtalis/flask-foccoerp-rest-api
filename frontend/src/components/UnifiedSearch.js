@@ -23,7 +23,6 @@ import {
   RadioGroup,
   FormControlLabel,
   FormControl,
-  FormLabel,
   Checkbox,
   Select,
   MenuItem,
@@ -43,6 +42,7 @@ import {
   AccordionSummary,
   AccordionDetails,
   Skeleton,
+  Tooltip,
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
@@ -51,6 +51,9 @@ import SearchIcon from "@mui/icons-material/Search";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import ReceiptIcon from "@mui/icons-material/Receipt";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import TuneIcon from "@mui/icons-material/Tune";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import ScheduleIcon from "@mui/icons-material/Schedule";
 
 function PurchaseRow(props) {
   const {
@@ -66,6 +69,9 @@ function PurchaseRow(props) {
   const [nfeData, setNfeData] = useState(null);
   const [loadingNfe, setLoadingNfe] = useState(false);
   const [showNfeDialog, setShowNfeDialog] = useState(false);
+  const [showNfNotFoundDialog, setShowNfNotFoundDialog] = useState(false);
+  const [nfNotFoundInfo, setNfNotFoundInfo] = useState(null);
+  const [loadingDanfeNf, setLoadingDanfeNf] = useState(null); // Track which NF is loading
 
   const normalizeNumber = (value) => {
     if (value === null || value === undefined) {
@@ -239,6 +245,97 @@ function PurchaseRow(props) {
 
   const handleDialogClose = () => {
     setShowNfeDialog(false);
+  };
+
+  // Handle clicking on the DANFE icon next to an NFE number
+  const handleDanfeIconClick = async (nfEntry) => {
+    setLoadingDanfeNf(nfEntry.num_nf); // Set loading for this specific NF
+    try {
+      // First, try to find the NFE in the database by its number
+      // Pass supplier info and entry date for accurate matching when multiple NFEs exist
+      const response = await axios.get(
+        `${process.env.REACT_APP_API_URL}/api/get_nfe_by_number`,
+        {
+          params: {
+            num_nf: nfEntry.num_nf,
+            fornecedor_id: purchase.order.fornecedor_id,
+            fornecedor_nome: purchase.order.fornecedor_descricao,
+            dt_ent: nfEntry.dt_ent,
+          },
+          withCredentials: true,
+        }
+      );
+
+      if (response.data && response.data.found && response.data.chave) {
+        // NFE found in database, open DANFE directly
+        setLoadingDanfeNf(null); // Clear loading before opening new window
+        handleNfeClick({
+          chave: response.data.chave,
+          numero: response.data.numero || nfEntry.num_nf,
+        });
+      } else {
+        // NFE not found, try to sync from SIEG first
+        await syncAndRetryDanfe(nfEntry);
+      }
+    } catch (error) {
+      // If error (likely 404), try to sync from SIEG and retry
+      console.log("NFE not found in database, syncing from SIEG...");
+      await syncAndRetryDanfe(nfEntry);
+    } finally {
+      setLoadingDanfeNf(null); // Always clear loading state
+    }
+  };
+
+  // Sync NFEs from SIEG and retry finding the DANFE
+  const syncAndRetryDanfe = async (nfEntry) => {
+    try {
+      // Call nfe_by_purchase to sync NFEs from SIEG to database
+      await axios.get(`${process.env.REACT_APP_API_URL}/api/nfe_by_purchase`, {
+        params: { cod_pedc: purchase.order.cod_pedc },
+        withCredentials: true,
+      });
+
+      // Now retry finding the NFE in the database
+      const retryResponse = await axios.get(
+        `${process.env.REACT_APP_API_URL}/api/get_nfe_by_number`,
+        {
+          params: {
+            num_nf: nfEntry.num_nf,
+            fornecedor_id: purchase.order.fornecedor_id,
+            fornecedor_nome: purchase.order.fornecedor_descricao,
+            dt_ent: nfEntry.dt_ent,
+          },
+          withCredentials: true,
+        }
+      );
+
+      if (
+        retryResponse.data &&
+        retryResponse.data.found &&
+        retryResponse.data.chave
+      ) {
+        // NFE found after sync, open DANFE
+        handleNfeClick({
+          chave: retryResponse.data.chave,
+          numero: retryResponse.data.numero || nfEntry.num_nf,
+        });
+      } else {
+        setNfNotFoundInfo({
+          num_nf: nfEntry.num_nf,
+          fornecedor: purchase.order.fornecedor_descricao,
+          cod_pedc: purchase.order.cod_pedc,
+        });
+        setShowNfNotFoundDialog(true);
+      }
+    } catch (syncError) {
+      console.error("Error syncing NFEs:", syncError);
+      setNfNotFoundInfo({
+        num_nf: nfEntry.num_nf,
+        fornecedor: purchase.order.fornecedor_descricao,
+        cod_pedc: purchase.order.cod_pedc,
+      });
+      setShowNfNotFoundDialog(true);
+    }
   };
 
   return (
@@ -494,7 +591,42 @@ function PurchaseRow(props) {
                         >
                           {purchase.order.nfes.map((nf) =>
                             nf.linha == item.linha && nf.num_nf ? (
-                              <div key={nf.id}>{nf.num_nf}</div>
+                              <div
+                                key={nf.id}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                }}
+                              >
+                                <span>{nf.num_nf}</span>
+                                <Tooltip
+                                  title={
+                                    loadingDanfeNf === nf.num_nf
+                                      ? "Carregando..."
+                                      : "Visualizar DANFE"
+                                  }
+                                >
+                                  <span>
+                                    <IconButton
+                                      size="small"
+                                      color="primary"
+                                      onClick={() => handleDanfeIconClick(nf)}
+                                      disabled={loadingDanfeNf === nf.num_nf}
+                                      sx={{ padding: "2px" }}
+                                    >
+                                      {loadingDanfeNf === nf.num_nf ? (
+                                        <CircularProgress size={16} />
+                                      ) : (
+                                        <PictureAsPdfIcon
+                                          fontSize="small"
+                                          sx={{ fontSize: "16px" }}
+                                        />
+                                      )}
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                              </div>
                             ) : null
                           )}
                         </TableCell>
@@ -630,6 +762,71 @@ function PurchaseRow(props) {
           <Button onClick={handleDialogClose}>Fechar</Button>
         </DialogActions>
       </Dialog>
+
+      {/* NF Not Found Dialog */}
+      <Dialog
+        open={showNfNotFoundDialog}
+        onClose={() => setShowNfNotFoundDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <ReceiptIcon color="warning" />
+          Nota Fiscal Não Encontrada
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ py: 2 }}>
+            <Typography variant="body1" gutterBottom>
+              A nota fiscal <strong>{nfNotFoundInfo?.num_nf}</strong> não foi
+              encontrada no sistema SIEG.
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+              Isso pode ocorrer por alguns motivos:
+            </Typography>
+            <Box component="ul" sx={{ mt: 1, pl: 2 }}>
+              <Typography component="li" variant="body2" color="text.secondary">
+                <strong>Nota Fiscal de Serviço (NFS-e):</strong> O sistema SIEG
+                atualmente não suporta notas fiscais de serviço, apenas NF-e
+                (produtos).
+              </Typography>
+              <Typography
+                component="li"
+                variant="body2"
+                color="text.secondary"
+                sx={{ mt: 1 }}
+              >
+                <strong>Nota ainda não sincronizada:</strong> A nota pode não
+                ter sido transmitida ou processada ainda.
+              </Typography>
+              <Typography
+                component="li"
+                variant="body2"
+                color="text.secondary"
+                sx={{ mt: 1 }}
+              >
+                <strong>Fornecedor diferente:</strong> A nota pode ter sido
+                emitida por um CNPJ diferente do cadastrado.
+              </Typography>
+            </Box>
+            {nfNotFoundInfo && (
+              <Box sx={{ mt: 3, p: 2, bgcolor: "grey.100", borderRadius: 1 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Detalhes da busca:
+                </Typography>
+                <Typography variant="body2">
+                  Pedido: <strong>{nfNotFoundInfo.cod_pedc}</strong>
+                </Typography>
+                <Typography variant="body2">
+                  Fornecedor: <strong>{nfNotFoundInfo.fornecedor}</strong>
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowNfNotFoundDialog(false)}>Fechar</Button>
+        </DialogActions>
+      </Dialog>
     </React.Fragment>
   );
 }
@@ -659,7 +856,7 @@ const UnifiedSearch = () => {
     searchByDescricao: true,
     searchByAtendido: false,
     searchByNaoAtendido: false,
-    searchByNumNF: false,
+    searchByNumNF: true,
     min_value: "",
     max_value: "",
     valueSearchType: "item",
@@ -713,6 +910,40 @@ const UnifiedSearch = () => {
   const [showFulfilled, setShowFulfilled] = useState(true);
 
   const usingEnhanced = searchMode === "enhanced";
+
+  // Format date to readable format (e.g., "15 de Janeiro de 2025, 14:30")
+  const formatLastUpdated = (dateStr) => {
+    if (!dateStr) return "—";
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return dateStr;
+
+      const months = [
+        "Janeiro",
+        "Fevereiro",
+        "Março",
+        "Abril",
+        "Maio",
+        "Junho",
+        "Julho",
+        "Agosto",
+        "Setembro",
+        "Outubro",
+        "Novembro",
+        "Dezembro",
+      ];
+
+      const day = date.getDate();
+      const month = months[date.getMonth()];
+      const year = date.getFullYear();
+      const hours = date.getHours().toString().padStart(2, "0");
+      const minutes = date.getMinutes().toString().padStart(2, "0");
+
+      return `${day} de ${month} de ${year}, ${hours}:${minutes}`;
+    } catch {
+      return dateStr;
+    }
+  };
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -1094,79 +1325,136 @@ const UnifiedSearch = () => {
   ];
 
   return (
-    <Box sx={{ minHeight: "100%", bgcolor: "#f7f9fc", p: 3 }}>
-      {/* Header with title and last updated info */}
-      <Box
+    <Box sx={{ minHeight: "100vh", bgcolor: "#f5f7fa" }}>
+      {/* Header Section */}
+      <Paper
+        elevation={0}
         sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
+          p: 3,
+          mx: { xs: 2, md: 3 },
+          mt: { xs: 2, md: 3 },
           mb: 3,
-          pb: 2,
-          borderBottom: "1px solid #e0e0e0",
-          position: "relative",
+          background: "linear-gradient(135deg, #1a1f2e 0%, #2d3548 100%)",
+          borderRadius: 3,
+          color: "#fff",
         }}
       >
-        {/* Spacer for centering */}
-        <Box sx={{ flex: 1 }} />
-
-        <Typography
-          variant="h5"
-          fontWeight={600}
-          color="text.primary"
-          sx={{ textAlign: "center" }}
-        >
-          Buscar Pedidos
-        </Typography>
-
         <Box
           sx={{
-            flex: 1,
             display: "flex",
-            justifyContent: "flex-end",
-            alignItems: "center",
-            gap: 1,
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 2,
           }}
         >
-          <Typography variant="body2" color="text.secondary">
-            Atualizado em: {lastUpdated || "—"}
-          </Typography>
-          <Link
-            to="/import"
-            style={{
-              marginLeft: 8,
-              textDecoration: "none",
-              color: "#1976d2",
-              fontWeight: 500,
+          <Box>
+            <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>
+              Buscar Pedidos de Compra
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{ color: "rgba(255,255,255,0.7)", maxWidth: 450 }}
+            >
+              Pesquise por código, fornecedor, descrição de item ou nota fiscal.
+            </Typography>
+          </Box>
+
+          {/* Last Update Info */}
+          <Paper
+            elevation={0}
+            sx={{
+              px: 2.5,
+              py: 1.5,
+              bgcolor: "rgba(255,255,255,0.15)",
+              borderRadius: 2,
+              border: "1px solid rgba(255,255,255,0.2)",
+              minWidth: 200,
             }}
           >
-            Atualizar
-          </Link>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 2,
+              }}
+            >
+              <Box>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: "rgba(255,255,255,0.8)",
+                    display: "block",
+                    fontWeight: 500,
+                  }}
+                >
+                  Última atualização
+                </Typography>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.5,
+                    mt: 0.5,
+                  }}
+                >
+                  <ScheduleIcon sx={{ fontSize: 16, color: "#fff" }} />
+                  <Typography
+                    variant="body2"
+                    sx={{ fontWeight: 700, color: "#fff" }}
+                  >
+                    {formatLastUpdated(lastUpdated)}
+                  </Typography>
+                </Box>
+              </Box>
+              <Button
+                component={Link}
+                to="/import"
+                variant="outlined"
+                size="small"
+                startIcon={<RefreshIcon />}
+                sx={{
+                  color: "#fff",
+                  borderColor: "rgba(255,255,255,0.4)",
+                  textTransform: "none",
+                  fontWeight: 600,
+                  "&:hover": {
+                    borderColor: "#fff",
+                    bgcolor: "rgba(255,255,255,0.1)",
+                  },
+                }}
+              >
+                Atualizar
+              </Button>
+            </Box>
+          </Paper>
         </Box>
-      </Box>
+      </Paper>
 
-      <div className="unified-search">
-        <Box
+      <Box sx={{ px: { xs: 2, md: 3 }, pb: 3 }}>
+        {/* Search Box */}
+        <Paper
+          elevation={0}
           sx={{
-            display: "flex",
+            p: 3,
             mb: 3,
-            alignItems: "center",
-            gap: 2,
-            flexWrap: "wrap",
+            borderRadius: 3,
+            border: "1px solid",
+            borderColor: "divider",
           }}
         >
           <Box
             sx={{
               display: "flex",
+              gap: 2,
               alignItems: "center",
-              gap: 1,
-              flexGrow: 1,
-              minWidth: 320,
+              flexWrap: "wrap",
+              mb: 3,
             }}
           >
             <Autocomplete
-              sx={{ flexGrow: 1 }}
-              fullWidth
+              sx={{ flexGrow: 1, minWidth: 300 }}
               freeSolo
               options={showSuggestionsToggle ? suggestions : []}
               loading={showSuggestionsToggle && loadingSuggestions}
@@ -1184,21 +1472,16 @@ const UnifiedSearch = () => {
                 <TextField
                   {...params}
                   label="Buscar pedidos"
-                  sx={{ bgcolor: "#ffffff" }}
+                  placeholder="Ex.: motor 123, fornecedor, código..."
                   variant="outlined"
                   size="small"
-                  placeholder="Ex.: motor 123"
                   onKeyDown={handleKeyDown}
                   InputProps={{
                     ...params.InputProps,
                     endAdornment: (
                       <>
                         {showSuggestionsToggle && loadingSuggestions ? (
-                          <CircularProgress
-                            color="inherit"
-                            sx={{ mr: 1 }}
-                            size={18}
-                          />
+                          <CircularProgress color="inherit" size={18} />
                         ) : null}
                         {params.InputProps.endAdornment}
                       </>
@@ -1209,291 +1492,316 @@ const UnifiedSearch = () => {
             />
             <Button
               variant="contained"
-              color="primary"
               onClick={() => handleSearch(1)}
               startIcon={<SearchIcon />}
-              sx={{ whiteSpace: "nowrap" }}
+              sx={{
+                px: 3,
+                py: 1,
+                textTransform: "none",
+                fontWeight: 600,
+                bgcolor: "#1a1f2e",
+                "&:hover": { bgcolor: "#2d3548" },
+              }}
             >
               Buscar
             </Button>
           </Box>
-        </Box>
-        <Box
-          sx={{
-            display: "flex",
-            gap: 4,
-            mb: 3,
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
-          <FormControlLabel
-            control={
-              <Switch
-                checked={usingEnhanced}
-                onChange={handleModeToggle}
-                color="primary"
-              />
-            }
-            label={"Busca aprimorada"}
-            sx={{ mr: 1 }}
-          />
-          <FormControlLabel
-            control={
-              <Switch
-                checked={showSuggestionsToggle}
-                onChange={(event) => {
-                  const enabled = event.target.checked;
-                  setShowSuggestionsToggle(enabled);
-                  if (!enabled) {
-                    setSuggestions([]);
+
+          {/* Quick Filters - Pesquisar por... */}
+          <Box sx={{ mb: 2 }}>
+            <Typography
+              variant="subtitle2"
+              color="text.secondary"
+              sx={{ mb: 1 }}
+            >
+              Pesquisar por...
+            </Typography>
+            <Box
+              sx={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 1,
+                alignItems: "center",
+              }}
+            >
+              {searchFieldColumns.flat().map((field) => (
+                <FormControlLabel
+                  key={field.name}
+                  control={
+                    <Checkbox
+                      name={field.name}
+                      checked={searchParams[field.name]}
+                      onChange={handleChange}
+                      disabled={field.disabled}
+                      size="small"
+                    />
                   }
-                }}
-                color="primary"
-                disabled={!usingEnhanced}
-              />
-            }
-            label={
-              usingEnhanced
-                ? "Mostrar sugestões"
-                : "Mostrar sugestões (somente busca aprimorada)"
-            }
-            sx={{ mr: 1 }}
-          />
-          <Button
-            variant="outlined"
-            color="inherit"
-            size="small"
-            onClick={handleRestoreDefaults}
-          >
-            ⎚ Limpar filtros
-          </Button>
-        </Box>
-
-        <Box
-          sx={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: { xs: 2, md: 4 },
-            mb: 3,
-            alignItems: "flex-start",
-          }}
-        >
-          {/* Search fields section */}
-          <FormControl
-            component="fieldset"
-            sx={{ flex: "2 1 400px", minWidth: 280 }}
-          >
-            <FormLabel component="legend">Pesquisar por...</FormLabel>
-            <Grid container spacing={2} sx={{ mt: 1 }}>
-              {searchFieldColumns.map((column, columnIndex) => (
-                <Grid item xs={12} sm={4} key={`column-${columnIndex}`}>
-                  <Box sx={{ display: "flex", flexDirection: "column" }}>
-                    {column.map((field) => (
-                      <FormControlLabel
-                        key={field.name}
-                        control={
-                          <Checkbox
-                            name={field.name}
-                            checked={searchParams[field.name]}
-                            onChange={handleChange}
-                            disabled={field.disabled}
-                          />
-                        }
-                        label={field.label}
-                        sx={{ marginBottom: "-10px" }}
-                      />
-                    ))}
-                  </Box>
-                </Grid>
+                  label={<Typography variant="body2">{field.label}</Typography>}
+                  sx={{ mr: 2 }}
+                />
               ))}
-            </Grid>
-          </FormControl>
+            </Box>
+          </Box>
 
-          {/* Purchaser section */}
-          <FormControl
-            component="fieldset"
+          {/* Quick Filters Row 2 - Buyer selector and Busca exata */}
+          <Box
             sx={{
-              flex: "1 1 200px",
-              minWidth: { xs: "100%", sm: 200 },
-              maxWidth: { xs: "100%", sm: 300, md: 550 },
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 2,
+              alignItems: "center",
             }}
           >
-            <FormLabel component="legend" sx={{ mb: 1 }}>
-              Mostrar compradores
-            </FormLabel>
-            <Select
-              sx={{ mt: 1, mb: 2 }}
-              name="selectedFuncName"
-              value={searchParams.selectedFuncName}
-              onChange={handleChange}
+            <FormControl size="small" sx={{ minWidth: 200 }}>
+              <Select
+                value={searchParams.selectedFuncName}
+                onChange={handleChange}
+                name="selectedFuncName"
+                displayEmpty
+              >
+                <MenuItem value="todos">Todos os compradores</MenuItem>
+                {funcNames.map((funcName) => (
+                  <MenuItem key={funcName} value={funcName}>
+                    {funcName}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControlLabel
+              control={
+                <Checkbox
+                  name="exactSearch"
+                  checked={searchParams.exactSearch}
+                  onChange={handleChange}
+                  size="small"
+                />
+              }
+              label={<Typography variant="body2">Busca exata</Typography>}
+            />
+
+            <Button
+              variant="text"
+              color="inherit"
               size="small"
-              fullWidth
+              onClick={handleRestoreDefaults}
+              sx={{ textTransform: "none", ml: "auto" }}
             >
-              <MenuItem value="todos">Todos os compradores</MenuItem>
-              {funcNames.map((funcName) => (
-                <MenuItem key={funcName} value={funcName}>
-                  {funcName}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Box>
+              Limpar filtros
+            </Button>
+          </Box>
+        </Paper>
 
-        {/* Search precision section */}
-        {!usingEnhanced && (
-          <FormControl component="fieldset" sx={{ minWidth: "200px", mb: 3 }}>
-            <FormLabel component="legend">Precisão da busca</FormLabel>
-            <RadioGroup
-              name="searchPrecision"
-              value={searchParams.searchPrecision}
-              onChange={handleChange}
-            >
-              <FormControlLabel
-                value="precisa"
-                control={<Radio />}
-                label="Precisa"
-                sx={{ marginBottom: "-10px" }}
-              />
-              <FormControlLabel
-                value="fuzzy"
-                control={<Radio />}
-                label="Busca com erro de digitação"
-                sx={{ marginBottom: "-10px" }}
-              />
-              <FormControlLabel
-                value="tentar_a_sorte"
-                control={<Radio />}
-                label="Estou sem sorte"
-                sx={{ marginBottom: "-10px" }}
-              />
-            </RadioGroup>
-          </FormControl>
-        )}
-
+        {/* Advanced Filters Accordion */}
         <Accordion
+          elevation={0}
           sx={{
-            mb: 5,
-            bgcolor: (theme) => theme.palette.background.paper,
-            borderRadius: 2,
-            boxShadow: (theme) => theme.shadows[1],
+            mb: 3,
+            borderRadius: 3,
+            border: "1px solid",
+            borderColor: "divider",
+            "&:before": { display: "none" },
+            "&.Mui-expanded": { margin: 0, mb: 3 },
           }}
           disableGutters
         >
           <AccordionSummary
             expandIcon={<ExpandMoreIcon />}
             sx={{
-              bgcolor: (theme) => theme.palette.background.paper,
-              borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
-              borderTopLeftRadius: 8,
-              borderTopRightRadius: 8,
+              borderRadius: 3,
+              "&.Mui-expanded": {
+                borderBottomLeftRadius: 0,
+                borderBottomRightRadius: 0,
+              },
             }}
           >
-            <Typography variant="subtitle1">Filtros avançados</Typography>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <TuneIcon fontSize="small" color="action" />
+              <Typography variant="subtitle2" fontWeight={600}>
+                Filtros Avançados
+              </Typography>
+            </Box>
           </AccordionSummary>
-          <AccordionDetails
-            sx={{
-              bgcolor: (theme) => theme.palette.background.paper,
-              borderBottomLeftRadius: 8,
-              borderBottomRightRadius: 8,
-            }}
-          >
-            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-              {/* Value filter section */}
-              <FormControl component="fieldset" sx={{ flex: 1, minWidth: 240 }}>
-                <FormLabel component="legend">Filtrar por valor</FormLabel>
-                <RadioGroup
-                  name="valueSearchType"
-                  value={searchParams.valueSearchType}
-                  onChange={handleChange}
-                >
-                  <FormControlLabel
-                    value="item"
-                    control={<Radio />}
-                    label="Valor do Item"
-                    sx={{ marginBottom: "-10px" }}
-                  />
-                  <FormControlLabel
-                    value="order"
-                    control={<Radio />}
-                    label="Valor do Pedido"
-                    sx={{ marginBottom: "-10px" }}
-                  />
-                </RadioGroup>
-
-                <TextField
-                  sx={{ mb: 2, mt: 2 }}
-                  label="Valor mínimo"
-                  name="min_value"
-                  type="number"
-                  value={searchParams.min_value}
-                  onChange={handleChange}
-                  size="small"
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">R$</InputAdornment>
-                    ),
-                  }}
+          <AccordionDetails sx={{ pt: 0 }}>
+            <Divider sx={{ mb: 3 }} />
+            <Grid container spacing={4}>
+              {/* Search Mode Options */}
+              <Grid item xs={12} md={4}>
+                <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
+                  Modo de busca
+                </Typography>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={usingEnhanced}
+                      onChange={handleModeToggle}
+                      color="primary"
+                      size="small"
+                    />
+                  }
+                  label={
+                    <Typography variant="body2">
+                      {usingEnhanced ? "Busca aprimorada" : "Busca clássica"}
+                    </Typography>
+                  }
                 />
-                <TextField
-                  label="Valor máximo"
-                  name="max_value"
-                  type="number"
-                  value={searchParams.max_value}
-                  onChange={handleChange}
-                  size="small"
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">R$</InputAdornment>
-                    ),
-                  }}
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={showSuggestionsToggle}
+                      onChange={(e) => {
+                        setShowSuggestionsToggle(e.target.checked);
+                        if (!e.target.checked) setSuggestions([]);
+                      }}
+                      size="small"
+                      disabled={!usingEnhanced}
+                    />
+                  }
+                  label={
+                    <Typography variant="body2">Mostrar sugestões</Typography>
+                  }
                 />
-              </FormControl>
-
-              <FormControl component="fieldset" sx={{ flex: 1, minWidth: 240 }}>
-                <FormLabel component="legend">Filtrar por...</FormLabel>
                 <FormControlLabel
                   control={
                     <Switch
                       checked={!showFulfilled}
                       onChange={() => setShowFulfilled(!showFulfilled)}
-                      color="primary"
+                      color="warning"
+                      size="small"
                     />
                   }
-                  label={"Ocultar concluidos"}
-                  sx={{ mr: 1 }}
+                  label={
+                    <Typography variant="body2">Ocultar concluídos</Typography>
+                  }
                 />
-                <Divider sx={{ my: 1 }} />
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      name="ignoreDiacritics"
-                      checked={searchParams.ignoreDiacritics}
+              </Grid>
+
+              {/* Value Filters */}
+              <Grid item xs={12} md={4}>
+                <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
+                  Filtrar por valor
+                </Typography>
+                <RadioGroup
+                  name="valueSearchType"
+                  value={searchParams.valueSearchType}
+                  onChange={handleChange}
+                  row
+                >
+                  <FormControlLabel
+                    value="item"
+                    control={<Radio size="small" />}
+                    label={<Typography variant="body2">Item</Typography>}
+                  />
+                  <FormControlLabel
+                    value="order"
+                    control={<Radio size="small" />}
+                    label={<Typography variant="body2">Pedido</Typography>}
+                  />
+                </RadioGroup>
+                <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
+                  <TextField
+                    label="Mín"
+                    name="min_value"
+                    type="number"
+                    value={searchParams.min_value}
+                    onChange={handleChange}
+                    size="small"
+                    fullWidth
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">R$</InputAdornment>
+                      ),
+                    }}
+                  />
+                  <TextField
+                    label="Máx"
+                    name="max_value"
+                    type="number"
+                    value={searchParams.max_value}
+                    onChange={handleChange}
+                    size="small"
+                    fullWidth
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">R$</InputAdornment>
+                      ),
+                    }}
+                  />
+                </Box>
+              </Grid>
+
+              {/* Search Precision (classic mode) */}
+              <Grid item xs={12} md={4}>
+                {!usingEnhanced && (
+                  <>
+                    <Typography
+                      variant="subtitle2"
+                      fontWeight={600}
+                      sx={{ mb: 2 }}
+                    >
+                      Precisão da busca
+                    </Typography>
+                    <RadioGroup
+                      name="searchPrecision"
+                      value={searchParams.searchPrecision}
                       onChange={handleChange}
+                    >
+                      <FormControlLabel
+                        value="precisa"
+                        control={<Radio size="small" />}
+                        label={<Typography variant="body2">Precisa</Typography>}
+                      />
+                      <FormControlLabel
+                        value="fuzzy"
+                        control={<Radio size="small" />}
+                        label={
+                          <Typography variant="body2">
+                            Com tolerância
+                          </Typography>
+                        }
+                      />
+                      <FormControlLabel
+                        value="tentar_a_sorte"
+                        control={<Radio size="small" />}
+                        label={<Typography variant="body2">Ampla</Typography>}
+                      />
+                    </RadioGroup>
+                  </>
+                )}
+                {usingEnhanced && (
+                  <>
+                    <Typography
+                      variant="subtitle2"
+                      fontWeight={600}
+                      sx={{ mb: 2 }}
+                    >
+                      Outras opções
+                    </Typography>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          name="ignoreDiacritics"
+                          checked={searchParams.ignoreDiacritics}
+                          onChange={handleChange}
+                          size="small"
+                        />
+                      }
+                      label={
+                        <Typography variant="body2">
+                          Ignorar acentuação
+                        </Typography>
+                      }
                     />
-                  }
-                  label="Ignorar acentuação (diacríticos)"
-                  sx={{ marginBottom: "-10px" }}
-                />
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      name="exactSearch"
-                      checked={searchParams.exactSearch}
-                      onChange={handleChange}
-                    />
-                  }
-                  label="Busca por texto exato"
-                  sx={{ marginBottom: "-10px" }}
-                />
-              </FormControl>
-            </Box>
+                  </>
+                )}
+              </Grid>
+            </Grid>
           </AccordionDetails>
         </Accordion>
 
+        {/* Loading State */}
         {loading && (
-          <Box sx={{ mt: 3 }}>
-            {/* Shimmer loading skeleton for search results */}
+          <Box sx={{ mb: 3 }}>
             <Box sx={{ textAlign: "center", mb: 3 }}>
               <Skeleton
                 variant="text"
@@ -1503,11 +1811,18 @@ const UnifiedSearch = () => {
                 animation="wave"
               />
             </Box>
-
-            {/* Fake result rows */}
             {[1, 2, 3, 4, 5].map((i) => (
-              <Paper key={i} sx={{ mb: 2, overflow: "hidden" }}>
-                {/* Order header */}
+              <Paper
+                key={i}
+                elevation={0}
+                sx={{
+                  mb: 2,
+                  overflow: "hidden",
+                  borderRadius: 2,
+                  border: "1px solid",
+                  borderColor: "divider",
+                }}
+              >
                 <Box
                   sx={{
                     bgcolor: "#e8f5e9",
@@ -1530,151 +1845,78 @@ const UnifiedSearch = () => {
                     animation="wave"
                   />
                 </Box>
-
-                {/* Table header */}
-                <Box
-                  sx={{
-                    display: "flex",
-                    gap: 2,
-                    p: 2,
-                    borderBottom: "1px solid #eee",
-                  }}
-                >
-                  <Skeleton
-                    variant="text"
-                    width={100}
-                    height={20}
-                    animation="wave"
-                  />
-                  <Skeleton
-                    variant="text"
-                    width={80}
-                    height={20}
-                    animation="wave"
-                  />
-                  <Skeleton
-                    variant="text"
-                    width={250}
-                    height={20}
-                    animation="wave"
-                  />
-                  <Skeleton
-                    variant="text"
-                    width={80}
-                    height={20}
-                    animation="wave"
-                  />
-                  <Skeleton
-                    variant="text"
-                    width={100}
-                    height={20}
-                    animation="wave"
-                  />
-                  <Skeleton
-                    variant="text"
-                    width={60}
-                    height={20}
-                    animation="wave"
-                  />
-                  <Skeleton
-                    variant="text"
-                    width={80}
-                    height={20}
-                    animation="wave"
-                  />
-                </Box>
-
-                {/* Table rows */}
-                {[1, 2].map((j) => (
-                  <Box
-                    key={j}
-                    sx={{
-                      display: "flex",
-                      gap: 2,
-                      p: 2,
-                      borderBottom: "1px solid #f5f5f5",
-                    }}
-                  >
-                    <Skeleton
-                      variant="text"
-                      width={100}
-                      height={20}
-                      animation="wave"
-                    />
-                    <Skeleton
-                      variant="text"
-                      width={80}
-                      height={20}
-                      animation="wave"
-                    />
-                    <Skeleton
-                      variant="text"
-                      width={250}
-                      height={20}
-                      animation="wave"
-                    />
-                    <Skeleton
-                      variant="text"
-                      width={80}
-                      height={20}
-                      animation="wave"
-                    />
-                    <Skeleton
-                      variant="text"
-                      width={100}
-                      height={20}
-                      animation="wave"
-                    />
-                    <Skeleton
-                      variant="text"
-                      width={60}
-                      height={20}
-                      animation="wave"
-                    />
-                    <Skeleton
-                      variant="text"
-                      width={80}
-                      height={20}
-                      animation="wave"
-                    />
-                  </Box>
-                ))}
-
-                {/* Footer with observation and totals */}
-                <Box
-                  sx={{
-                    bgcolor: "#fafafa",
-                    p: 2,
-                    display: "flex",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <Skeleton
-                    variant="text"
-                    width={300}
-                    height={20}
-                    animation="wave"
-                  />
-                  <Skeleton
-                    variant="text"
-                    width={250}
-                    height={20}
-                    animation="wave"
-                  />
+                <Box sx={{ p: 2 }}>
+                  {[1, 2].map((j) => (
+                    <Box
+                      key={j}
+                      sx={{
+                        display: "flex",
+                        gap: 2,
+                        py: 1,
+                        borderBottom: j < 2 ? "1px solid #f0f0f0" : "none",
+                      }}
+                    >
+                      <Skeleton variant="text" width={80} animation="wave" />
+                      <Skeleton variant="text" width={60} animation="wave" />
+                      <Skeleton variant="text" width={200} animation="wave" />
+                      <Skeleton variant="text" width={80} animation="wave" />
+                      <Skeleton variant="text" width={100} animation="wave" />
+                    </Box>
+                  ))}
                 </Box>
               </Paper>
             ))}
           </Box>
         )}
 
-        <br></br>
+        {/* Results Summary */}
+        {!loading && (
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              mb: 2,
+              flexWrap: "wrap",
+              gap: 2,
+            }}
+          >
+            <Typography variant="body2" color="text.secondary" ref={resultsRef}>
+              <strong>{noResults}</strong> resultados encontrados • Página{" "}
+              <strong>{currentPage}</strong> de <strong>{totalPages}</strong>
+            </Typography>
 
-        <Typography align="center" variant="h6" gutterBottom ref={resultsRef}>
-          Mostrando {noResults} resultados. Pagina {currentPage} de {totalPages}
-          ⠀⠀⠀⠀⠀⠀⠀⠀⠀
-        </Typography>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                Por página:
+              </Typography>
+              <Select
+                value={perPage}
+                onChange={handlePerPageChange}
+                size="small"
+                sx={{ minWidth: 80 }}
+              >
+                {PER_PAGE_OPTIONS.map((option) => (
+                  <MenuItem key={option} value={option}>
+                    {option}
+                  </MenuItem>
+                ))}
+              </Select>
+            </Box>
+          </Box>
+        )}
 
-        <TableContainer component={Paper}>
+        {/* Results Table */}
+        <TableContainer
+          component={Paper}
+          elevation={0}
+          sx={{
+            borderRadius: 3,
+            border: "1px solid",
+            borderColor: "divider",
+            mb: 3,
+          }}
+        >
           <Table aria-label="collapsible table">
             <TableBody>
               {results.map((purchase) => (
@@ -1694,60 +1936,45 @@ const UnifiedSearch = () => {
             </TableBody>
           </Table>
         </TableContainer>
-        <Box
-          sx={{
-            display: "flex",
-            flexWrap: "wrap",
-            alignItems: "center",
-            gap: 2,
-            mt: 3,
-          }}
-        >
-          <Box sx={{ paddingRight: 10 }} />
+
+        {/* Pagination */}
+        {totalPages > 1 && (
           <Box
-            className="pagination"
             sx={{
               display: "flex",
               justifyContent: "center",
-              flexGrow: 1,
-              mb: { xs: 2, sm: 0 },
+              alignItems: "center",
+              gap: 1,
             }}
           >
-            <button
+            <Button
+              variant="outlined"
+              size="small"
               onClick={() => handlePageChange(currentPage - 1)}
               disabled={currentPage === 1}
+              sx={{ textTransform: "none" }}
             >
               Anterior
-            </button>
-            <span>
+            </Button>
+            <Typography variant="body2" sx={{ mx: 2 }}>
               Página {currentPage} de {totalPages}
-            </span>
-            <button
+            </Typography>
+            <Button
+              variant="outlined"
+              size="small"
               onClick={() => handlePageChange(currentPage + 1)}
               disabled={currentPage === totalPages}
+              sx={{ textTransform: "none" }}
             >
               Próxima
-            </button>
+            </Button>
           </Box>
-          <FormControl
-            sx={{ minWidth: 180, ml: { xs: 0, sm: "auto" } }}
-            size="small"
-          >
-            <FormLabel component="legend">Resultados por página</FormLabel>
-            <Select value={perPage} onChange={handlePerPageChange} size="small">
-              {PER_PAGE_OPTIONS.map((option) => (
-                <MenuItem key={option} value={option}>
-                  {option}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Box>
+        )}
 
         {selectedItemId && (
           <ItemScreen itemId={selectedItemId} onClose={handleCloseItemScreen} />
         )}
-      </div>
+      </Box>
     </Box>
   );
 };

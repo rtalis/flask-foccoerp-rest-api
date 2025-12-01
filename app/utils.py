@@ -1014,330 +1014,665 @@ def check_order_fulfillment_memory(items_data):
 
     return True
 
-def score_purchase_nfe_match(cod_pedc, nfe_id=None, cod_emp1=None):
+def score_purchase_nfe_match(cod_pedc, cod_emp1):
     """
-    Advanced matching for Purchase Orders vs NFEs.
+    Find and score NFEs that might fulfill a purchase order.
+    
+    Scoring Strategy (0-100 points):
+    - CNPJ Match (0-30 points): Supplier CNPJ matching
+    - Item Matching (0-35 points): Description, quantity, price matching
+    - Value Match (0-20 points): Total value alignment  
+    - PO Reference (0-15 points): PO number in NFe additional info
+    
     Handles:
-    1. Split Shipments (1 PO -> Multiple NFes) - via Composite Matching
-    2. Consolidated Invoices (Multiple POs -> 1 NFe) - via Subset Matching
-    3. Fuzzy Supplier Matching
+    - Fully fulfilled orders (all items have qtde_atendida == quantidade)
+    - Partially fulfilled orders (some items still need NFes)
+    - Single NFe fulfilling entire order
+    - Multiple NFes fulfilling one order over time
+    - Different CNPJ roots (subsidiary/branch scenarios) - uses stricter matching
+    
+    Args:
+        cod_pedc: The purchase order code
+        cod_emp1: The company code
+        
+    Returns:
+        List of NFEs scored by how well they match the purchase order.
     """
-    from app.models import PurchaseOrder, PurchaseItem, NFEData, NFEItem, NFEEmitente, Supplier
-    from fuzzywuzzy import fuzz
-    from datetime import timedelta
     import re
-    from itertools import combinations
-
-    def clean_digits(s):
-        return ''.join(filter(str.isdigit, str(s))) if s else ""
-
-    def extract_po_numbers(text):
-        """Extracts potential PO numbers from NFe observation fields."""
-        if not text: return []
-        # Look for patterns like "PED 36000", "PEDIDO: 36000", "PO 36000"
-        return re.findall(r'(?:PED|PEDIDO|PO|ORDEM)[\s\.:]*(\d+)', text, re.IGNORECASE)
-
-    def get_token_overlap(str1, str2):
-        """Calculate keyword overlap between two item descriptions."""
-        s1 = set(re.findall(r'\b\w{3,}\b', str1.lower()))
-        s2 = set(re.findall(r'\b\w{3,}\b', str2.lower()))
-        if not s1 or not s2: return 0
-        return len(s1.intersection(s2)) / len(s1.union(s2))
-
-    # --- 1. Fetch Data ---
-    purchase_order = PurchaseOrder.query.filter_by(cod_pedc=str(cod_pedc), cod_emp1=cod_emp1).first()
+    from fuzzywuzzy import fuzz
+    from app.models import PurchaseOrder, PurchaseItem, NFEData, NFEItem, NFEEmitente
+    
+    # Validate required parameters
+    if not cod_pedc:
+        return {'error': 'cod_pedc is required'}
+    if not cod_emp1:
+        return {'error': 'cod_emp1 is required'}
+    
+    # Fetch the purchase order
+    purchase_order = PurchaseOrder.query.filter_by(
+        cod_pedc=str(cod_pedc),
+        cod_emp1=str(cod_emp1)
+    ).first()
+    
     if not purchase_order:
-        return {"error": "Purchase order not found"}
-
-    purchase_items = PurchaseItem.query.filter_by(purchase_order_id=purchase_order.id).all()
+        return {'error': f'Purchase order {cod_pedc} not found for company {cod_emp1}'}
+    
+    # Fetch purchase items
+    purchase_items = PurchaseItem.query.filter_by(
+        purchase_order_id=purchase_order.id
+    ).all()
+    
     if not purchase_items:
-        return {"error": "No items found for this purchase order"}
-
-    supplier = Supplier.query.filter_by(cod_for=str(purchase_order.fornecedor_id)).first()
-    supplier_cnpj = clean_digits(supplier.nvl_forn_cnpj_forn_cpf) if supplier else None
-
-    adjustments = getattr(purchase_order, 'adjustments', [])
-    base_total = purchase_order.total_pedido_com_ipi or 0
-    po_adjusted_total = apply_adjustments(base_total, adjustments)
-
-    # --- 2. Candidate Selection Strategy ---
-    nfe_candidates = []
-
-    if nfe_id:
-        nfe = NFEData.query.get(nfe_id)
-        if nfe: nfe_candidates = [nfe]
-    else:
-        # A. CNPJ Root Match (First 8 digits)
-        if supplier_cnpj:
-            cnpj_root = supplier_cnpj[:8]
-            cnpj_matches = NFEData.query.join(NFEEmitente).filter(
-                NFEEmitente.cnpj.like(f"{cnpj_root}%"),
-                NFEData.data_emissao.between(
-                    purchase_order.dt_emis - timedelta(days=10), # Slight buffer before
-                    purchase_order.dt_emis + timedelta(days=120)
-                )
-            ).all()
-            nfe_candidates.extend(cnpj_matches)
-
-        # B. PO Number Explicit Reference (Check infAdic/infCpl)
-        # Assuming NFEData has a field 'inf_adicional' or similar containing the XML <infCpl>
-        ref_matches = NFEData.query.filter(
-            NFEData.informacoes_adicionais.ilike(f"%{cod_pedc}%"),
-            NFEData.data_emissao >= purchase_order.dt_emis
-        ).all()
-        for m in ref_matches:
-            if m not in nfe_candidates:
-                nfe_candidates.append(m)
-
-        # C. Name Fuzzy Match (Fallback if CNPJ fails or is empty)
-        if not nfe_candidates and purchase_order.fornecedor_descricao:
-            date_range_nfes = NFEData.query.filter(
-                NFEData.data_emissao.between(
-                    purchase_order.dt_emis - timedelta(days=10),
-                    purchase_order.dt_emis + timedelta(days=120)
-                )
-            ).all()
-            
-            for nfe in date_range_nfes:
-                if nfe.emitente and nfe.emitente.nome:
-                    ratio = fuzz.token_sort_ratio(
-                        purchase_order.fornecedor_descricao.lower(), 
-                        nfe.emitente.nome.lower()
-                    )
-                    if ratio > 75: 
-                        nfe_candidates.append(nfe)
-
-    # Dictionary to store structured NFe objects for combination logic
-    candidate_structs = []
-
-    # --- 3. Individual Scoring ---
-    for nfe in nfe_candidates:
-        score_components = {
-            "supplier": 0, "items": 0, "value": 0, "date": 0, "reference": 0
+        return {'error': f'No items found for purchase order {cod_pedc}'}
+    
+    # Build purchase data
+    po_data = {
+        'id': purchase_order.id,
+        'cod_pedc': purchase_order.cod_pedc,
+        'fornecedor': purchase_order.fornecedor_descricao or '',
+        'fornecedor_id': purchase_order.fornecedor_id,
+        'valor_total': purchase_order.total_liquido or purchase_order.total_bruto or 0,
+        'dt_emis': purchase_order.dt_emis,
+        'is_fulfilled': purchase_order.is_fulfilled,
+        'itens': []
+    }
+    
+    # Classify items by fulfillment status
+    unfulfilled_items = []
+    partially_fulfilled_items = []
+    fulfilled_items = []
+    
+    for item in purchase_items:
+        qty = float(item.quantidade or 0)
+        atendida = float(item.qtde_atendida or 0)
+        remaining = max(0, qty - atendida)
+        
+        item_data = {
+            'id': item.id,
+            'descricao': item.descricao or '',
+            'codigo': item.item_id or '',
+            'quantidade': qty,
+            'qtde_atendida': atendida,
+            'qtde_remaining': remaining,
+            'preco_unitario': float(item.preco_unitario or 0),
+            'valor_total': qty * float(item.preco_unitario or 0),
+            'valor_remaining': remaining * float(item.preco_unitario or 0)
         }
         
-        # A. Supplier (20 pts)
-        nfe_cnpj = clean_digits(nfe.emitente.cnpj) if nfe.emitente else ""
-        if supplier_cnpj and nfe_cnpj:
-            if supplier_cnpj == nfe_cnpj:
-                score_components["supplier"] = 20
-            elif supplier_cnpj[:8] == nfe_cnpj[:8]:
-                score_components["supplier"] = 18 # Branch difference
-            elif supplier_cnpj[:12] == nfe_cnpj[:12]: # Only check digit difference
-                score_components["supplier"] = 19
+        po_data['itens'].append(item_data)
+        
+        if remaining <= 0:
+            fulfilled_items.append(item_data)
+        elif atendida > 0:
+            partially_fulfilled_items.append(item_data)
         else:
-            # Fuzzy Name Fallback
-            name_sim = fuzz.token_sort_ratio(purchase_order.fornecedor_descricao, nfe.emitente.nome)
-            if name_sim > 80: score_components["supplier"] = 15
-
-        # B. Reference Check (Bonus 10 pts)
-        # Check if PO number appears in NFe remarks
-        if nfe.informacoes_adicionais:
-            found_pos = extract_po_numbers(nfe.informacoes_adicionais)
-            if str(cod_pedc) in found_pos:
-                score_components["reference"] = 10
-
-        # C. Items Matching (40 pts) & D. Value (20 pts)
-        # We process items to build a mapping for the Composite step later
-        matched_lines = []
-        nfe_items_pool = [
-            {
-                'id': i.id, 
-                'desc': i.descricao, 
-                'qty': float(i.quantidade_comercial), 
-                'val': float(i.valor_unitario_comercial),
-                'used': 0.0
-            } 
-            for i in nfe.itens
+            unfulfilled_items.append(item_data)
+    
+    # Calculate remaining value
+    total_remaining_value = sum(i['valor_remaining'] for i in po_data['itens'])
+    items_needing_fulfillment = unfulfilled_items + partially_fulfilled_items
+    
+    # Get supplier name for CNPJ lookup
+    supplier_name = po_data['fornecedor'].lower()
+    
+    # Fetch all NFEs
+    all_nfes = NFEData.query.all()
+    
+    # Helper functions
+    def clean_digits(text):
+        if not text:
+            return ""
+        return re.sub(r'\D', '', str(text))
+    
+    def get_cnpj_root(cnpj):
+        """Get first 8 digits of CNPJ (company root)"""
+        digits = clean_digits(cnpj)
+        return digits[:8] if len(digits) >= 8 else digits
+    
+    def extract_po_numbers(text):
+        """Extract potential PO numbers from NFe text"""
+        if not text:
+            return set()
+        patterns = [
+            r'(?:pedido|ped|po|order|ord|pc)[:\s#]*(\d{4,})',
+            r'(?:p/c)[:\s#]*(\d{4,})',
+            r'\b(\d{5,8})\b',
         ]
-
-        total_po_lines_matched = 0
+        numbers = set()
+        text_lower = str(text).lower()
+        for pattern in patterns:
+            matches = re.findall(pattern, text_lower)
+            numbers.update(matches)
+        return numbers
+    
+    def match_items(po_items, nfe_items_db, use_original_qty=False):
+        """
+        Match PO items to NFE items and calculate match quality.
+        Args:
+            po_items: List of purchase order items
+            nfe_items_db: List of NFE items from database
+            use_original_qty: If True, use original quantidade instead of remaining
+        Returns: (matched_items, total_match_score, coverage_ratio)
+        """
+        matches = []
+        matched_nfe_ids = set()
         
-        for po_item in purchase_items:
-            po_qty = float(po_item.quantidade)
-            best_line_match = None
-            highest_line_score = 0
+        for po_item in po_items:
+            # Use original quantity for fulfilled orders, remaining for unfulfilled
+            po_qty = po_item['quantidade'] if use_original_qty else po_item['qtde_remaining']
+            if po_qty <= 0:
+                continue
+                
+            po_desc = po_item['descricao'].lower()
+            po_price = po_item['preco_unitario']
             
-            for n_idx, n_item in enumerate(nfe_items_pool):
-                # Text Similarity
-                text_score = fuzz.token_set_ratio(po_item.descricao, n_item['desc'])
-                overlap_score = get_token_overlap(po_item.descricao, n_item['desc']) * 100
-                final_text_score = max(text_score, overlap_score)
-                
-                if final_text_score < 60: continue
-
-                # Price Check
-                price_diff = abs(float(po_item.preco_unitario) - n_item['val'])
-                price_score = 100 if price_diff < 0.05 else max(0, 100 - (price_diff * 10))
-
-                # Combined Line Score
-                line_score = (final_text_score * 0.7) + (price_score * 0.3)
-                
-                if line_score > highest_line_score:
-                    highest_line_score = line_score
-                    best_line_match = n_idx
-
-            if best_line_match is not None:
-                # We found a matching product description/price
-                n_item = nfe_items_pool[best_line_match]
-                
-                # Logic: Is this a Split Shipment or a Consolidated Invoice?
-                matched_qty = min(po_qty, n_item['qty'])
-                
-                # Record the match
-                matched_lines.append({
-                    "po_item_id": po_item.id,
-                    "nfe_item_id": n_item['id'],
-                    "qty_matched": matched_qty,
-                    "po_qty": po_qty,
-                    "line_score": highest_line_score
-                })
-                
-                if highest_line_score > 80:
-                    total_po_lines_matched += 1
-
-        # Calculate Item Score based on Coverage
-        if len(purchase_items) > 0:
-            coverage = total_po_lines_matched / len(purchase_items)
-            score_components["items"] = coverage * 40
-
-        # Value Score (Context Aware)
-        po_total = float(po_adjusted_total or 0)
-        nfe_total = float(nfe.valor_total or 0)
-        
-        if po_total > 0:
-            if abs(po_total - nfe_total) < 1.0:
-                score_components["value"] = 20 # Perfect Match
-            elif nfe_total < po_total:
-                # Partial Shipment (Split)
-                ratio = nfe_total / po_total
-                score_components["value"] = ratio * 15 
-            elif nfe_total > po_total:
-                # Multi-PO Invoice (Consolidated)
-                # If we matched all items perfectly, full points for value
-                # even if NFe total is higher
-                if score_components["items"] > 35:
-                     score_components["value"] = 20
-                else:
-                    score_components["value"] = 5 # Penalize mismatch
-
-        # Date Score (10 pts)
-        if nfe.numero == '47163' or nfe.numero == '457203':
-            print("Debug NFe 457203 Date:", nfe.data_emissao, purchase_order.dt_emis)
-        if nfe.data_emissao:
-            days =  abs((nfe.data_emissao.date() - purchase_order.dt_emis).days)
-            if 0 <= days <= 10: score_components["date"] = 10
-            elif 0 <= days <= 30: score_components["date"] = 8
-            elif 30 < days <= 90: score_components["date"] = 5
-            else: score_components["date"] = 0
-
-        final_score = sum(score_components.values())
-        
-        # Store structured data for the next phase
-        struct = {
-            "nfe_obj": nfe,
-            "id": nfe.id,
-            "score": final_score,
-            "components": score_components,
-            "matched_lines": matched_lines,
-            "nfe_total": nfe_total
-        }
-        candidate_structs.append(struct)
-
-    # --- 4. Composite Matching (The "Split Shipment" Logic) ---
-    # Try to combine top partial matches to see if they form a complete PO
-    
-    # Filter for candidates that are likely partials (e.g., score between 30 and 90)
-    partial_candidates = [c for c in candidate_structs if 30 < c['score'] < 95]
-    
-    # We limit combinations to avoid performance hits (max group size 3)
-    composite_results = []
-    
-    if len(partial_candidates) >= 2:
-        # Sort by date to prioritize consecutive invoices
-        partial_candidates.sort(key=lambda x: x['nfe_obj'].data_emissao)
-        
-        # Try combining 2 or 3 invoices
-        for r in range(2, min(4, len(partial_candidates) + 1)):
-            for combo in combinations(partial_candidates, r):
-                
-                # Check 1: Supplier must be same for all in combo
-                if len(set(c['nfe_obj'].emitente.cnpj for c in combo if c['nfe_obj'].emitente)) > 1:
+            best_match = None
+            best_score = 0
+            
+            for nfe_item in nfe_items_db:
+                if nfe_item.id in matched_nfe_ids:
                     continue
-
-                # Check 2: Sum of values matches PO?
-                combo_total_val = sum(c['nfe_total'] for c in combo)
-                po_total = float(po_adjusted_total or 0)
-                
-                val_match = False
-                if abs(combo_total_val - po_total) < (po_total * 0.05): # 5% tolerance
-                    val_match = True
                     
-                #todo calculo errado, 1920 == 1230 em ped 35500
-
-                # Check 3: Item Quantity Aggregation
-                # We need to sum up the quantities matched across these NFEs for each PO item
-                item_aggregator = {} # {po_item_id: total_qty_found}
+                nfe_desc = (nfe_item.descricao or '').lower()
+                nfe_qty = float(nfe_item.quantidade_comercial or 0)
+                nfe_price = float(nfe_item.valor_unitario_comercial or 0)
                 
-                for cand in combo:
-                    for line in cand['matched_lines']:
-                        pid = line['po_item_id']
-                        item_aggregator[pid] = item_aggregator.get(pid, 0) + line['qty_matched']
+                # Description match (0-100)
+                desc_score = 0
+                if po_desc and nfe_desc:
+                    desc_score = max(
+                        fuzz.token_set_ratio(po_desc, nfe_desc),
+                        fuzz.token_sort_ratio(po_desc, nfe_desc),
+                        fuzz.partial_ratio(po_desc, nfe_desc)
+                    )
                 
-                # Verify if aggregation fulfills the PO
-                items_fulfilled = 0
-                for po_item in purchase_items:
-                    req_qty = float(po_item.quantidade)
-                    found_qty = item_aggregator.get(po_item.id, 0)
-                    if abs(req_qty - found_qty) < 0.1: # Floating point tolerance
-                        items_fulfilled += 1
+                # Quantity match (0-100)
+                qty_score = 0
+                if po_qty > 0:
+                    qty_ratio = min(nfe_qty, po_qty) / po_qty
+                    if qty_ratio >= 0.95:
+                        qty_score = 100
+                    elif qty_ratio >= 0.8:
+                        qty_score = 85
+                    elif qty_ratio >= 0.5:
+                        qty_score = 70
+                    else:
+                        qty_score = qty_ratio * 100
                 
-                percent_fulfilled = items_fulfilled / len(purchase_items) if purchase_items else 0
+                # Price match (0-100) - percentage based
+                price_score = 0
+                if po_price > 0 and nfe_price > 0:
+                    price_diff_pct = abs(po_price - nfe_price) / po_price * 100
+                    if price_diff_pct < 1:
+                        price_score = 100
+                    elif price_diff_pct < 5:
+                        price_score = 90
+                    elif price_diff_pct < 10:
+                        price_score = 80
+                    elif price_diff_pct < 20:
+                        price_score = 60
+                    elif price_diff_pct < 50:
+                        price_score = 30
+                    else:
+                        price_score = 0
                 
-                if percent_fulfilled > 0.9 or (val_match and percent_fulfilled > 0.7):
-                    # Found a Valid Combination!
-                    composite_score = 98 # High confidence
-                    composite_entry = {
-                        "type": "composite",
-                        "nfes": [
-                            {
-                                "id": c['id'], 
-                                "numero": c['nfe_obj'].numero,
-                                "val": c['nfe_total'],
-                                "individual_score": c['score']
-                            } 
-                            for c in combo
-                        ],
-                        "score": composite_score,
-                        "reason": f"Combined {len(combo)} NFEs perfectly match PO quantity/value."
+                # Skip if both description AND price match are too low
+                # Allow low description match if price matches very well (same product, different naming)
+                if desc_score < 35 and price_score < 80:
+                    continue
+                if desc_score < 25:  # Absolute minimum
+                    continue
+                
+                # Combined score: adjust weights based on match quality
+                # If description is weak but price is strong, trust price more
+                if desc_score < 45 and price_score >= 80:
+                    # Price-based match (different naming conventions)
+                    combined = (desc_score * 0.25) + (qty_score * 0.35) + (price_score * 0.40)
+                else:
+                    # Normal description-based match
+                    combined = (desc_score * 0.50) + (qty_score * 0.30) + (price_score * 0.20)
+                
+                if combined > best_score:
+                    best_score = combined
+                    best_match = {
+                        'po_item_id': po_item['id'],
+                        'po_item_desc': po_item['descricao'],
+                        'nfe_item_id': nfe_item.id,
+                        'nfe_item_desc': nfe_item.descricao,
+                        'desc_score': desc_score,
+                        'qty_score': qty_score,
+                        'price_score': price_score,
+                        'combined_score': round(combined, 2),
+                        'po_qty': po_qty,
+                        'nfe_qty': nfe_qty,
+                        'po_price': po_price,
+                        'nfe_price': nfe_price
                     }
-                    composite_results.append(composite_entry)
-
-    # --- 5. Finalize Results ---
-    # Convert individual structs to output format
-    final_output = []
+            
+            if best_match and best_match['combined_score'] >= 45:
+                matches.append(best_match)
+                matched_nfe_ids.add(best_match['nfe_item_id'])
+        
+        # Calculate coverage - use appropriate quantity based on mode
+        if use_original_qty:
+            items_to_match_count = len([i for i in po_items if i['quantidade'] > 0])
+        else:
+            items_to_match_count = len([i for i in po_items if i['qtde_remaining'] > 0])
+        coverage = len(matches) / items_to_match_count if items_to_match_count > 0 else 0
+        avg_score = sum(m['combined_score'] for m in matches) / len(matches) if matches else 0
+        
+        return matches, avg_score, coverage
     
-    # Add individual scores
-    for c in candidate_structs:
-        final_output.append({
-            "type": "single",
-            "nfe": {
-                "id": c['id'],
-                "numero": c['nfe_obj'].numero,
-                "chave": c['nfe_obj'].chave,
-                "emitente": c['nfe_obj'].emitente.nome,
-                "valor": c['nfe_total']
-            },
-            "score": c['score'],
-            "details": c['components'],
-            "warning": "Partial Match" if c['score'] < 100 and c['score'] > 50 else None
-        })
-
-    # Add composite scores to the top
-    for comp in composite_results:
-        final_output.append(comp)
-
-    # Sort descending by score
-    final_output.sort(key=lambda x: x['score'], reverse=True)
+    results = []
+    po_num_clean = clean_digits(str(cod_pedc))
     
-    return final_output
+    for nfe in all_nfes:
+        # Get NFE emitente info
+        emitente = NFEEmitente.query.filter_by(nfe_id=nfe.id).first()
+        nfe_supplier = emitente.nome if emitente else ''
+        nfe_cnpj = emitente.cnpj if emitente else ''
+        
+        # Get NFE items
+        nfe_items_db = NFEItem.query.filter_by(nfe_id=nfe.id).all()
+        
+        nfe_value = float(nfe.valor_total or 0)
+        nfe_info_adic = str(nfe.informacoes_adicionais or '').lower()
+        
+        score = 0
+        breakdown = {}
+        
+        # === 1. CNPJ/Supplier Match (0-30 points) ===
+        cnpj_score = 0
+        supplier_match_type = 'none'
+        
+        # Check supplier name similarity
+        supplier_similarity = 0
+        if nfe_supplier and supplier_name:
+            supplier_similarity = fuzz.token_set_ratio(nfe_supplier.lower(), supplier_name)
+        
+        if supplier_similarity >= 85:
+            cnpj_score = 30
+            supplier_match_type = 'exact_name'
+        elif supplier_similarity >= 70:
+            cnpj_score = 25
+            supplier_match_type = 'high_similarity'
+        elif supplier_similarity >= 55:
+            cnpj_score = 15
+            supplier_match_type = 'partial_name'
+        elif supplier_similarity >= 40:
+            # Possible subsidiary/branch - will need stronger item matching
+            cnpj_score = 5
+            supplier_match_type = 'possible_related'
+        
+        score += cnpj_score
+        breakdown['cnpj_score'] = cnpj_score
+        breakdown['supplier_match_type'] = supplier_match_type
+        breakdown['supplier_similarity'] = supplier_similarity
+        
+        # === 2. PO Reference in NFe (0-15 points) ===
+        po_ref_score = 0
+        po_ref_type = 'none'
+        
+        nfe_po_refs = extract_po_numbers(nfe_info_adic)
+        
+        if po_num_clean and po_num_clean in nfe_info_adic:
+            po_ref_score = 15
+            po_ref_type = 'exact_in_info'
+        elif po_num_clean and any(po_num_clean == ref for ref in nfe_po_refs):
+            po_ref_score = 12
+            po_ref_type = 'extracted_exact'
+        elif po_num_clean and any(po_num_clean in ref for ref in nfe_po_refs):
+            po_ref_score = 8
+            po_ref_type = 'extracted_partial'
+        
+        score += po_ref_score
+        breakdown['po_ref_score'] = po_ref_score
+        breakdown['po_ref_type'] = po_ref_type
+        
+        # === 3. Item Matching (0-35 points) ===
+        # Always match against ALL items to find historical fulfillments
+        # Use original quantities for fulfilled items
+        all_items = po_data['itens']
+        
+        # Match against all items using original quantities
+        item_matches, avg_match_quality, coverage = match_items(all_items, nfe_items_db, use_original_qty=True)
+        
+        # Item score based on coverage and quality
+        # coverage * 20 (up to 20 points) + quality * 15 / 100 (up to 15 points)
+        item_score = (coverage * 20) + (avg_match_quality * 15 / 100)
+        
+        score += item_score
+        breakdown['item_score'] = round(item_score, 2)
+        breakdown['items_matched'] = len(item_matches)
+        breakdown['items_to_match'] = len(all_items)
+        breakdown['coverage_pct'] = round(coverage * 100, 2)
+        breakdown['avg_match_quality'] = round(avg_match_quality, 2)
+        
+        # === 4. Value Match (0-20 points) ===
+        value_score = 0
+        value_match_type = 'none'
+        
+        # Compare against remaining value or total value
+        compare_value = total_remaining_value if total_remaining_value > 0 else po_data['valor_total']
+        
+        if compare_value > 0 and nfe_value > 0:
+            value_diff_pct = abs(nfe_value - compare_value) / compare_value * 100
+            
+            if value_diff_pct < 1:
+                value_score = 20
+                value_match_type = 'exact'
+            elif value_diff_pct < 3:
+                value_score = 18
+                value_match_type = 'very_close'
+            elif value_diff_pct < 5:
+                value_score = 15
+                value_match_type = 'close'
+            elif value_diff_pct < 10:
+                value_score = 12
+                value_match_type = 'near'
+            elif value_diff_pct < 20:
+                value_score = 8
+                value_match_type = 'approximate'
+            elif nfe_value < compare_value:
+                # Partial fulfillment - NFe is portion of remaining
+                portion = nfe_value / compare_value
+                if portion >= 0.2:
+                    value_score = 5
+                    value_match_type = 'partial'
+        
+        score += value_score
+        breakdown['value_score'] = value_score
+        breakdown['value_match_type'] = value_match_type
+        breakdown['nfe_value'] = nfe_value
+        breakdown['compare_value'] = round(compare_value, 2)
+        breakdown['value_diff_pct'] = round(value_diff_pct, 2) if compare_value > 0 and nfe_value > 0 else None
+        
+        # === 5. Date Proximity Bonus (0-10 points) ===
+        date_bonus = 0
+        days_from_po = None
+        po_date = po_data.get('dt_emis')
+        nfe_date = nfe.data_emissao.date() if nfe.data_emissao else None
+        
+        if po_date and nfe_date:
+            days_from_po = abs((nfe_date - po_date).days)
+            # NFE should be after PO date (or within a few days before for corrections)
+            if nfe_date >= po_date:
+                if days_from_po <= 7:
+                    date_bonus = 10
+                elif days_from_po <= 14:
+                    date_bonus = 8
+                elif days_from_po <= 30:
+                    date_bonus = 6
+                elif days_from_po <= 60:
+                    date_bonus = 4
+                elif days_from_po <= 90:
+                    date_bonus = 2
+            else:
+                # NFE before PO - less likely to be correct, small penalty
+                if days_from_po <= 7:  # Small allowance for pre-dated NFEs
+                    date_bonus = 2
+        
+        score += date_bonus
+        breakdown['date_bonus'] = date_bonus
+        breakdown['days_from_po'] = days_from_po
+        
+        # === Apply penalties/bonuses ===
+        
+        # Bonus: If supplier match is weak but items match very well, boost score
+        if supplier_match_type in ['possible_related', 'none'] and coverage >= 0.8 and avg_match_quality >= 70:
+            bonus = 10
+            score += bonus
+            breakdown['weak_supplier_strong_items_bonus'] = bonus
+        
+        # Penalty: If supplier doesn't match at all and items are weak
+        if supplier_similarity < 30 and coverage < 0.5:
+            score = score * 0.5
+            breakdown['low_confidence_penalty'] = True
+        
+        # Only include NFEs with meaningful scores
+        if score >= 10:
+            match_quality = 'high' if score >= 70 else 'medium' if score >= 45 else 'low'
+            
+            results.append({
+                'nfe_id': nfe.id,
+                'nfe_number': nfe.numero,
+                'nfe_chave': nfe.chave,
+                'nfe_value': nfe_value,
+                'nfe_date': nfe.data_emissao.isoformat() if nfe.data_emissao else None,
+                'nfe_supplier': nfe_supplier,
+                'nfe_cnpj': nfe_cnpj,
+                'score': round(score, 2),
+                'max_possible_score': 110,  # Now up to 110 with date bonus
+                'match_quality': match_quality,
+                'breakdown': breakdown,
+                'item_matches': item_matches
+            })
+    
+    # Sort by score descending
+    results.sort(key=lambda x: x['score'], reverse=True)
+    
+    # === COMBINE NFEs FROM SAME SUPPLIER ===
+    # Group NFEs from the same supplier within 45 days of each other
+    from datetime import timedelta
+    from collections import defaultdict
+    
+    MAX_DAYS_FROM_PO = 120  # Allow NFEs up to 120 days after PO
+    MAX_DAYS_BETWEEN_NFES = 45  # NFEs must be within 45 days of each other
+    po_date = po_data.get('dt_emis')
+    
+    combined_results = []
+    
+    # Group results by supplier (using CNPJ as key)
+    supplier_groups = defaultdict(list)
+    for r in results:
+        supplier_key = r.get('nfe_cnpj', '') or r.get('nfe_supplier', '')
+        if supplier_key:
+            supplier_groups[supplier_key].append(r)
+    
+    # Track which NFEs have been combined
+    combined_nfe_ids = set()
+    
+    for supplier_key, supplier_nfes in supplier_groups.items():
+        if len(supplier_nfes) < 2:
+            continue
+            
+        # Sort by date
+        supplier_nfes_with_date = []
+        for nfe in supplier_nfes:
+            nfe_date = None
+            if nfe.get('nfe_date'):
+                try:
+                    from datetime import datetime
+                    if isinstance(nfe['nfe_date'], str):
+                        nfe_date = datetime.fromisoformat(nfe['nfe_date']).date()
+                    else:
+                        nfe_date = nfe['nfe_date']
+                except:
+                    pass
+            supplier_nfes_with_date.append((nfe, nfe_date))
+        
+        # Sort by score (highest first) to prioritize best matches for combination
+        supplier_nfes_with_date.sort(key=lambda x: x[0]['score'], reverse=True)
+        
+        # Get PO value for limiting combined value
+        po_value = po_data.get('valor_total', 0)
+        MAX_COMBINED_VALUE_RATIO = 2.0  # Combined value shouldn't exceed 200% of PO value
+        
+        # Find groups of NFEs that can be combined
+        i = 0
+        while i < len(supplier_nfes_with_date):
+            group_start = supplier_nfes_with_date[i]
+            if group_start[0]['nfe_id'] in combined_nfe_ids:
+                i += 1
+                continue
+                
+            group = [group_start]
+            start_date = group_start[1]
+            group_value = group_start[0].get('nfe_value', 0)
+            
+            # Check date constraints for the first NFE
+            if start_date and po_date:
+                days_from_po = abs((start_date - po_date).days)
+                if days_from_po > MAX_DAYS_FROM_PO:
+                    i += 1
+                    continue
+            
+            # Find additional NFEs that can be combined (within date and value limits)
+            j = i + 1
+            while j < len(supplier_nfes_with_date):
+                next_nfe, next_date = supplier_nfes_with_date[j]
+                
+                if next_nfe['nfe_id'] in combined_nfe_ids:
+                    j += 1
+                    continue
+                
+                # Check if within 120 days from PO
+                if next_date and po_date:
+                    days_from_po = abs((next_date - po_date).days)
+                    if days_from_po > MAX_DAYS_FROM_PO:
+                        j += 1
+                        continue
+                
+                # Check if within 45 days from ANY NFE already in group
+                date_ok = False
+                if next_date:
+                    for g_nfe, g_date in group:
+                        if g_date:
+                            days_between = abs((next_date - g_date).days)
+                            if days_between <= MAX_DAYS_BETWEEN_NFES:
+                                date_ok = True
+                                break
+                else:
+                    date_ok = True  # No date info, allow it
+                
+                if not date_ok:
+                    j += 1
+                    continue
+                
+                # Check if adding this NFE would exceed value limit
+                next_value = next_nfe.get('nfe_value', 0)
+                if po_value > 0 and (group_value + next_value) > (po_value * MAX_COMBINED_VALUE_RATIO):
+                    j += 1
+                    continue
+                
+                group.append((next_nfe, next_date))
+                group_value += next_value
+                j += 1
+            
+            # Only create combined result if we have 2+ NFEs
+            if len(group) >= 2:
+                # Calculate combined metrics
+                combined_nfe_numbers = [g[0]['nfe_number'] for g in group]
+                combined_value = sum(g[0]['nfe_value'] for g in group)
+                combined_item_matches = []
+                matched_po_item_ids = set()
+                
+                for g in group:
+                    for item_match in g[0].get('item_matches', []):
+                        po_item_id = item_match.get('po_item_id')
+                        # Avoid duplicate matches for the same PO item
+                        if po_item_id not in matched_po_item_ids:
+                            combined_item_matches.append(item_match)
+                            matched_po_item_ids.add(po_item_id)
+                        else:
+                            # Add quantity from this NFE to existing match
+                            for existing in combined_item_matches:
+                                if existing.get('po_item_id') == po_item_id:
+                                    existing['nfe_qty'] = existing.get('nfe_qty', 0) + item_match.get('nfe_qty', 0)
+                                    break
+                
+                # Calculate combined coverage
+                total_items = len(po_data['itens'])
+                combined_coverage = len(matched_po_item_ids) / total_items if total_items > 0 else 0
+                
+                # Calculate combined score
+                # Base it on the best individual score + bonus for better coverage
+                best_individual_score = max(g[0]['score'] for g in group)
+                avg_individual_score = sum(g[0]['score'] for g in group) / len(group)
+                
+                # Coverage bonus: up to 15 extra points for better combined coverage
+                best_individual_coverage = max(g[0]['breakdown'].get('coverage_pct', 0) for g in group) / 100
+                coverage_improvement = combined_coverage - best_individual_coverage
+                coverage_bonus = max(0, coverage_improvement * 30)  # Up to 30 bonus points
+                
+                # Value match bonus/penalty: if combined value is closer to PO value
+                combined_value_diff = abs(combined_value - po_data['valor_total']) / po_data['valor_total'] * 100 if po_data['valor_total'] > 0 else 100
+                best_value_diff = min(g[0]['breakdown'].get('value_diff_pct', 100) or 100 for g in group)
+                value_improvement_bonus = 0
+                value_excess_penalty = 0
+                
+                if combined_value_diff < best_value_diff:
+                    value_improvement_bonus = min(10, (best_value_diff - combined_value_diff) * 0.5)
+                
+                # Penalty if combined value exceeds PO value significantly
+                if combined_value > po_data['valor_total']:
+                    excess_pct = (combined_value - po_data['valor_total']) / po_data['valor_total'] * 100
+                    if excess_pct > 50:  # More than 50% over
+                        value_excess_penalty = min(30, excess_pct * 0.3)  # Up to 30 point penalty
+                    elif excess_pct > 20:  # More than 20% over
+                        value_excess_penalty = min(15, excess_pct * 0.2)  # Up to 15 point penalty
+                
+                combined_score = best_individual_score + coverage_bonus + value_improvement_bonus - value_excess_penalty
+                combined_score = max(10, min(100, combined_score))  # Cap between 10 and 100
+                
+                # Mark these NFEs as combined
+                for g in group:
+                    combined_nfe_ids.add(g[0]['nfe_id'])
+                
+                combined_result = {
+                    'nfe_id': f"combined_{'+'.join(combined_nfe_numbers)}",
+                    'nfe_number': ' + '.join(combined_nfe_numbers),
+                    'nfe_chave': None,
+                    'nfe_value': combined_value,
+                    'nfe_date': group[0][1].isoformat() if group[0][1] else None,
+                    'nfe_supplier': group[0][0]['nfe_supplier'],
+                    'nfe_cnpj': group[0][0]['nfe_cnpj'],
+                    'score': round(combined_score, 2),
+                    'max_possible_score': 110,
+                    'match_quality': 'high' if combined_score >= 70 else 'medium' if combined_score >= 45 else 'low',
+                    'is_combined': True,
+                    'combined_nfes': [g[0]['nfe_number'] for g in group],
+                    'combined_count': len(group),
+                    'breakdown': {
+                        'type': 'combined',
+                        'individual_scores': [g[0]['score'] for g in group],
+                        'best_individual_score': best_individual_score,
+                        'coverage_bonus': round(coverage_bonus, 2),
+                        'value_improvement_bonus': round(value_improvement_bonus, 2),
+                        'value_excess_penalty': round(value_excess_penalty, 2),
+                        'combined_coverage_pct': round(combined_coverage * 100, 2),
+                        'combined_value_diff_pct': round(combined_value_diff, 2),
+                        'po_value': po_data['valor_total'],
+                        'items_matched': len(matched_po_item_ids),
+                        'items_to_match': total_items,
+                        'cnpj_score': group[0][0]['breakdown'].get('cnpj_score', 0),
+                        'supplier_match_type': group[0][0]['breakdown'].get('supplier_match_type', 'unknown')
+                    },
+                    'item_matches': combined_item_matches
+                }
+                combined_results.append(combined_result)
+            
+            i += 1
+    
+    # Add combined results to the main results list
+    all_results = results + combined_results
+    
+    # Sort all results by score
+    all_results.sort(key=lambda x: x['score'], reverse=True)
+    
+    # Add purchase order info to response
+    return {
+        'purchase_order': {
+            'id': po_data['id'],
+            'cod_pedc': po_data['cod_pedc'],
+            'fornecedor': po_data['fornecedor'],
+            'valor_total': po_data['valor_total'],
+            'valor_remaining': round(total_remaining_value, 2),
+            'is_fulfilled': po_data['is_fulfilled'],
+            'items_total': len(po_data['itens']),
+            'items_fulfilled': len(fulfilled_items),
+            'items_partial': len(partially_fulfilled_items),
+            'items_unfulfilled': len(unfulfilled_items)
+        },
+        'matches': all_results
+    }
