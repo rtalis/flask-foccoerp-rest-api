@@ -3002,3 +3002,304 @@ def extract_reference_data():
                 os.unlink(temp_file_path)
             except:
                 pass
+
+
+# ==================== NFE SEARCH ENDPOINTS ====================
+
+@bp.route('/search_nfe', methods=['GET'])
+@login_required
+def search_nfe():
+    """
+    Search for NFEs and find linked purchase orders.
+    
+    Parameters:
+    - query: Search term (NFE number, chave, supplier name, or item description)
+    - start_date: Filter by start date (YYYY-MM-DD)
+    - end_date: Filter by end date (YYYY-MM-DD)
+    - search_by_number: Search by NFE number (default: true)
+    - search_by_chave: Search by chave de acesso (default: true)
+    - search_by_fornecedor: Search by supplier name (default: false)
+    - search_by_item: Search by item description (default: true)
+    - include_estimated: Include AI-estimated matches (default: true)
+    """
+    from app.models import NFEData, NFEEmitente, NFEItem, NFEntry, PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch
+    from datetime import datetime
+    from fuzzywuzzy import fuzz
+    
+    query = request.args.get('query', '').strip()
+    start_date_str = request.args.get('start_date')
+    end_date_str = request.args.get('end_date')
+    search_by_number = request.args.get('search_by_number', 'true').lower() == 'true'
+    search_by_chave = request.args.get('search_by_chave', 'true').lower() == 'true'
+    search_by_fornecedor = request.args.get('search_by_fornecedor', 'false').lower() == 'true'
+    search_by_item = request.args.get('search_by_item', 'true').lower() == 'true'
+    include_estimated = request.args.get('include_estimated', 'true').lower() == 'true'
+    
+    if not query:
+        return jsonify({'error': 'Query parameter is required'}), 400
+    
+    try:
+        # Parse dates
+        start_date = None
+        end_date = None
+        if start_date_str:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+        if end_date_str:
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+        
+        # Build NFE query
+        nfe_filters = []
+        
+        if search_by_number:
+            # Try exact match first, then LIKE
+            nfe_filters.append(NFEData.numero == query)
+            nfe_filters.append(NFEData.numero.ilike(f'%{query}%'))
+        
+        if search_by_chave:
+            nfe_filters.append(NFEData.chave.ilike(f'%{query}%'))
+        
+        # Query NFEs
+        nfe_query = NFEData.query
+        if nfe_filters:
+            nfe_query = nfe_query.filter(or_(*nfe_filters))
+        
+        # Apply date filters
+        if start_date:
+            nfe_query = nfe_query.filter(NFEData.data_emissao >= start_date)
+        if end_date:
+            nfe_query = nfe_query.filter(NFEData.data_emissao <= end_date)
+        
+        nfes = nfe_query.limit(50).all()
+        
+        # If searching by supplier, also filter by emitente name
+        if search_by_fornecedor and query:
+            supplier_nfes = NFEData.query.join(NFEEmitente).filter(
+                NFEEmitente.nome.ilike(f'%{query}%')
+            )
+            if start_date:
+                supplier_nfes = supplier_nfes.filter(NFEData.data_emissao >= start_date)
+            if end_date:
+                supplier_nfes = supplier_nfes.filter(NFEData.data_emissao <= end_date)
+            
+            supplier_nfes = supplier_nfes.limit(50).all()
+            
+            # Merge results
+            existing_ids = {n.id for n in nfes}
+            for nfe in supplier_nfes:
+                if nfe.id not in existing_ids:
+                    nfes.append(nfe)
+        
+        # If searching by item description, search NFEItem
+        if search_by_item and query:
+            item_nfes = NFEData.query.join(NFEItem).filter(
+                NFEItem.descricao.ilike(f'%{query}%')
+            )
+            if start_date:
+                item_nfes = item_nfes.filter(NFEData.data_emissao >= start_date)
+            if end_date:
+                item_nfes = item_nfes.filter(NFEData.data_emissao <= end_date)
+            
+            item_nfes = item_nfes.limit(50).all()
+            
+            # Merge results
+            existing_ids = {n.id for n in nfes}
+            for nfe in item_nfes:
+                if nfe.id not in existing_ids:
+                    nfes.append(nfe)
+        
+        # Format NFE results
+        nfe_results = []
+        nfe_numbers = set()
+        for nfe in nfes:
+            emitente = NFEEmitente.query.filter_by(nfe_id=nfe.id).first()
+            # Get matched items if searching by item
+            matched_items = []
+            if search_by_item:
+                items = NFEItem.query.filter(
+                    NFEItem.nfe_id == nfe.id,
+                    NFEItem.descricao.ilike(f'%{query}%')
+                ).all()
+                matched_items = [item.descricao for item in items[:3]]  # Limit to 3
+            
+            nfe_results.append({
+                'id': nfe.id,
+                'numero': nfe.numero,
+                'chave': nfe.chave,
+                'data_emissao': nfe.data_emissao.isoformat() if nfe.data_emissao else None,
+                'valor_total': nfe.valor_total,
+                'fornecedor': emitente.nome if emitente else None,
+                'cnpj': emitente.cnpj if emitente else None,
+                'matched_items': matched_items,
+            })
+            if nfe.numero:
+                nfe_numbers.add(nfe.numero)
+        
+        # Find linked purchase orders
+        purchase_orders = []
+        
+        # 1. Search in NFEntry (direct links)
+        nf_entries = NFEntry.query.filter(
+            or_(
+                NFEntry.num_nf == query,
+                NFEntry.num_nf.ilike(f'%{query}%')
+            )
+        ).all()
+        
+        for entry in nf_entries:
+            po = PurchaseOrder.query.filter_by(
+                cod_pedc=entry.cod_pedc,
+                cod_emp1=entry.cod_emp1
+            ).first()
+            
+            if po:
+                item = PurchaseItem.query.filter_by(
+                    cod_pedc=entry.cod_pedc,
+                    cod_emp1=entry.cod_emp1,
+                    linha=entry.linha
+                ).first()
+                
+                purchase_orders.append({
+                    'cod_pedc': po.cod_pedc,
+                    'cod_emp1': po.cod_emp1,
+                    'dt_emis': po.dt_emis.isoformat() if po.dt_emis else None,
+                    'fornecedor': po.fornecedor_descricao,
+                    'item_descricao': item.descricao if item else None,
+                    'valor': item.total if item else po.total_liquido,
+                    'match_type': 'linked',
+                    'nfe_numero': entry.num_nf,
+                })
+        
+        # 2. Search in PurchaseItemNFEMatch (AI-estimated matches)
+        if include_estimated:
+            estimated_matches = PurchaseItemNFEMatch.query.filter(
+                or_(
+                    PurchaseItemNFEMatch.nfe_numero == query,
+                    PurchaseItemNFEMatch.nfe_numero.ilike(f'%{query}%')
+                )
+            ).all()
+            
+            for match in estimated_matches:
+                item = PurchaseItem.query.get(match.purchase_item_id)
+                if item:
+                    po = PurchaseOrder.query.get(item.purchase_order_id)
+                    if po:
+                        # Check if this PO is already in the list
+                        existing = next(
+                            (p for p in purchase_orders 
+                             if p['cod_pedc'] == po.cod_pedc and p.get('item_descricao') == item.descricao),
+                            None
+                        )
+                        if not existing:
+                            purchase_orders.append({
+                                'cod_pedc': po.cod_pedc,
+                                'cod_emp1': po.cod_emp1,
+                                'dt_emis': po.dt_emis.isoformat() if po.dt_emis else None,
+                                'fornecedor': po.fornecedor_descricao,
+                                'item_descricao': item.descricao,
+                                'valor': item.total,
+                                'match_type': 'estimated',
+                                'match_score': match.match_score,
+                                'nfe_numero': match.nfe_numero,
+                            })
+        
+        return jsonify({
+            'nfes': nfe_results,
+            'purchase_orders': purchase_orders,
+            'query': query,
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/tracked_companies', methods=['GET'])
+@login_required
+def get_tracked_companies():
+    """Get all tracked companies (for NFE sync)."""
+    from app.models import Company
+    
+    companies = Company.query.order_by(Company.name).all()
+    
+    return jsonify({
+        'companies': [{
+            'id': c.id,
+            'cod_emp1': c.cod_emp1,
+            'name': c.name,
+            'cnpj': c.cnpj,
+            'fantasy_name': c.fantasy_name,
+            'city': c.city,
+            'state': c.state,
+        } for c in companies]
+    }), 200
+
+
+@bp.route('/tracked_companies', methods=['POST'])
+@login_required
+def add_tracked_company():
+    """Add a new company to track for NFE sync."""
+    from app.models import Company
+    
+    data = request.get_json()
+    cnpj = data.get('cnpj', '').strip()
+    name = data.get('name', '').strip()
+    
+    if not cnpj:
+        return jsonify({'error': 'CNPJ is required'}), 400
+    
+    # Clean CNPJ
+    cnpj_clean = ''.join(filter(str.isdigit, cnpj))
+    
+    if len(cnpj_clean) != 14:
+        return jsonify({'error': 'CNPJ must have 14 digits'}), 400
+    
+    # Check if already exists
+    existing = Company.query.filter_by(cnpj=cnpj_clean).first()
+    if existing:
+        return jsonify({'error': 'Company with this CNPJ already exists'}), 400
+    
+    try:
+        # Generate a unique cod_emp1
+        last_company = Company.query.order_by(Company.id.desc()).first()
+        new_cod = str(last_company.id + 1000) if last_company else '1000'
+        
+        company = Company(
+            cod_emp1=new_cod,
+            cnpj=cnpj_clean,
+            name=name or f'Empresa {cnpj_clean}',
+        )
+        
+        db.session.add(company)
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Company added successfully',
+            'company': {
+                'id': company.id,
+                'cod_emp1': company.cod_emp1,
+                'name': company.name,
+                'cnpj': company.cnpj,
+            }
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/tracked_companies/<int:company_id>', methods=['DELETE'])
+@login_required
+def remove_tracked_company(company_id):
+    """Remove a company from tracking."""
+    from app.models import Company
+    
+    company = Company.query.get(company_id)
+    if not company:
+        return jsonify({'error': 'Company not found'}), 404
+    
+    try:
+        db.session.delete(company)
+        db.session.commit()
+        return jsonify({'message': 'Company removed successfully'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500

@@ -15,6 +15,7 @@ import QuotationAnalyzer from "./components/QuotationAnalyzer";
 import Dashboard from "./components/Dashboard";
 import AdvancedSearch from "./components/AdvancedSearch";
 import TokenManager from "./components/TokenManager";
+import NFESearch from "./components/NFESearch";
 
 const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -105,6 +106,7 @@ const App = () => {
           }
         >
           <Route path="/search" element={<UnifiedSearch />} />
+          <Route path="/nfe-search" element={<NFESearch />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/advanced-search" element={<AdvancedSearch />} />
           <Route path="/quotation-analyzer" element={<QuotationAnalyzer />} />

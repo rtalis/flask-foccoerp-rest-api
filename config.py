@@ -11,7 +11,7 @@ class Config:
     SECRET_KEY = os.getenv('SECRET_KEY')
     SESSION_COOKIE_NAME = 'session'
     SESSION_COOKIE_HTTPONLY = True
-    SESSION_COOKIE_SECURE = False  # Defina como True em produção
+    SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
     SESSION_COOKIE_SAMESITE = 'Lax'  # Pode ser 'Strict', 'Lax' ou 'None'
     PERMANENT_SESSION_LIFETIME = timedelta(minutes=60)  # Tempo de vida da sessão
     SESSION_COOKIE_DOMAIN = None
