@@ -454,6 +454,7 @@ function PurchaseRow(props) {
                         }}
                       >
                         <TableCell
+                          align="center"
                           sx={
                             isFullyCanceled
                               ? {
@@ -466,6 +467,7 @@ function PurchaseRow(props) {
                           {formatDate(purchase.order.dt_emis)}
                         </TableCell>
                         <TableCell
+                          align="center"
                           onClick={() => handleItemClick(item.id)}
                           sx={{
                             cursor: "pointer",
@@ -481,6 +483,7 @@ function PurchaseRow(props) {
                           {item.item_id}
                         </TableCell>
                         <TableCell
+                          align="center"
                           sx={
                             isFullyCanceled
                               ? {
@@ -493,6 +496,7 @@ function PurchaseRow(props) {
                           {item.descricao}
                         </TableCell>
                         <TableCell
+                          align="center"
                           sx={
                             isFullyCanceled
                               ? {
@@ -505,6 +509,7 @@ function PurchaseRow(props) {
                           {formatNumber(qty)} {item.unidade_medida}
                         </TableCell>
                         <TableCell
+                          align="center"
                           sx={
                             isFullyCanceled
                               ? {
@@ -517,6 +522,7 @@ function PurchaseRow(props) {
                           R$ {formatNumber(unitPrice)}
                         </TableCell>
                         <TableCell
+                          align="center"
                           sx={
                             isFullyCanceled
                               ? {
@@ -531,6 +537,7 @@ function PurchaseRow(props) {
                             : "0%"}
                         </TableCell>
                         <TableCell
+                          align="center"
                           sx={
                             isFullyCanceled
                               ? {
@@ -543,6 +550,7 @@ function PurchaseRow(props) {
                           R$ {formatNumber(total)}
                         </TableCell>
                         <TableCell
+                          align="center"
                           sx={
                             isFullyCanceled
                               ? {
@@ -555,6 +563,7 @@ function PurchaseRow(props) {
                           {formatNumber(attended)} {item.unidade_medida}
                         </TableCell>
                         <TableCell
+                          align="center"
                           sx={
                             isFullyCanceled
                               ? {
