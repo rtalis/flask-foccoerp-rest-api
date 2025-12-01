@@ -209,6 +209,8 @@ def store_item_matches(order, nfe_match, unfulfilled_items, min_score=80):
             else:
                 continue
         
+        item_id = item.id
+        
         try:
             # Get NFE item if available
             nfe_item_id = item_match.get('nfe_item_id')
@@ -273,7 +275,8 @@ def store_item_matches(order, nfe_match, unfulfilled_items, min_score=80):
                 stored_count += 1
                 
         except Exception as e:
-            logger.error(f"Error storing match for item {item.id}: {str(e)}")
+            logger.error(f"Error storing match for item {item_id}: {str(e)}")
+            db.session.rollback()  # Rollback to recover from error
             continue
     
     return stored_count
@@ -312,17 +315,34 @@ def match_purchases_with_nfes(days=60, min_score=80):
         logger.info(f"Found {len(unfulfilled_orders)} unfulfilled orders to process")
         
         for order in unfulfilled_orders:
+            # Store order info before any DB operations that might expire the object
+            order_cod_pedc = order.cod_pedc
+            order_cod_emp1 = order.cod_emp1
+            
             try:
                 # Get unfulfilled items for this order
                 unfulfilled_items = get_unfulfilled_items_for_order(order)
                 
                 if not unfulfilled_items:
+                    stats['orders_processed'] += 1
                     continue
                 
-                logger.debug(f"Processing order {order.cod_pedc}/{order.cod_emp1} with {len(unfulfilled_items)} unfulfilled items")
+                # Check if we already have matches for this order's unfulfilled items
+                # Skip if all unfulfilled items already have a match
+                unfulfilled_item_ids = [item_data['item'].id for item_data in unfulfilled_items]
+                existing_matches = PurchaseItemNFEMatch.query.filter(
+                    PurchaseItemNFEMatch.purchase_item_id.in_(unfulfilled_item_ids)
+                ).count()
+                
+                if existing_matches >= len(unfulfilled_items):
+                    # All items already have matches, skip
+                    stats['orders_processed'] += 1
+                    continue
+                
+                logger.info(f"Processing order {order_cod_pedc}/{order_cod_emp1} with {len(unfulfilled_items)} unfulfilled items")
                 
                 # Call the existing scoring function
-                match_results = score_purchase_nfe_match(order.cod_pedc, order.cod_emp1)
+                match_results = score_purchase_nfe_match(order_cod_pedc, order_cod_emp1)
                 
                 if isinstance(match_results, dict) and 'error' in match_results:
                     logger.warning(f"Error matching order {order.cod_pedc}: {match_results['error']}")
@@ -350,7 +370,7 @@ def match_purchases_with_nfes(days=60, min_score=80):
                 if order_items_matched > 0:
                     stats['orders_with_matches'] += 1
                     stats['items_matched'] += order_items_matched
-                    logger.info(f"Stored {order_items_matched} item matches for order {order.cod_pedc}")
+                    logger.info(f"Stored {order_items_matched} item matches for order {order_cod_pedc}")
                 
                 stats['orders_processed'] += 1
                 
@@ -360,7 +380,7 @@ def match_purchases_with_nfes(days=60, min_score=80):
                     logger.info(f"Processed {stats['orders_processed']} orders so far...")
                 
             except Exception as e:
-                logger.error(f"Error processing order {order.cod_pedc}: {str(e)}")
+                logger.error(f"Error processing order {order_cod_pedc}: {str(e)}")
                 stats['errors'] += 1
                 db.session.rollback()
                 continue
@@ -377,9 +397,9 @@ def match_purchases_with_nfes(days=60, min_score=80):
         return stats
 
 
-def get_ai_estimated_nfe_for_item(purchase_item_id):
+def get_estimated_nfe_for_item(purchase_item_id):
     """
-    Retrieve the AI-estimated NFE match for a specific purchase item.
+    Retrieve the estimated NFE match for a specific purchase item.
     Returns the best match (highest score) for display in the search screen.
     """
     match = PurchaseItemNFEMatch.query.filter_by(
@@ -395,13 +415,13 @@ def get_ai_estimated_nfe_for_item(purchase_item_id):
         'match_score': match.match_score,
         'nfe_fornecedor': match.nfe_fornecedor,
         'nfe_data_emissao': match.nfe_data_emissao.isoformat() if match.nfe_data_emissao else None,
-        'is_ai_estimated': True
+        'is_estimated': True
     }
 
 
-def get_ai_estimated_nfes_for_order(cod_pedc, cod_emp1):
+def get_estimated_nfes_for_order(cod_pedc, cod_emp1):
     """
-    Retrieve all AI-estimated NFE matches for a purchase order.
+    Retrieve all estimated NFE matches for a purchase order.
     Returns a dict mapping item_seq to estimated NFE info for the search screen.
     """
     matches = PurchaseItemNFEMatch.query.filter_by(
@@ -424,13 +444,13 @@ def get_ai_estimated_nfes_for_order(cod_pedc, cod_emp1):
                 'match_score': m.match_score,
                 'nfe_fornecedor': m.nfe_fornecedor,
                 'nfe_data_emissao': m.nfe_data_emissao.isoformat() if m.nfe_data_emissao else None,
-                'is_ai_estimated': True
+                'is_estimated': True
             }
     
     return result
 
 
-def get_ai_estimated_nfe_numbers_for_order(cod_pedc, cod_emp1):
+def get_estimated_nfe_numbers_for_order(cod_pedc, cod_emp1):
     """
     Get unique AI-estimated NFE numbers for a purchase order.
     Used to populate the NFEs column in the search screen.
@@ -449,7 +469,7 @@ def get_ai_estimated_nfe_numbers_for_order(cod_pedc, cod_emp1):
                 'nfe_chave': m.nfe_chave,
                 'match_score': m.match_score,
                 'nfe_fornecedor': m.nfe_fornecedor,
-                'is_ai_estimated': True
+                'is_estimated': True
             }
     
     return list(nfe_map.values())

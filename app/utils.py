@@ -1057,7 +1057,6 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
     if not purchase_order:
         return {'error': f'Purchase order {cod_pedc} not found for company {cod_emp1}'}
     
-    # Fetch purchase items
     purchase_items = PurchaseItem.query.filter_by(
         purchase_order_id=purchase_order.id
     ).all()
@@ -1065,7 +1064,6 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
     if not purchase_items:
         return {'error': f'No items found for purchase order {cod_pedc}'}
     
-    # Build purchase data
     po_data = {
         'id': purchase_order.id,
         'cod_pedc': purchase_order.cod_pedc,
@@ -1077,7 +1075,6 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
         'itens': []
     }
     
-    # Classify items by fulfillment status
     unfulfilled_items = []
     partially_fulfilled_items = []
     fulfilled_items = []
@@ -1110,12 +1107,9 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
     
     # Calculate remaining value
     total_remaining_value = sum(i['valor_remaining'] for i in po_data['itens'])
-    items_needing_fulfillment = unfulfilled_items + partially_fulfilled_items
     
-    # Get supplier name for CNPJ lookup
     supplier_name = po_data['fornecedor'].lower()
     
-    # Fetch all NFEs
     all_nfes = NFEData.query.all()
     
     # Helper functions
@@ -1199,7 +1193,7 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
                     else:
                         qty_score = qty_ratio * 100
                 
-                # Price match (0-100) - percentage based
+                # Price match (0-100)
                 price_score = 0
                 if po_price > 0 and nfe_price > 0:
                     price_diff_pct = abs(po_price - nfe_price) / po_price * 100
@@ -1220,16 +1214,14 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
                 # Allow low description match if price matches very well (same product, different naming)
                 if desc_score < 35 and price_score < 80:
                     continue
-                if desc_score < 25:  # Absolute minimum
+                if desc_score < 25:  
                     continue
                 
                 # Combined score: adjust weights based on match quality
                 # If description is weak but price is strong, trust price more
                 if desc_score < 45 and price_score >= 80:
-                    # Price-based match (different naming conventions)
                     combined = (desc_score * 0.25) + (qty_score * 0.35) + (price_score * 0.40)
                 else:
-                    # Normal description-based match
                     combined = (desc_score * 0.50) + (qty_score * 0.30) + (price_score * 0.20)
                 
                 if combined > best_score:

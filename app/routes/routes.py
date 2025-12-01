@@ -9,7 +9,7 @@ from sqlalchemy import and_, or_, func, cast, tuple_
 from sqlalchemy.sql import exists
 from sqlalchemy.orm import joinedload
 from flask_login import login_user, logout_user, login_required, current_user
-from app.models import LoginHistory, NFEData, NFEntry, PurchaseOrder, PurchaseItem, Quotation, User
+from app.models import LoginHistory, NFEData, NFEntry, PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch, Quotation, User
 from app.utils import  apply_adjustments, check_order_fulfillment, fuzzy_search, import_rcot0300, import_rfor0302, import_rpdc0250c, import_ruah,_parse_date
 from app import db
 import tempfile
@@ -29,12 +29,16 @@ def _build_purchase_payload(items):
     """Group purchase items by order and prepare API payload."""
     grouped_results = {}
     order_keys = set()
+    item_ids = set()
 
     for item in items:
         order = item.purchase_order
         if not order:
             continue
         order_keys.add((order.cod_emp1, item.cod_pedc))
+        # Collect item IDs for estimated NFE lookup
+        if item.qtde_saldo and item.qtde_saldo > 0:
+            item_ids.add(item.id)
 
     nf_entries_by_order = {}
 
@@ -47,6 +51,25 @@ def _build_purchase_payload(items):
         for nf_entry in nf_entries:
             order_key = (nf_entry.cod_emp1, nf_entry.cod_pedc)
             nf_entries_by_order.setdefault(order_key, []).append(nf_entry)
+
+    # Get estimated NFE matches for unfulfilled items
+    estimated_nfe_by_item = {}
+    if item_ids:
+        estimated_matches = (
+            PurchaseItemNFEMatch.query
+            .filter(PurchaseItemNFEMatch.purchase_item_id.in_(list(item_ids)))
+            .order_by(PurchaseItemNFEMatch.match_score.desc())
+            .all()
+        )
+        for match in estimated_matches:
+            # Only keep the best match per item (highest score)
+            if match.purchase_item_id not in estimated_nfe_by_item:
+                estimated_nfe_by_item[match.purchase_item_id] = {
+                    'nfe_numero': match.nfe_numero,
+                    'match_score': match.match_score,
+                    'nfe_fornecedor': match.nfe_fornecedor,
+                    'nfe_data_emissao': match.nfe_data_emissao.isoformat() if match.nfe_data_emissao else None
+                }
 
     for item in items:
         cod_pedc = item.cod_pedc
@@ -125,6 +148,7 @@ def _build_purchase_payload(items):
             'perc_toler': item.perc_toler,
             'qtde_atendida': item.qtde_atendida,
             'qtde_saldo': item.qtde_saldo,
+            'estimated_nfe': estimated_nfe_by_item.get(item.id),
         })
 
     return list(grouped_results.values())

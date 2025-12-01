@@ -393,16 +393,16 @@ function PurchaseRow(props) {
               <Table size="small" aria-label="items">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Data Emissão</TableCell>
-                    <TableCell>Cod. item</TableCell>
-                    <TableCell>Descrição do item</TableCell>
-                    <TableCell>Quantidade</TableCell>
-                    <TableCell>Preço Unitário</TableCell>
-                    <TableCell>IPI</TableCell>
-                    <TableCell>Total</TableCell>
-                    <TableCell>Qtde Atendida</TableCell>
-                    <TableCell>Dt Entrada</TableCell>
-                    <TableCell>NFEs</TableCell>
+                    <TableCell align="center">Data Emissão</TableCell>
+                    <TableCell align="center">Cod. item</TableCell>
+                    <TableCell align="center">Descrição do item</TableCell>
+                    <TableCell align="center">Quantidade</TableCell>
+                    <TableCell align="center">Preço Unitário</TableCell>
+                    <TableCell align="center">IPI</TableCell>
+                    <TableCell align="center">Total</TableCell>
+                    <TableCell align="center">Qtde Atendida</TableCell>
+                    <TableCell align="center">Dt Entrada</TableCell>
+                    <TableCell align="center">NFEs</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -580,6 +580,7 @@ function PurchaseRow(props) {
                           ))}
                         </TableCell>
                         <TableCell
+                          align="center"
                           sx={
                             isFullyCanceled
                               ? {
@@ -589,72 +590,184 @@ function PurchaseRow(props) {
                               : {}
                           }
                         >
-                          {purchase.order.nfes.map((nf) =>
-                            nf.linha == item.linha && nf.num_nf ? (
+                          {(() => {
+                            const actualNfes = purchase.order.nfes.filter(
+                              (nf) => nf.linha == item.linha && nf.num_nf
+                            );
+                            if (actualNfes.length > 0) {
+                              return (
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    alignItems: "center",
+                                    gap: "4px",
+                                  }}
+                                >
+                                  {actualNfes.map((nf) => (
+                                    <div
+                                      key={nf.id}
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "4px",
+                                      }}
+                                    >
+                                      <span>{nf.num_nf}</span>
+                                      <Tooltip
+                                        title={
+                                          loadingDanfeNf === nf.num_nf
+                                            ? "Carregando..."
+                                            : "Visualizar DANFE"
+                                        }
+                                      >
+                                        <span>
+                                          <IconButton
+                                            size="small"
+                                            color="primary"
+                                            onClick={() =>
+                                              handleDanfeIconClick(nf)
+                                            }
+                                            disabled={
+                                              loadingDanfeNf === nf.num_nf
+                                            }
+                                            sx={{ padding: "2px" }}
+                                          >
+                                            {loadingDanfeNf === nf.num_nf ? (
+                                              <CircularProgress size={16} />
+                                            ) : (
+                                              <PictureAsPdfIcon
+                                                fontSize="small"
+                                                sx={{ fontSize: "16px" }}
+                                              />
+                                            )}
+                                          </IconButton>
+                                        </span>
+                                      </Tooltip>
+                                    </div>
+                                  ))}
+                                </div>
+                              );
+                            } else if (item.estimated_nfe) {
+                              // Split multiple NFE numbers by " + "
+                              const nfeNumbers = item.estimated_nfe.nfe_numero
+                                ? item.estimated_nfe.nfe_numero.split(" + ")
+                                : [];
+                              return (
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    alignItems: "center",
+                                    gap: "4px",
+                                  }}
+                                >
+                                  {nfeNumbers.map((nfeNum, idx) => (
+                                    <div
+                                      key={idx}
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "4px",
+                                      }}
+                                    >
+                                      <Tooltip
+                                        title={`NF estimada por IA (${item.estimated_nfe.match_score?.toFixed(
+                                          0
+                                        )}% match)${
+                                          item.estimated_nfe.nfe_fornecedor
+                                            ? ` - ${item.estimated_nfe.nfe_fornecedor}`
+                                            : ""
+                                        }`}
+                                      >
+                                        <span
+                                          style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: "4px",
+                                            color: "#9c27b0",
+                                            fontStyle: "italic",
+                                          }}
+                                        >
+                                          <span>✨</span>
+                                          <span>{nfeNum.trim()}</span>
+                                        </span>
+                                      </Tooltip>
+                                      <Tooltip
+                                        title={
+                                          loadingDanfeNf === nfeNum.trim()
+                                            ? "Carregando..."
+                                            : "Visualizar DANFE"
+                                        }
+                                      >
+                                        <span>
+                                          <IconButton
+                                            size="small"
+                                            color="primary"
+                                            onClick={() =>
+                                              handleDanfeIconClick({
+                                                num_nf: nfeNum.trim(),
+                                              })
+                                            }
+                                            disabled={
+                                              loadingDanfeNf === nfeNum.trim()
+                                            }
+                                            sx={{ padding: "2px" }}
+                                          >
+                                            {loadingDanfeNf ===
+                                            nfeNum.trim() ? (
+                                              <CircularProgress size={16} />
+                                            ) : (
+                                              <PictureAsPdfIcon
+                                                fontSize="small"
+                                                sx={{ fontSize: "16px" }}
+                                              />
+                                            )}
+                                          </IconButton>
+                                        </span>
+                                      </Tooltip>
+                                    </div>
+                                  ))}
+                                </div>
+                              );
+                            }
+                            // Show search button when no actual NFE and no estimation
+                            return (
                               <div
-                                key={nf.id}
                                 style={{
                                   display: "flex",
                                   alignItems: "center",
                                   gap: "4px",
                                 }}
                               >
-                                <span>{nf.num_nf}</span>
-                                <Tooltip
-                                  title={
-                                    loadingDanfeNf === nf.num_nf
-                                      ? "Carregando..."
-                                      : "Visualizar DANFE"
-                                  }
+                                <IconButton
+                                  size="small"
+                                  color="primary"
+                                  onClick={fetchNfeData}
+                                  disabled={loadingNfe}
+                                  title="Buscar notas fiscais"
                                 >
-                                  <span>
+                                  {loadingNfe ? (
+                                    <CircularProgress size={16} />
+                                  ) : (
+                                    <SearchIcon fontSize="small" />
+                                  )}
+                                </IconButton>
+                                {nfeData &&
+                                  nfeData.nfe_data &&
+                                  nfeData.nfe_data.length > 0 && (
                                     <IconButton
                                       size="small"
-                                      color="primary"
-                                      onClick={() => handleDanfeIconClick(nf)}
-                                      disabled={loadingDanfeNf === nf.num_nf}
-                                      sx={{ padding: "2px" }}
+                                      color="secondary"
+                                      onClick={() => setShowNfeDialog(true)}
+                                      title="Ver Notas Fiscais"
                                     >
-                                      {loadingDanfeNf === nf.num_nf ? (
-                                        <CircularProgress size={16} />
-                                      ) : (
-                                        <PictureAsPdfIcon
-                                          fontSize="small"
-                                          sx={{ fontSize: "16px" }}
-                                        />
-                                      )}
+                                      <ReceiptIcon fontSize="small" />
                                     </IconButton>
-                                  </span>
-                                </Tooltip>
+                                  )}
                               </div>
-                            ) : null
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {true ? (
-                            <IconButton
-                              size="small"
-                              color="primary"
-                              onClick={fetchNfeData}
-                              disabled={loadingNfe}
-                              title="Ver detalhes das notas fiscais"
-                            >
-                              <SearchIcon fontSize="small" />
-                            </IconButton>
-                          ) : null}
-                          {loadingNfe ? (
-                            <CircularProgress size={24} />
-                          ) : nfeData &&
-                            nfeData.nfe_data &&
-                            nfeData.nfe_data.length > 0 ? (
-                            <IconButton
-                              color="secondary"
-                              onClick={() => setShowNfeDialog(true)}
-                              title="Ver Notas Fiscais"
-                            >
-                              <ReceiptIcon />
-                            </IconButton>
-                          ) : null}
+                            );
+                          })()}
                         </TableCell>
                       </TableRow>
                     );
@@ -663,7 +776,7 @@ function PurchaseRow(props) {
                 {/* Footer */}
                 <TableFooter>
                   <TableRow sx={{ backgroundColor: "#e9e9e9ff" }}>
-                    <TableCell colSpan={11}>
+                    <TableCell colSpan={10}>
                       <Box
                         sx={{
                           display: "flex",
