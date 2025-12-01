@@ -27,6 +27,7 @@ import {
   Settings as SettingsIcon,
   Key as KeyIcon,
   Sync as SyncIcon,
+  ManageSearch as ManageSearchIcon,
 } from "@mui/icons-material";
 
 const DRAWER_WIDTH = 260;
@@ -49,6 +50,12 @@ const Layout = ({ onLogout }) => {
       icon: <SearchIcon />,
       path: "/search",
       description: "Buscar pedidos de compra",
+    },
+    {
+      text: "Notas Fiscais",
+      icon: <ManageSearchIcon />,
+      path: "/nfe-search",
+      description: "Buscar NFEs e pedidos vinculados",
     },
     {
       text: "Cotações",
