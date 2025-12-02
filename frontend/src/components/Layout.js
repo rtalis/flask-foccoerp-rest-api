@@ -28,7 +28,9 @@ import {
   Key as KeyIcon,
   Sync as SyncIcon,
   ManageSearch as ManageSearchIcon,
+  Business as BusinessIcon,
 } from "@mui/icons-material";
+import TrackedCompanies from "./TrackedCompanies";
 
 const DRAWER_WIDTH = 260;
 const DRAWER_WIDTH_COLLAPSED = 72;
@@ -41,6 +43,7 @@ const Layout = ({ onLogout }) => {
 
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [showTrackedCompanies, setShowTrackedCompanies] = useState(false);
 
   const drawerWidth = sidebarOpen ? DRAWER_WIDTH : DRAWER_WIDTH_COLLAPSED;
 
@@ -103,7 +106,7 @@ const Layout = ({ onLogout }) => {
   const getPageTitle = () => {
     const allItems = [...menuItems, ...bottomMenuItems];
     const current = allItems.find((item) => item.path === location.pathname);
-    return current?.text || "Sistema de Compras";
+    return current?.text || "JHub";
   };
 
   const drawerContent = (
@@ -136,20 +139,20 @@ const Layout = ({ onLogout }) => {
                 fontWeight: 700,
               }}
             >
-              SC
+              JH
             </Avatar>
             <Box>
               <Typography
                 variant="subtitle1"
                 sx={{ color: "#fff", fontWeight: 600, lineHeight: 1.2 }}
               >
-                Compras
+                JHub
               </Typography>
               <Typography
                 variant="caption"
                 sx={{ color: "rgba(255,255,255,0.5)", fontSize: "0.7rem" }}
               >
-                Sistema de Gestão
+                Sistema de Compras
               </Typography>
             </Box>
           </Box>
@@ -235,6 +238,46 @@ const Layout = ({ onLogout }) => {
       {/* Bottom Section */}
       <Box sx={{ px: 1.5, pb: 2 }}>
         <Divider sx={{ borderColor: "rgba(255,255,255,0.08)", mb: 2 }} />
+
+        {/* Tracked Companies Button */}
+        <Tooltip
+          title={!sidebarOpen ? "Empresas Rastreadas" : ""}
+          placement="right"
+          arrow
+        >
+          <ListItemButton
+            onClick={() => setShowTrackedCompanies(true)}
+            sx={{
+              borderRadius: 2,
+              mb: 0.5,
+              minHeight: 44,
+              px: sidebarOpen ? 2 : 1.5,
+              justifyContent: sidebarOpen ? "flex-start" : "center",
+              color: "rgba(255,255,255,0.7)",
+              "&:hover": {
+                bgcolor: "rgba(255,255,255,0.08)",
+                color: "#fff",
+              },
+            }}
+          >
+            <ListItemIcon
+              sx={{
+                minWidth: 0,
+                mr: sidebarOpen ? 2 : 0,
+                justifyContent: "center",
+                color: "inherit",
+              }}
+            >
+              <BusinessIcon />
+            </ListItemIcon>
+            {sidebarOpen && (
+              <ListItemText
+                primary="Empresas Rastreadas"
+                primaryTypographyProps={{ fontSize: "0.875rem" }}
+              />
+            )}
+          </ListItemButton>
+        </Tooltip>
 
         {bottomMenuItems.map((item) => (
           <Tooltip
@@ -418,6 +461,12 @@ const Layout = ({ onLogout }) => {
         {/* Page Content */}
         <Outlet />
       </Box>
+
+      {/* Tracked Companies Dialog */}
+      <TrackedCompanies
+        open={showTrackedCompanies}
+        onClose={() => setShowTrackedCompanies(false)}
+      />
     </Box>
   );
 };

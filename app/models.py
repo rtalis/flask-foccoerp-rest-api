@@ -190,16 +190,14 @@ class PurchaseAdjustment(db.Model):
     purchase_order = db.relationship('PurchaseOrder', backref=db.backref('adjustments', lazy=True))
 
 
-# Add these new models to your existing models.py file
 
 class NFEData(db.Model):
     __tablename__ = 'nfe_data'
     
     id = db.Column(db.Integer, primary_key=True)
     
-    # Main NFE identification
     chave = db.Column(db.String(44), unique=True, nullable=False, index=True)
-    xml_content = db.Column(db.Text, nullable=False)  # Full XML content for exact reconstruction
+    xml_content = db.Column(db.Text, nullable=False) 
     
     # NFE Document Info
     versao = db.Column(db.String(10))

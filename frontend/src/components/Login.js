@@ -30,7 +30,7 @@ const Login = ({ onLogin }) => {
   return (
     <div className="login-container" style={{ backgroundImage: `url(${backgroundImage})` }}>
       <form className="login-form" onSubmit={handleSubmit}>
-        <h2>Login</h2>
+        <h2>JHub</h2>
         <div>
           <label>Email:</label>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />

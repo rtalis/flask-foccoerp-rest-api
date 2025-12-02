@@ -345,12 +345,12 @@ function PurchaseRow(props) {
         sx={{
           "& > *": { borderBottom: "unset" },
           backgroundColor: purchase.order.is_fulfilled
-            ? "#38be26ff"
-            : "#64a176ff",
+            ? "#3c4b79ff"
+            : "#2d3548",
           "&:hover": {
             backgroundColor: purchase.order.is_fulfilled
-              ? "#7cb342"
-              : "#5d836cff",
+              ? "#35416bff"
+              : "#3d4559",
           },
         }}
       >
@@ -359,6 +359,7 @@ function PurchaseRow(props) {
             size="small"
             onClick={() => setOpen(!open)}
             disabled={hideFulfilledItems}
+            sx={{ color: "#fff" }}
           >
             {open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
           </IconButton>
@@ -366,7 +367,7 @@ function PurchaseRow(props) {
         <TableCell
           colSpan={9}
           align="center"
-          sx={{ fontWeight: "bold", fontSize: "1.05rem" }}
+          sx={{ fontWeight: "bold", fontSize: "1.05rem", color: "#fff" }}
         >
           Pedido de Compra: {purchase.order.cod_pedc}~{" "}
           {purchase.order.fornecedor_id}{" "}
@@ -374,7 +375,7 @@ function PurchaseRow(props) {
           {formatCurrency(purchase.order.adjusted_total)} ~ Comprador:{" "}
           {purchase.order.func_nome}. Empresa: {purchase.order.cod_emp1}
           {purchase.order.is_fulfilled && (
-            <span style={{ marginLeft: "8px", color: "#2e7d32" }}>
+            <span style={{ marginLeft: "8px", color: "#4caf50" }}>
               ✓ Atendido
             </span>
           )}
@@ -392,17 +393,17 @@ function PurchaseRow(props) {
             <Box sx={{ margin: 1 }}>
               <Table size="small" aria-label="items">
                 <TableHead>
-                  <TableRow>
-                    <TableCell align="center">Data Emissão</TableCell>
-                    <TableCell align="center">Cod. item</TableCell>
-                    <TableCell align="center">Descrição do item</TableCell>
-                    <TableCell align="center">Quantidade</TableCell>
-                    <TableCell align="center">Preço Unitário</TableCell>
-                    <TableCell align="center">IPI</TableCell>
-                    <TableCell align="center">Total</TableCell>
-                    <TableCell align="center">Qtde Atendida</TableCell>
-                    <TableCell align="center">Dt Entrada</TableCell>
-                    <TableCell align="center">NFEs</TableCell>
+                  <TableRow sx={{ backgroundColor: "#f5f7fa" }}>
+                    <TableCell align="center" sx={{ fontWeight: 600, color: "#1a1f2e" }}>Data Emissão</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 600, color: "#1a1f2e" }}>Cod. item</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 600, color: "#1a1f2e" }}>Descrição do item</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 600, color: "#1a1f2e" }}>Quantidade</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 600, color: "#1a1f2e" }}>Preço Unitário</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 600, color: "#1a1f2e" }}>IPI</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 600, color: "#1a1f2e" }}>Total</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 600, color: "#1a1f2e" }}>Qtde Atendida</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 600, color: "#1a1f2e" }}>Dt Entrada</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 600, color: "#1a1f2e" }}>NFEs</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -436,20 +437,20 @@ function PurchaseRow(props) {
                         key={item.id}
                         sx={{
                           backgroundColor: isOverfulfilled
-                            ? "#fcfbefff"
+                            ? "#fff8e1"
                             : isFullyFulfilled
-                            ? "#e8f7ffff"
+                            ? "#e3f2fd"
                             : isPartiallyFulfilled
-                            ? "#eedfdfff"
+                            ? "#fce4ec"
                             : "inherit",
                           "&:hover": {
                             backgroundColor: isOverfulfilled
-                              ? "#fcedc3ff"
+                              ? "#ffecb3"
                               : isFullyFulfilled
-                              ? "#cae4f8ff"
+                              ? "#bbdefb"
                               : isPartiallyFulfilled
-                              ? "#d1a9adff"
-                              : "#f5f5f5",
+                              ? "#f8bbd0"
+                              : "#f5f7fa",
                           },
                         }}
                       >
@@ -784,7 +785,7 @@ function PurchaseRow(props) {
                 </TableBody>
                 {/* Footer */}
                 <TableFooter>
-                  <TableRow sx={{ backgroundColor: "#e9e9e9ff" }}>
+                  <TableRow sx={{ backgroundColor: "#f5f7fa" }}>
                     <TableCell colSpan={10}>
                       <Box
                         sx={{
@@ -797,14 +798,14 @@ function PurchaseRow(props) {
                         <Typography
                           variant="body2"
                           component="div"
-                          sx={{ fontWeight: "bold", textAlign: "left" }}
+                          sx={{ fontWeight: "bold", textAlign: "left", color: "#1a1f2e" }}
                         >
                           Observação: {purchase.order.observacao}
                         </Typography>
                         <Typography
                           variant="body2"
                           component="div"
-                          sx={{ fontWeight: "bold", textAlign: "right" }}
+                          sx={{ fontWeight: "bold", textAlign: "right", color: "#1a1f2e" }}
                         >
                           Total c/ ipi:{" "}
                           {formatCurrency(purchase.order.total_pedido_com_ipi)}{" "}
@@ -1921,6 +1922,29 @@ const UnifiedSearch = () => {
           </AccordionDetails>
         </Accordion>
 
+        {/* Empty State - Show when no results and not loading */}
+        {results.length === 0 && !loading && (
+          <Paper
+            elevation={0}
+            sx={{
+              p: 6,
+              mb: 3,
+              borderRadius: 3,
+              border: "1px solid",
+              borderColor: "divider",
+              textAlign: "center",
+            }}
+          >
+            <SearchIcon sx={{ fontSize: 48, color: "text.disabled", mb: 2 }} />
+            <Typography variant="h6" color="text.secondary" gutterBottom>
+              Digite um termo para buscar
+            </Typography>
+            <Typography variant="body2" color="text.disabled">
+              Pesquise por código, fornecedor, descrição de item ou nota fiscal
+            </Typography>
+          </Paper>
+        )}
+
         {/* Loading State */}
         {loading && (
           <Box sx={{ mb: 3 }}>
@@ -1947,7 +1971,7 @@ const UnifiedSearch = () => {
               >
                 <Box
                   sx={{
-                    bgcolor: "#e8f5e9",
+                    bgcolor: "#2d3548",
                     p: 2,
                     display: "flex",
                     alignItems: "center",
@@ -1959,12 +1983,14 @@ const UnifiedSearch = () => {
                     width={24}
                     height={24}
                     animation="wave"
+                    sx={{ bgcolor: "rgba(255,255,255,0.1)" }}
                   />
                   <Skeleton
                     variant="text"
                     width="80%"
                     height={28}
                     animation="wave"
+                    sx={{ bgcolor: "rgba(255,255,255,0.1)" }}
                   />
                 </Box>
                 <Box sx={{ p: 2 }}>
@@ -1992,7 +2018,7 @@ const UnifiedSearch = () => {
         )}
 
         {/* Results Summary */}
-        {!loading && (
+        {!loading && results.length > 0 && (
           <Box
             sx={{
               display: "flex",
@@ -2029,35 +2055,37 @@ const UnifiedSearch = () => {
         )}
 
         {/* Results Table */}
-        <TableContainer
-          component={Paper}
-          elevation={0}
-          sx={{
-            borderRadius: 3,
-            border: "1px solid",
-            borderColor: "divider",
-            mb: 3,
-          }}
-        >
-          <Table aria-label="collapsible table">
-            <TableBody>
-              {results.map((purchase) => (
-                <PurchaseRow
-                  key={purchase.order.cod_pedc}
-                  purchase={purchase}
-                  formatDate={formatDate}
-                  formatNumber={formatNumber}
-                  formatCurrency={formatCurrency}
-                  getFirstWords={getFirstWords}
-                  handleItemClick={handleItemClick}
-                  hideFulfilledItems={
-                    !showFulfilled && purchase.order.is_fulfilled
-                  }
-                />
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+        {results.length > 0 && (
+          <TableContainer
+            component={Paper}
+            elevation={0}
+            sx={{
+              borderRadius: 3,
+              border: "1px solid",
+              borderColor: "divider",
+              mb: 3,
+            }}
+          >
+            <Table aria-label="collapsible table">
+              <TableBody>
+                {results.map((purchase) => (
+                  <PurchaseRow
+                    key={purchase.order.cod_pedc}
+                    purchase={purchase}
+                    formatDate={formatDate}
+                    formatNumber={formatNumber}
+                    formatCurrency={formatCurrency}
+                    getFirstWords={getFirstWords}
+                    handleItemClick={handleItemClick}
+                    hideFulfilledItems={
+                      !showFulfilled && purchase.order.is_fulfilled
+                    }
+                  />
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
 
         {/* Pagination */}
         {totalPages > 1 && (

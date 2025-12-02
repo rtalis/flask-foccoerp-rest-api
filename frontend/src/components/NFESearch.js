@@ -35,6 +35,8 @@ import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import ReceiptIcon from "@mui/icons-material/Receipt";
+import SettingsIcon from "@mui/icons-material/Settings";
+import TrackedCompanies from "./TrackedCompanies";
 
 const NFESearch = () => {
   // Search state
@@ -61,6 +63,9 @@ const NFESearch = () => {
 
   // Expanded NFEs
   const [expandedNfe, setExpandedNfe] = useState({});
+
+  // Tracked Companies Dialog
+  const [showTrackedCompanies, setShowTrackedCompanies] = useState(false);
 
   // Load tracked companies on mount
   useEffect(() => {
@@ -326,7 +331,7 @@ const NFESearch = () => {
             >
               <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                 <BusinessIcon sx={{ fontSize: 20, color: "#fff" }} />
-                <Box>
+                <Box sx={{ flexGrow: 1 }}>
                   <Typography
                     variant="caption"
                     sx={{ color: "rgba(255,255,255,0.8)", display: "block" }}
@@ -382,6 +387,21 @@ const NFESearch = () => {
                     </Box>
                   )}
                 </Box>
+                <Tooltip title="Configurar empresas">
+                  <IconButton
+                    size="small"
+                    onClick={() => setShowTrackedCompanies(true)}
+                    sx={{
+                      color: "rgba(255,255,255,0.7)",
+                      "&:hover": {
+                        color: "#fff",
+                        bgcolor: "rgba(255,255,255,0.1)",
+                      },
+                    }}
+                  >
+                    <SettingsIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </Tooltip>
               </Box>
             </Paper>
           </Box>
@@ -944,6 +964,15 @@ const NFESearch = () => {
           )}
         </Box>
       </Box>
+
+      {/* Tracked Companies Dialog */}
+      <TrackedCompanies
+        open={showTrackedCompanies}
+        onClose={() => {
+          setShowTrackedCompanies(false);
+          loadTrackedCompanies(); // Refresh companies after closing
+        }}
+      />
     </LocalizationProvider>
   );
 };
