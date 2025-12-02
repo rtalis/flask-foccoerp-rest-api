@@ -54,9 +54,21 @@ const NFESearch = () => {
   // Advanced filters
   const [searchByNumber, setSearchByNumber] = useState(true);
   const [searchByChave, setSearchByChave] = useState(true);
-  const [searchByFornecedor, setSearchByFornecedor] = useState(true);
-  const [searchByItem, setSearchByItem] = useState(true);
+  const [searchByFornecedor, setSearchByFornecedor] = useState(false);
+  const [searchByItem, setSearchByItem] = useState(false);
   const [includeEstimated, setIncludeEstimated] = useState(true);
+  const [exactTermSearch, setExactTermSearch] = useState(true);
+
+  // Auto-uncheck exactTermSearch when fornecedor or item is enabled
+  const handleSearchByFornecedorChange = (checked) => {
+    setSearchByFornecedor(checked);
+    if (checked) setExactTermSearch(false);
+  };
+
+  const handleSearchByItemChange = (checked) => {
+    setSearchByItem(checked);
+    if (checked) setExactTermSearch(false);
+  };
 
   // DANFE loading state
   const [loadingDanfe, setLoadingDanfe] = useState(null);
@@ -105,6 +117,7 @@ const NFESearch = () => {
         search_by_fornecedor: searchByFornecedor,
         search_by_item: searchByItem,
         include_estimated: includeEstimated,
+        exact_term_search: exactTermSearch,
       };
 
       if (startDate) {
@@ -233,9 +246,10 @@ const NFESearch = () => {
     setEndDate(null);
     setSearchByNumber(true);
     setSearchByChave(true);
-    setSearchByFornecedor(true);
-    setSearchByItem(true);
+    setSearchByFornecedor(false);
+    setSearchByItem(false);
     setIncludeEstimated(true);
+    setExactTermSearch(true);
     setResults(null);
     setError(null);
   };
@@ -255,22 +269,22 @@ const NFESearch = () => {
       onChange: setSearchByNumber,
     },
     {
+      name: "searchByChave",
+      label: "Chave de Acesso",
+      checked: searchByChave,
+      onChange: setSearchByChave,
+    },
+    {
       name: "searchByItem",
       label: "Descrição do Item",
       checked: searchByItem,
-      onChange: setSearchByItem,
+      onChange: handleSearchByItemChange,
     },
     {
       name: "searchByFornecedor",
       label: "Fornecedor",
       checked: searchByFornecedor,
-      onChange: setSearchByFornecedor,
-    },
-    {
-      name: "searchByChave",
-      label: "Chave de Acesso",
-      checked: searchByChave,
-      onChange: setSearchByChave,
+      onChange: handleSearchByFornecedorChange,
     },
   ];
 
@@ -525,6 +539,17 @@ const NFESearch = () => {
                     sx={{ mr: 2 }}
                   />
                 ))}
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={exactTermSearch}
+                      onChange={(e) => setExactTermSearch(e.target.checked)}
+                      size="small"
+                    />
+                  }
+                  label={<Typography variant="body2">Termo Exato</Typography>}
+                  sx={{ mr: 2 }}
+                />
                 <FormControlLabel
                   control={
                     <Switch

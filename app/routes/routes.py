@@ -2279,15 +2279,15 @@ def get_nfe_data():
 def get_nfe_by_number():
     """
     Find NFE in the database by its number (num_nf).
-    Uses supplier name/CNPJ and date proximity for accurate matching when multiple NFEs exist.
+    Returns only one NFE if it matches the criteria (number + supplier + date).
     
     Parameters:
     - num_nf (required): The NFE number
-    - fornecedor_id (optional): The supplier's ID from purchase order
-    - fornecedor_nome (optional): The supplier's name for fuzzy matching
-    - dt_ent (optional): The entry date for date proximity matching (YYYY-MM-DD)
+    - fornecedor_id (optional): The supplier's ID from purchase order (used to get CNPJ)
+    - fornecedor_nome (optional): The supplier's name for matching if no CNPJ
+    - dt_ent (optional): The entry date for date matching (YYYY-MM-DD)
     
-    Returns the NFE chave if found, or an error if not found.
+    Returns the NFE if found and matches criteria, or not found if no match.
     """
     from app.models import NFEData, NFEEmitente, Supplier
     from fuzzywuzzy import fuzz
@@ -2315,20 +2315,6 @@ def get_nfe_by_number():
         if not nfes:
             return jsonify({'error': 'NFE not found in database', 'found': False}), 404
         
-        # If only one NFE found, return it
-        if len(nfes) == 1:
-            nfe = nfes[0]
-            return jsonify({
-                'found': True,
-                'chave': nfe.chave,
-                'numero': nfe.numero,
-                'data_emissao': nfe.data_emissao.isoformat() if nfe.data_emissao else None,
-                'valor': nfe.valor_total,
-                'fornecedor': nfe.emitente.nome if nfe.emitente else None
-            }), 200
-        
-        # Multiple NFEs with same number - use supplier matching and date proximity
-        
         # Get supplier CNPJ from database if fornecedor_id is provided
         fornecedor_cnpj = None
         if fornecedor_id:
@@ -2340,69 +2326,67 @@ def get_nfe_by_number():
         dt_ent = None
         if dt_ent_str:
             try:
-                dt_ent = datetime.strptime(dt_ent_str[:10], '%Y-%m-%d')
+                dt_ent = datetime.strptime(dt_ent_str[:10], '%Y-%m-%d').date()
             except:
                 pass
         
-        # Score each NFE based on supplier match and date proximity
-        scored_nfes = []
+        # Find the correct NFE by matching supplier (CNPJ or name) and date
+        matched_nfe = None
+        
         for nfe in nfes:
-            score = 0
-            
-            # 1. CNPJ match (highest priority - 100 points)
+            # 1. Check CNPJ match (primary criteria if available)
             if fornecedor_cnpj and nfe.emitente and nfe.emitente.cnpj:
                 emit_cnpj_clean = ''.join(filter(str.isdigit, str(nfe.emitente.cnpj)))
                 if emit_cnpj_clean == fornecedor_cnpj:
-                    score += 100
+                    # CNPJ matches - check date if provided
+                    if dt_ent and nfe.data_emissao:
+                        nfe_date = nfe.data_emissao
+                        if hasattr(nfe_date, 'date'):
+                            nfe_date = nfe_date.date()
+                        # Allow 30 days tolerance for date matching
+                        days_diff = abs((nfe_date - dt_ent).days)
+                        if days_diff <= 30:
+                            matched_nfe = nfe
+                            break
+                    else:
+                        # No date to check, CNPJ is enough
+                        matched_nfe = nfe
+                        break
             
-            # 2. Supplier name fuzzy match (50 points max)
-            if fornecedor_nome and nfe.emitente and nfe.emitente.nome:
+            # 2. If no CNPJ available, use supplier name fuzzy matching
+            elif not fornecedor_cnpj and fornecedor_nome and nfe.emitente and nfe.emitente.nome:
                 name_ratio = fuzz.token_set_ratio(
                     fornecedor_nome.lower(),
                     nfe.emitente.nome.lower()
                 )
-                score += (name_ratio / 100) * 50  # 0-50 points
-            
-            # 3. Date proximity (30 points max - closer dates score higher)
-            if dt_ent and nfe.data_emissao:
-                nfe_date = nfe.data_emissao
-                if isinstance(nfe_date, datetime):
-                    nfe_date = nfe_date.date() if hasattr(nfe_date, 'date') else nfe_date
-                if isinstance(dt_ent, datetime):
-                    dt_ent_date = dt_ent.date()
-                else:
-                    dt_ent_date = dt_ent
-                    
-                try:
-                    days_diff = abs((nfe_date - dt_ent_date).days)
-                    if days_diff <= 7:
-                        score += 30  # Within a week
-                    elif days_diff <= 30:
-                        score += 20  # Within a month
-                    elif days_diff <= 90:
-                        score += 10  # Within 3 months
-                    # More than 90 days = 0 points
-                except:
-                    pass
-            
-            scored_nfes.append((nfe, score))
+                # Require high match (80%+) for name-based matching
+                if name_ratio >= 80:
+                    # Name matches - check date if provided
+                    if dt_ent and nfe.data_emissao:
+                        nfe_date = nfe.data_emissao
+                        if hasattr(nfe_date, 'date'):
+                            nfe_date = nfe_date.date()
+                        # Allow 30 days tolerance for date matching
+                        days_diff = abs((nfe_date - dt_ent).days)
+                        if days_diff <= 30:
+                            matched_nfe = nfe
+                            break
+                    else:
+                        # No date to check, name match is enough
+                        matched_nfe = nfe
+                        break
         
-        # Sort by score (highest first), then by date (most recent first)
-        scored_nfes.sort(key=lambda x: (-x[1], -(x[0].data_emissao.timestamp() if x[0].data_emissao else 0)))
-        
-        # Return the best match
-        best_nfe = scored_nfes[0][0]
-        best_score = scored_nfes[0][1]
+        # If no match found with strict criteria, return not found
+        if not matched_nfe:
+            return jsonify({'error': 'NFE not found matching criteria', 'found': False}), 404
         
         return jsonify({
             'found': True,
-            'chave': best_nfe.chave,
-            'numero': best_nfe.numero,
-            'data_emissao': best_nfe.data_emissao.isoformat() if best_nfe.data_emissao else None,
-            'valor': best_nfe.valor_total,
-            'fornecedor': best_nfe.emitente.nome if best_nfe.emitente else None,
-            'match_score': best_score,
-            'total_matches': len(nfes)
+            'chave': matched_nfe.chave,
+            'numero': matched_nfe.numero,
+            'data_emissao': matched_nfe.data_emissao.isoformat() if matched_nfe.data_emissao else None,
+            'valor': matched_nfe.valor_total,
+            'fornecedor': matched_nfe.emitente.nome if matched_nfe.emitente else None
         }), 200
         
     except Exception as e:
@@ -3034,6 +3018,7 @@ def search_nfe():
     search_by_fornecedor = request.args.get('search_by_fornecedor', 'false').lower() == 'true'
     search_by_item = request.args.get('search_by_item', 'true').lower() == 'true'
     include_estimated = request.args.get('include_estimated', 'true').lower() == 'true'
+    exact_term_search = request.args.get('exact_term_search', 'true').lower() == 'true'
     
     if not query:
         return jsonify({'error': 'Query parameter is required'}), 400
@@ -3051,12 +3036,16 @@ def search_nfe():
         nfe_filters = []
         
         if search_by_number:
-            # Try exact match first, then LIKE
+            # Use exact match or LIKE based on exact_term_search
             nfe_filters.append(NFEData.numero == query)
-            nfe_filters.append(NFEData.numero.ilike(f'%{query}%'))
+            if not exact_term_search:
+                nfe_filters.append(NFEData.numero.ilike(f'%{query}%'))
         
         if search_by_chave:
-            nfe_filters.append(NFEData.chave.ilike(f'%{query}%'))
+            if exact_term_search:
+                nfe_filters.append(NFEData.chave == query)
+            else:
+                nfe_filters.append(NFEData.chave.ilike(f'%{query}%'))
         
         # Query NFEs
         nfe_query = NFEData.query
@@ -3073,9 +3062,14 @@ def search_nfe():
         
         # If searching by supplier, also filter by emitente name
         if search_by_fornecedor and query:
-            supplier_nfes = NFEData.query.join(NFEEmitente).filter(
-                NFEEmitente.nome.ilike(f'%{query}%')
-            )
+            if exact_term_search:
+                supplier_nfes = NFEData.query.join(NFEEmitente).filter(
+                    NFEEmitente.nome == query
+                )
+            else:
+                supplier_nfes = NFEData.query.join(NFEEmitente).filter(
+                    NFEEmitente.nome.ilike(f'%{query}%')
+                )
             if start_date:
                 supplier_nfes = supplier_nfes.filter(NFEData.data_emissao >= start_date)
             if end_date:
@@ -3091,9 +3085,14 @@ def search_nfe():
         
         # If searching by item description, search NFEItem
         if search_by_item and query:
-            item_nfes = NFEData.query.join(NFEItem).filter(
-                NFEItem.descricao.ilike(f'%{query}%')
-            )
+            if exact_term_search:
+                item_nfes = NFEData.query.join(NFEItem).filter(
+                    NFEItem.descricao == query
+                )
+            else:
+                item_nfes = NFEData.query.join(NFEItem).filter(
+                    NFEItem.descricao.ilike(f'%{query}%')
+                )
             if start_date:
                 item_nfes = item_nfes.filter(NFEData.data_emissao >= start_date)
             if end_date:
@@ -3115,10 +3114,16 @@ def search_nfe():
             # Get matched items if searching by item
             matched_items = []
             if search_by_item:
-                items = NFEItem.query.filter(
-                    NFEItem.nfe_id == nfe.id,
-                    NFEItem.descricao.ilike(f'%{query}%')
-                ).all()
+                if exact_term_search:
+                    items = NFEItem.query.filter(
+                        NFEItem.nfe_id == nfe.id,
+                        NFEItem.descricao == query
+                    ).all()
+                else:
+                    items = NFEItem.query.filter(
+                        NFEItem.nfe_id == nfe.id,
+                        NFEItem.descricao.ilike(f'%{query}%')
+                    ).all()
                 matched_items = [item.descricao for item in items[:3]]  # Limit to 3
             
             # Find linked purchase orders via NFEntry for this NFE
@@ -3162,12 +3167,15 @@ def search_nfe():
         purchase_orders = []
         
         # 1. Search in NFEntry (direct links)
-        nf_entries = NFEntry.query.filter(
-            or_(
-                NFEntry.num_nf == query,
-                NFEntry.num_nf.ilike(f'%{query}%')
-            )
-        ).all()
+        if exact_term_search:
+            nf_entries = NFEntry.query.filter(NFEntry.num_nf == query).all()
+        else:
+            nf_entries = NFEntry.query.filter(
+                or_(
+                    NFEntry.num_nf == query,
+                    NFEntry.num_nf.ilike(f'%{query}%')
+                )
+            ).all()
         
         for entry in nf_entries:
             po = PurchaseOrder.query.filter_by(
@@ -3212,12 +3220,17 @@ def search_nfe():
         
         # 2. Search in PurchaseItemNFEMatch (AI-estimated matches)
         if include_estimated:
-            estimated_matches = PurchaseItemNFEMatch.query.filter(
-                or_(
-                    PurchaseItemNFEMatch.nfe_numero == query,
-                    PurchaseItemNFEMatch.nfe_numero.ilike(f'%{query}%')
-                )
-            ).all()
+            if exact_term_search:
+                estimated_matches = PurchaseItemNFEMatch.query.filter(
+                    PurchaseItemNFEMatch.nfe_numero == query
+                ).all()
+            else:
+                estimated_matches = PurchaseItemNFEMatch.query.filter(
+                    or_(
+                        PurchaseItemNFEMatch.nfe_numero == query,
+                        PurchaseItemNFEMatch.nfe_numero.ilike(f'%{query}%')
+                    )
+                ).all()
             
             for match in estimated_matches:
                 item = PurchaseItem.query.get(match.purchase_item_id)
@@ -3261,12 +3274,15 @@ def search_nfe():
                             })
         
         # 3. Search by purchase order number (cod_pedc) to find linked NFEs
-        purchase_entries = NFEntry.query.filter(
-            or_(
-                NFEntry.cod_pedc == query,
-                NFEntry.cod_pedc.ilike(f'%{query}%')
-            )
-        ).all()
+        if exact_term_search:
+            purchase_entries = NFEntry.query.filter(NFEntry.cod_pedc == query).all()
+        else:
+            purchase_entries = NFEntry.query.filter(
+                or_(
+                    NFEntry.cod_pedc == query,
+                    NFEntry.cod_pedc.ilike(f'%{query}%')
+                )
+            ).all()
         
         for entry in purchase_entries:
             # Check if already added from section 1
