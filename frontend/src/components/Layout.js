@@ -106,7 +106,7 @@ const Layout = ({ onLogout }) => {
   const getPageTitle = () => {
     const allItems = [...menuItems, ...bottomMenuItems];
     const current = allItems.find((item) => item.path === location.pathname);
-    return current?.text || "JHub";
+    return current?.text || "jhub - hub de pesquisas ruah";
   };
 
   const drawerContent = (
@@ -146,13 +146,13 @@ const Layout = ({ onLogout }) => {
                 variant="subtitle1"
                 sx={{ color: "#fff", fontWeight: 600, lineHeight: 1.2 }}
               >
-                JHub
+                JHub - pesquisas
               </Typography>
               <Typography
                 variant="caption"
                 sx={{ color: "rgba(255,255,255,0.5)", fontSize: "0.7rem" }}
               >
-                Sistema de Compras
+                Sistema de buscas
               </Typography>
             </Box>
           </Box>
