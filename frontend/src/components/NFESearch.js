@@ -36,13 +36,55 @@ import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import ReceiptIcon from "@mui/icons-material/Receipt";
 import SettingsIcon from "@mui/icons-material/Settings";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import TrackedCompanies from "./TrackedCompanies";
+import NFEDetails from "./NFEDetails";
 
 const NFESearch = () => {
+  // LocalStorage keys
+  const NFE_SEARCH_PARAMS_KEY = "nfeSearchParams";
+
+  // Default search parameters
+  const DEFAULT_SEARCH_PARAMS = {
+    searchTerm: "",
+    startDate: null,
+    endDate: null,
+    searchByNumber: true,
+    searchByChave: true,
+    searchByFornecedor: false,
+    searchByItem: false,
+    includeEstimated: true,
+    exactTermSearch: true,
+  };
+
+  const getStoredSearchParams = () => {
+    if (typeof window === "undefined") {
+      return { ...DEFAULT_SEARCH_PARAMS };
+    }
+    try {
+      const stored = localStorage.getItem(NFE_SEARCH_PARAMS_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        return {
+          ...DEFAULT_SEARCH_PARAMS,
+          ...parsed,
+          startDate: parsed.startDate ? new Date(parsed.startDate) : null,
+          endDate: parsed.endDate ? new Date(parsed.endDate) : null,
+        };
+      }
+    } catch (error) {
+      console.warn("Erro ao recuperar filtros salvos da NFE", error);
+    }
+    return { ...DEFAULT_SEARCH_PARAMS };
+  };
+
+  // Initialize state from localStorage
+  const storedParams = getStoredSearchParams();
+
   // Search state
-  const [searchTerm, setSearchTerm] = useState("");
-  const [startDate, setStartDate] = useState(null);
-  const [endDate, setEndDate] = useState(null);
+  const [searchTerm, setSearchTerm] = useState(storedParams.searchTerm);
+  const [startDate, setStartDate] = useState(storedParams.startDate);
+  const [endDate, setEndDate] = useState(storedParams.endDate);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
@@ -52,14 +94,51 @@ const NFESearch = () => {
   const [loadingCompanies, setLoadingCompanies] = useState(false);
 
   // Advanced filters
-  const [searchByNumber, setSearchByNumber] = useState(true);
-  const [searchByChave, setSearchByChave] = useState(true);
-  const [searchByFornecedor, setSearchByFornecedor] = useState(false);
-  const [searchByItem, setSearchByItem] = useState(false);
-  const [includeEstimated, setIncludeEstimated] = useState(true);
-  const [exactTermSearch, setExactTermSearch] = useState(true);
+  const [searchByNumber, setSearchByNumber] = useState(
+    storedParams.searchByNumber
+  );
+  const [searchByChave, setSearchByChave] = useState(
+    storedParams.searchByChave
+  );
+  const [searchByFornecedor, setSearchByFornecedor] = useState(
+    storedParams.searchByFornecedor
+  );
+  const [searchByItem, setSearchByItem] = useState(storedParams.searchByItem);
+  const [includeEstimated, setIncludeEstimated] = useState(
+    storedParams.includeEstimated
+  );
+  const [exactTermSearch, setExactTermSearch] = useState(
+    storedParams.exactTermSearch
+  );
 
-  // Auto-uncheck exactTermSearch when fornecedor or item is enabled
+  // Save search params to localStorage whenever they change
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const paramsToSave = {
+        searchTerm,
+        startDate: startDate ? startDate.toISOString() : null,
+        endDate: endDate ? endDate.toISOString() : null,
+        searchByNumber,
+        searchByChave,
+        searchByFornecedor,
+        searchByItem,
+        includeEstimated,
+        exactTermSearch,
+      };
+      localStorage.setItem(NFE_SEARCH_PARAMS_KEY, JSON.stringify(paramsToSave));
+    }
+  }, [
+    searchTerm,
+    startDate,
+    endDate,
+    searchByNumber,
+    searchByChave,
+    searchByFornecedor,
+    searchByItem,
+    includeEstimated,
+    exactTermSearch,
+  ]);
+
   const handleSearchByFornecedorChange = (checked) => {
     setSearchByFornecedor(checked);
     if (checked) setExactTermSearch(false);
@@ -70,14 +149,55 @@ const NFESearch = () => {
     if (checked) setExactTermSearch(false);
   };
 
-  // DANFE loading state
   const [loadingDanfe, setLoadingDanfe] = useState(null);
-
-  // Expanded NFEs
   const [expandedNfe, setExpandedNfe] = useState({});
-
-  // Tracked Companies Dialog
+  const [expandedPurchaseOrder, setExpandedPurchaseOrder] = useState({});
   const [showTrackedCompanies, setShowTrackedCompanies] = useState(false);
+  const [selectedNfe, setSelectedNfe] = useState(null);
+  const [showNfeDetails, setShowNfeDetails] = useState(false);
+  const groupPurchasesByOrder = (purchases) => {
+    const grouped = {};
+    purchases.forEach((purchase) => {
+      const key = `${purchase.cod_pedc}-${purchase.cod_emp1}`;
+      if (!grouped[key]) {
+        grouped[key] = {
+          cod_pedc: purchase.cod_pedc,
+          cod_emp1: purchase.cod_emp1,
+          fornecedor: purchase.fornecedor,
+          nfe_numero: purchase.nfe_numero,
+          dt_emis: purchase.dt_emis,
+          total_pedido: purchase.total_pedido,
+          func_nome: purchase.func_nome,
+          has_estimated: false,
+          items: [],
+        };
+      }
+      if (purchase.is_estimated) {
+        grouped[key].has_estimated = true;
+      }
+      grouped[key].items.push({
+        item_descricao: purchase.item_descricao,
+        linha: purchase.linha,
+        quantidade: purchase.quantidade,
+        qtde_atendida: purchase.qtde_atendida,
+        qtde_saldo: purchase.qtde_saldo,
+        preco_unitario: purchase.preco_unitario,
+        total_item: purchase.total_item,
+        unidade_medida: purchase.unidade_medida,
+        dt_entrega: purchase.dt_entrega,
+        is_estimated: purchase.is_estimated,
+        match_score: purchase.match_score,
+      });
+    });
+    return Object.values(grouped);
+  };
+
+  const togglePurchaseOrderExpanded = (key) => {
+    setExpandedPurchaseOrder((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
 
   // Load tracked companies on mount
   useEffect(() => {
@@ -241,17 +361,21 @@ const NFESearch = () => {
   };
 
   const handleRestoreDefaults = () => {
-    setSearchTerm("");
-    setStartDate(null);
-    setEndDate(null);
-    setSearchByNumber(true);
-    setSearchByChave(true);
-    setSearchByFornecedor(false);
-    setSearchByItem(false);
-    setIncludeEstimated(true);
-    setExactTermSearch(true);
+    setSearchTerm(DEFAULT_SEARCH_PARAMS.searchTerm);
+    setStartDate(DEFAULT_SEARCH_PARAMS.startDate);
+    setEndDate(DEFAULT_SEARCH_PARAMS.endDate);
+    setSearchByNumber(DEFAULT_SEARCH_PARAMS.searchByNumber);
+    setSearchByChave(DEFAULT_SEARCH_PARAMS.searchByChave);
+    setSearchByFornecedor(DEFAULT_SEARCH_PARAMS.searchByFornecedor);
+    setSearchByItem(DEFAULT_SEARCH_PARAMS.searchByItem);
+    setIncludeEstimated(DEFAULT_SEARCH_PARAMS.includeEstimated);
+    setExactTermSearch(DEFAULT_SEARCH_PARAMS.exactTermSearch);
     setResults(null);
     setError(null);
+    // Clear localStorage
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(NFE_SEARCH_PARAMS_KEY);
+    }
   };
 
   const toggleNfeExpanded = (nfeId) => {
@@ -371,11 +495,13 @@ const NFESearch = () => {
                         trackedCompanies.slice(0, 3).map((company) => (
                           <Chip
                             key={company.id}
-                            label={
+                            label={`${
+                              company.cod_emp1 ? company.cod_emp1 + " - " : ""
+                            }${
                               company.name ||
                               company.fantasy_name ||
                               formatCNPJ(company.cnpj)
-                            }
+                            }`}
                             size="small"
                             sx={{
                               bgcolor: "rgba(255,255,255,0.2)",
@@ -654,14 +780,37 @@ const NFESearch = () => {
               >
                 <Typography variant="subtitle1" fontWeight={600}>
                   {results.nfes?.length || 0} NFEs encontradas
-                  {results.purchase_orders?.length > 0 && (
+                  {results.purchase_orders?.filter(
+                    (po) =>
+                      po.match_type === "linked" ||
+                      po.match_type === "estimated"
+                  ).length > 0 && (
                     <Typography
                       component="span"
                       variant="body2"
                       color="text.secondary"
                       sx={{ ml: 1 }}
                     >
-                      • {results.purchase_orders.length} pedidos vinculados
+                      •{" "}
+                      {
+                        results.purchase_orders.filter(
+                          (po) =>
+                            po.match_type === "linked" ||
+                            po.match_type === "estimated"
+                        ).length
+                      }{" "}
+                      pedidos vinculados
+                    </Typography>
+                  )}
+                  {results.unlinked_purchase_orders?.length > 0 && (
+                    <Typography
+                      component="span"
+                      variant="body2"
+                      color="warning.main"
+                      sx={{ ml: 1 }}
+                    >
+                      • {results.unlinked_purchase_orders.length} pedidos sem
+                      NFE correspondente
                     </Typography>
                   )}
                 </Typography>
@@ -699,7 +848,7 @@ const NFESearch = () => {
                           Valor Total
                         </TableCell>
                         <TableCell align="center" sx={{ fontWeight: 600 }}>
-                          Itens
+                          Pedidos
                         </TableCell>
                         <TableCell align="center" sx={{ fontWeight: 600 }}>
                           Ações
@@ -759,38 +908,105 @@ const NFESearch = () => {
                               {formatCurrency(nfe.valor_total)}
                             </TableCell>
                             <TableCell align="center">
-                              {nfe.matched_items &&
-                              nfe.matched_items.length > 0 ? (
-                                <Tooltip title={nfe.matched_items.join(", ")}>
-                                  <Chip
-                                    size="small"
-                                    label={
-                                      nfe.matched_items.length +
-                                      " encontrado(s)"
-                                    }
-                                    color="info"
-                                    variant="outlined"
-                                  />
-                                </Tooltip>
-                              ) : (
-                                "-"
-                              )}
+                              {(() => {
+                                const allPurchases = [
+                                  ...(nfe.linked_purchases || []),
+                                  ...(nfe.estimated_purchases || []),
+                                ];
+                                const uniqueOrders = [
+                                  ...new Set(
+                                    allPurchases.map((p) => p.cod_pedc)
+                                  ),
+                                ];
+                                const hasEstimated =
+                                  (nfe.estimated_purchases || []).length > 0;
+
+                                if (uniqueOrders.length === 0) return "-";
+
+                                return (
+                                  <Box
+                                    sx={{
+                                      display: "flex",
+                                      flexWrap: "wrap",
+                                      gap: 0.5,
+                                      justifyContent: "center",
+                                    }}
+                                  >
+                                    {uniqueOrders
+                                      .slice(0, 3)
+                                      .map((orderId, idx) => (
+                                        <Chip
+                                          key={idx}
+                                          size="small"
+                                          label={orderId}
+                                          color="primary"
+                                          variant="outlined"
+                                          sx={{ fontSize: "0.7rem" }}
+                                        />
+                                      ))}
+                                    {uniqueOrders.length > 3 && (
+                                      <Tooltip
+                                        title={uniqueOrders.slice(3).join(", ")}
+                                      >
+                                        <Chip
+                                          size="small"
+                                          label={`+${uniqueOrders.length - 3}`}
+                                          color="default"
+                                          variant="outlined"
+                                          sx={{ fontSize: "0.7rem" }}
+                                        />
+                                      </Tooltip>
+                                    )}
+                                    {hasEstimated && (
+                                      <Tooltip title="Contém matches estimados">
+                                        <AutoAwesomeIcon
+                                          sx={{
+                                            fontSize: 16,
+                                            color: "secondary.main",
+                                            ml: 0.5,
+                                          }}
+                                        />
+                                      </Tooltip>
+                                    )}
+                                  </Box>
+                                );
+                              })()}
                             </TableCell>
                             <TableCell align="center">
-                              <Tooltip title="Visualizar DANFE">
-                                <IconButton
-                                  size="small"
-                                  color="primary"
-                                  onClick={() => handleViewDanfe(nfe)}
-                                  disabled={loadingDanfe === nfe.numero}
-                                >
-                                  {loadingDanfe === nfe.numero ? (
-                                    <CircularProgress size={18} />
-                                  ) : (
-                                    <PictureAsPdfIcon fontSize="small" />
-                                  )}
-                                </IconButton>
-                              </Tooltip>
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  gap: 0.5,
+                                  justifyContent: "center",
+                                }}
+                              >
+                                <Tooltip title="Ver Detalhes">
+                                  <IconButton
+                                    size="small"
+                                    color="info"
+                                    onClick={() => {
+                                      setSelectedNfe(nfe);
+                                      setShowNfeDetails(true);
+                                    }}
+                                  >
+                                    <InfoOutlinedIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Visualizar DANFE">
+                                  <IconButton
+                                    size="small"
+                                    color="primary"
+                                    onClick={() => handleViewDanfe(nfe)}
+                                    disabled={loadingDanfe === nfe.numero}
+                                  >
+                                    {loadingDanfe === nfe.numero ? (
+                                      <CircularProgress size={18} />
+                                    ) : (
+                                      <PictureAsPdfIcon fontSize="small" />
+                                    )}
+                                  </IconButton>
+                                </Tooltip>
+                              </Box>
                             </TableCell>
                           </TableRow>
                           {/* Expanded Row - Linked Purchase Orders */}
@@ -803,12 +1019,17 @@ const NFESearch = () => {
                               >
                                 <Box sx={{ p: 2, bgcolor: "#fafafa" }}>
                                   {(() => {
-                                    const relatedPOs =
-                                      results.purchase_orders?.filter(
-                                        (po) => po.nfe_numero === nfe.numero
-                                      ) || [];
+                                    // Combine linked_purchases and estimated_purchases from NFE
+                                    const linkedPurchases =
+                                      nfe.linked_purchases || [];
+                                    const estimatedPurchases =
+                                      nfe.estimated_purchases || [];
+                                    const allPurchases = [
+                                      ...linkedPurchases,
+                                      ...estimatedPurchases,
+                                    ];
 
-                                    if (relatedPOs.length === 0) {
+                                    if (allPurchases.length === 0) {
                                       return (
                                         <Typography
                                           variant="body2"
@@ -819,6 +1040,10 @@ const NFESearch = () => {
                                         </Typography>
                                       );
                                     }
+
+                                    // Group purchases by order
+                                    const groupedOrders =
+                                      groupPurchasesByOrder(allPurchases);
 
                                     return (
                                       <Box>
@@ -836,7 +1061,8 @@ const NFESearch = () => {
                                             color="primary"
                                           />
                                           Pedidos de Compra Vinculados (
-                                          {relatedPOs.length})
+                                          {groupedOrders.length} pedido(s),{" "}
+                                          {allPurchases.length} item(s))
                                         </Typography>
                                         <Table
                                           size="small"
@@ -847,80 +1073,341 @@ const NFESearch = () => {
                                         >
                                           <TableHead>
                                             <TableRow>
+                                              <TableCell padding="checkbox" />
                                               <TableCell>Pedido</TableCell>
-                                              <TableCell>Data</TableCell>
-                                              <TableCell>Fornecedor</TableCell>
-                                              <TableCell>Item</TableCell>
-                                              <TableCell align="right">
-                                                Valor
+                                              <TableCell>Empresa</TableCell>
+                                              <TableCell>
+                                                Data Emissão
                                               </TableCell>
-                                              <TableCell>Tipo</TableCell>
+                                              <TableCell>Fornecedor</TableCell>
+                                              <TableCell>Comprador</TableCell>
+                                              <TableCell align="right">
+                                                Total Pedido
+                                              </TableCell>
+                                              <TableCell align="center">
+                                                Itens
+                                              </TableCell>
                                             </TableRow>
                                           </TableHead>
                                           <TableBody>
-                                            {relatedPOs.map((po, idx) => (
-                                              <TableRow
-                                                key={po.cod_pedc + "-" + idx}
-                                              >
-                                                <TableCell>
-                                                  <Typography fontWeight={500}>
-                                                    {po.cod_pedc}
-                                                  </Typography>
-                                                </TableCell>
-                                                <TableCell>
-                                                  {formatDate(po.dt_emis)}
-                                                </TableCell>
-                                                <TableCell>
-                                                  {po.fornecedor || "-"}
-                                                </TableCell>
-                                                <TableCell>
-                                                  <Tooltip
-                                                    title={
-                                                      po.item_descricao || "-"
-                                                    }
+                                            {groupedOrders.map((order) => {
+                                              const orderKey = `nfe-${nfe.id}-${order.cod_pedc}-${order.cod_emp1}`;
+                                              return (
+                                                <React.Fragment key={orderKey}>
+                                                  <TableRow
+                                                    hover
+                                                    sx={{
+                                                      bgcolor:
+                                                        expandedPurchaseOrder[
+                                                          orderKey
+                                                        ]
+                                                          ? "#e8f5e9"
+                                                          : "inherit",
+                                                      "&:hover": {
+                                                        bgcolor: "#e8f5e9",
+                                                      },
+                                                    }}
                                                   >
-                                                    <Typography
-                                                      variant="body2"
-                                                      sx={{
-                                                        maxWidth: 200,
-                                                        overflow: "hidden",
-                                                        textOverflow:
-                                                          "ellipsis",
-                                                        whiteSpace: "nowrap",
-                                                      }}
+                                                    <TableCell padding="checkbox">
+                                                      <IconButton
+                                                        size="small"
+                                                        onClick={() =>
+                                                          togglePurchaseOrderExpanded(
+                                                            orderKey
+                                                          )
+                                                        }
+                                                      >
+                                                        {expandedPurchaseOrder[
+                                                          orderKey
+                                                        ] ? (
+                                                          <KeyboardArrowUpIcon fontSize="small" />
+                                                        ) : (
+                                                          <KeyboardArrowDownIcon fontSize="small" />
+                                                        )}
+                                                      </IconButton>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                      <Box
+                                                        sx={{
+                                                          display: "flex",
+                                                          alignItems: "center",
+                                                          gap: 0.5,
+                                                        }}
+                                                      >
+                                                        <Typography
+                                                          fontWeight={600}
+                                                        >
+                                                          {order.cod_pedc}
+                                                        </Typography>
+                                                        {order.has_estimated && (
+                                                          <Tooltip title="Contém itens com match estimado">
+                                                            <AutoAwesomeIcon
+                                                              sx={{
+                                                                fontSize: 16,
+                                                                color:
+                                                                  "secondary.main",
+                                                              }}
+                                                            />
+                                                          </Tooltip>
+                                                        )}
+                                                      </Box>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                      {order.cod_emp1 || "-"}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                      {order.dt_emis
+                                                        ? formatDate(
+                                                            order.dt_emis
+                                                          )
+                                                        : "-"}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                      <Tooltip
+                                                        title={
+                                                          order.fornecedor ||
+                                                          "-"
+                                                        }
+                                                      >
+                                                        <Typography
+                                                          sx={{
+                                                            textAlign: "center",
+                                                            maxWidth: 200,
+                                                            overflow: "hidden",
+                                                            textOverflow:
+                                                              "ellipsis",
+                                                            whiteSpace:
+                                                              "nowrap",
+                                                          }}
+                                                        >
+                                                          {order.fornecedor ||
+                                                            "-"}
+                                                        </Typography>
+                                                      </Tooltip>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                      {order.func_nome || "-"}
+                                                    </TableCell>
+                                                    <TableCell align="right">
+                                                      {order.total_pedido
+                                                        ? formatCurrency(
+                                                            order.total_pedido
+                                                          )
+                                                        : "-"}
+                                                    </TableCell>
+                                                    <TableCell align="center">
+                                                      <Chip
+                                                        size="small"
+                                                        label={
+                                                          order.items.length
+                                                        }
+                                                        color="primary"
+                                                        variant="outlined"
+                                                      />
+                                                    </TableCell>
+                                                  </TableRow>
+                                                  {/* Nested Items Row */}
+                                                  <TableRow>
+                                                    <TableCell
+                                                      colSpan={8}
+                                                      sx={{ py: 0, border: 0 }}
                                                     >
-                                                      {po.item_descricao || "-"}
-                                                    </Typography>
-                                                  </Tooltip>
-                                                </TableCell>
-                                                <TableCell align="right">
-                                                  {formatCurrency(po.valor)}
-                                                </TableCell>
-                                                <TableCell>
-                                                  {po.match_type ===
-                                                  "estimated" ? (
-                                                    <Chip
-                                                      size="small"
-                                                      icon={<AutoAwesomeIcon />}
-                                                      label={
-                                                        (po.match_score?.toFixed(
-                                                          0
-                                                        ) || 0) + "%"
-                                                      }
-                                                      color="secondary"
-                                                      variant="outlined"
-                                                    />
-                                                  ) : (
-                                                    <Chip
-                                                      size="small"
-                                                      label="Vinculado"
-                                                      color="success"
-                                                      variant="outlined"
-                                                    />
-                                                  )}
-                                                </TableCell>
-                                              </TableRow>
-                                            ))}
+                                                      <Collapse
+                                                        in={
+                                                          expandedPurchaseOrder[
+                                                            orderKey
+                                                          ]
+                                                        }
+                                                        timeout="auto"
+                                                        unmountOnExit
+                                                      >
+                                                        <Box
+                                                          sx={{
+                                                            py: 1,
+                                                            pl: 6,
+                                                            pr: 2,
+                                                            bgcolor: "#f5f5f5",
+                                                          }}
+                                                        >
+                                                          <Typography
+                                                            variant="caption"
+                                                            color="text.secondary"
+                                                            sx={{
+                                                              fontWeight: 600,
+                                                              mb: 1,
+                                                              display: "block",
+                                                            }}
+                                                          >
+                                                            Itens do Pedido:
+                                                          </Typography>
+                                                          <Table
+                                                            size="small"
+                                                            sx={{
+                                                              bgcolor: "#fff",
+                                                              borderRadius: 1,
+                                                            }}
+                                                          >
+                                                            <TableHead>
+                                                              <TableRow
+                                                                sx={{
+                                                                  bgcolor:
+                                                                    "#fafafa",
+                                                                }}
+                                                              >
+                                                                <TableCell
+                                                                  sx={{
+                                                                    width: 50,
+                                                                  }}
+                                                                >
+                                                                  Linha
+                                                                </TableCell>
+                                                                <TableCell>
+                                                                  Descrição
+                                                                </TableCell>
+                                                                <TableCell align="right">
+                                                                  Qtde
+                                                                </TableCell>
+                                                                <TableCell align="center">
+                                                                  UN
+                                                                </TableCell>
+                                                                <TableCell align="right">
+                                                                  Preço Unit.
+                                                                </TableCell>
+                                                                <TableCell align="right">
+                                                                  Total
+                                                                </TableCell>
+                                                                <TableCell align="right">
+                                                                  Atendida
+                                                                </TableCell>
+
+                                                                <TableCell>
+                                                                  Entrega
+                                                                </TableCell>
+                                                              </TableRow>
+                                                            </TableHead>
+                                                            <TableBody>
+                                                              {order.items.map(
+                                                                (item, idx) => (
+                                                                  <TableRow
+                                                                    key={idx}
+                                                                  >
+                                                                    <TableCell
+                                                                      sx={{
+                                                                        width: 50,
+                                                                      }}
+                                                                    >
+                                                                      <Box
+                                                                        sx={{
+                                                                          display:
+                                                                            "flex",
+                                                                          alignItems:
+                                                                            "center",
+                                                                          gap: 0.5,
+                                                                        }}
+                                                                      >
+                                                                        {item.linha ||
+                                                                          "-"}
+                                                                        {item.is_estimated && (
+                                                                          <Tooltip
+                                                                            title={`Match estimado (${
+                                                                              item.match_score
+                                                                                ? Math.round(
+                                                                                    item.match_score
+                                                                                  ) +
+                                                                                  "%"
+                                                                                : ""
+                                                                            })`}
+                                                                          >
+                                                                            <AutoAwesomeIcon
+                                                                              sx={{
+                                                                                fontSize: 14,
+                                                                                color:
+                                                                                  "secondary.main",
+                                                                              }}
+                                                                            />
+                                                                          </Tooltip>
+                                                                        )}
+                                                                      </Box>
+                                                                    </TableCell>
+                                                                    <TableCell>
+                                                                      <Tooltip
+                                                                        title={
+                                                                          item.item_descricao ||
+                                                                          "-"
+                                                                        }
+                                                                      >
+                                                                        <Typography
+                                                                          sx={{
+                                                                            maxWidth: 250,
+                                                                            overflow:
+                                                                              "hidden",
+                                                                            textOverflow:
+                                                                              "ellipsis",
+                                                                            whiteSpace:
+                                                                              "nowrap",
+                                                                          }}
+                                                                        >
+                                                                          {item.item_descricao ||
+                                                                            "-"}
+                                                                        </Typography>
+                                                                      </Tooltip>
+                                                                    </TableCell>
+                                                                    <TableCell align="right">
+                                                                      {item.quantidade !=
+                                                                      null
+                                                                        ? item.quantidade.toLocaleString(
+                                                                            "pt-BR"
+                                                                          )
+                                                                        : "-"}
+                                                                    </TableCell>
+                                                                    <TableCell align="center">
+                                                                      {item.unidade_medida ||
+                                                                        "-"}
+                                                                    </TableCell>
+                                                                    <TableCell align="right">
+                                                                      {item.preco_unitario !=
+                                                                      null
+                                                                        ? formatCurrency(
+                                                                            item.preco_unitario
+                                                                          )
+                                                                        : "-"}
+                                                                    </TableCell>
+                                                                    <TableCell align="right">
+                                                                      {item.total_item !=
+                                                                      null
+                                                                        ? formatCurrency(
+                                                                            item.total_item
+                                                                          )
+                                                                        : "-"}
+                                                                    </TableCell>
+                                                                    <TableCell align="right">
+                                                                      {item.qtde_atendida !=
+                                                                      null
+                                                                        ? item.qtde_atendida.toLocaleString(
+                                                                            "pt-BR"
+                                                                          )
+                                                                        : "-"}
+                                                                    </TableCell>
+
+                                                                    <TableCell>
+                                                                      {item.dt_entrega
+                                                                        ? formatDate(
+                                                                            item.dt_entrega
+                                                                          )
+                                                                        : "-"}
+                                                                    </TableCell>
+                                                                  </TableRow>
+                                                                )
+                                                              )}
+                                                            </TableBody>
+                                                          </Table>
+                                                        </Box>
+                                                      </Collapse>
+                                                    </TableCell>
+                                                  </TableRow>
+                                                </React.Fragment>
+                                              );
+                                            })}
                                           </TableBody>
                                         </Table>
                                       </Box>
@@ -936,6 +1423,345 @@ const NFESearch = () => {
                   </Table>
                 </TableContainer>
               )}
+
+              {/* Unlinked Purchase Orders Section */}
+              {results.unlinked_purchase_orders &&
+                results.unlinked_purchase_orders.length > 0 && (
+                  <Paper
+                    elevation={0}
+                    sx={{
+                      mb: 3,
+                      borderRadius: 3,
+                      border: "1px solid",
+                      borderColor: "warning.main",
+                      bgcolor: "#fff8e1",
+                    }}
+                  >
+                    <Box sx={{ p: 2 }}>
+                      {(() => {
+                        const groupedUnlinked = groupPurchasesByOrder(
+                          results.unlinked_purchase_orders
+                        );
+                        return (
+                          <>
+                            <Typography
+                              variant="subtitle1"
+                              fontWeight={600}
+                              color="warning.dark"
+                              sx={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 1,
+                                mb: 2,
+                              }}
+                            >
+                              <ReceiptIcon color="warning" />
+                              Pedidos com NF {results.query} mas sem NFE
+                              correspondente ({groupedUnlinked.length}{" "}
+                              pedido(s),{" "}
+                              {results.unlinked_purchase_orders.length} item(s))
+                            </Typography>
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{ mb: 2 }}
+                            >
+                              Estes pedidos têm o número de NF {results.query}{" "}
+                              registrado, mas não foi encontrada uma NFE com
+                              fornecedor correspondente no banco de dados.
+                            </Typography>
+                            <Table
+                              size="small"
+                              sx={{ bgcolor: "#fff", borderRadius: 1 }}
+                            >
+                              <TableHead>
+                                <TableRow sx={{ bgcolor: "#f5f7fa" }}>
+                                  <TableCell padding="checkbox" />
+                                  <TableCell>Pedido</TableCell>
+                                  <TableCell>Empresa</TableCell>
+                                  <TableCell>Data Emissão</TableCell>
+                                  <TableCell>Fornecedor</TableCell>
+                                  <TableCell>Comprador</TableCell>
+                                  <TableCell align="right">
+                                    Total Pedido
+                                  </TableCell>
+                                  <TableCell>NF Registrada</TableCell>
+                                  <TableCell align="center">Itens</TableCell>
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {groupedUnlinked.map((order) => {
+                                  const orderKey = `unlinked-${order.cod_pedc}-${order.cod_emp1}`;
+                                  return (
+                                    <React.Fragment key={orderKey}>
+                                      <TableRow
+                                        hover
+                                        sx={{
+                                          bgcolor: expandedPurchaseOrder[
+                                            orderKey
+                                          ]
+                                            ? "#fff3e0"
+                                            : "inherit",
+                                          "&:hover": { bgcolor: "#fff3e0" },
+                                        }}
+                                      >
+                                        <TableCell padding="checkbox">
+                                          <IconButton
+                                            size="small"
+                                            onClick={() =>
+                                              togglePurchaseOrderExpanded(
+                                                orderKey
+                                              )
+                                            }
+                                          >
+                                            {expandedPurchaseOrder[orderKey] ? (
+                                              <KeyboardArrowUpIcon fontSize="small" />
+                                            ) : (
+                                              <KeyboardArrowDownIcon fontSize="small" />
+                                            )}
+                                          </IconButton>
+                                        </TableCell>
+                                        <TableCell>
+                                          <Typography fontWeight={600}>
+                                            {order.cod_pedc}
+                                          </Typography>
+                                        </TableCell>
+                                        <TableCell>
+                                          {order.cod_emp1 || "-"}
+                                        </TableCell>
+                                        <TableCell>
+                                          {order.dt_emis
+                                            ? formatDate(order.dt_emis)
+                                            : "-"}
+                                        </TableCell>
+                                        <TableCell>
+                                          <Tooltip
+                                            title={order.fornecedor || "-"}
+                                          >
+                                            <Typography
+                                              sx={{
+                                                maxWidth: 150,
+                                                overflow: "hidden",
+                                                textOverflow: "ellipsis",
+                                                whiteSpace: "nowrap",
+                                              }}
+                                            >
+                                              {order.fornecedor || "-"}
+                                            </Typography>
+                                          </Tooltip>
+                                        </TableCell>
+                                        <TableCell>
+                                          {order.func_nome || "-"}
+                                        </TableCell>
+                                        <TableCell align="right">
+                                          {order.total_pedido
+                                            ? formatCurrency(order.total_pedido)
+                                            : "-"}
+                                        </TableCell>
+                                        <TableCell>
+                                          <Chip
+                                            size="small"
+                                            label={order.nfe_numero || "-"}
+                                            color="warning"
+                                            variant="outlined"
+                                          />
+                                        </TableCell>
+                                        <TableCell align="center">
+                                          <Chip
+                                            size="small"
+                                            label={order.items.length}
+                                            color="warning"
+                                            variant="outlined"
+                                          />
+                                        </TableCell>
+                                      </TableRow>
+                                      {/* Nested Items Row */}
+                                      <TableRow>
+                                        <TableCell
+                                          colSpan={9}
+                                          sx={{ py: 0, border: 0 }}
+                                        >
+                                          <Collapse
+                                            in={expandedPurchaseOrder[orderKey]}
+                                            timeout="auto"
+                                            unmountOnExit
+                                          >
+                                            <Box
+                                              sx={{
+                                                py: 1,
+                                                pl: 6,
+                                                pr: 2,
+                                                bgcolor: "#fffde7",
+                                              }}
+                                            >
+                                              <Typography
+                                                variant="caption"
+                                                color="text.secondary"
+                                                sx={{
+                                                  fontWeight: 600,
+                                                  mb: 1,
+                                                  display: "block",
+                                                }}
+                                              >
+                                                Itens do Pedido:
+                                              </Typography>
+                                              <Table
+                                                size="small"
+                                                sx={{
+                                                  bgcolor: "#fff",
+                                                  borderRadius: 1,
+                                                }}
+                                              >
+                                                <TableHead>
+                                                  <TableRow
+                                                    sx={{ bgcolor: "#fafafa" }}
+                                                  >
+                                                    <TableCell
+                                                      sx={{ width: 50 }}
+                                                    >
+                                                      Linha
+                                                    </TableCell>
+                                                    <TableCell>
+                                                      Descrição
+                                                    </TableCell>
+                                                    <TableCell align="right">
+                                                      Qtde
+                                                    </TableCell>
+                                                    <TableCell align="center">
+                                                      UN
+                                                    </TableCell>
+                                                    <TableCell align="right">
+                                                      Preço Unit.
+                                                    </TableCell>
+                                                    <TableCell align="right">
+                                                      Total
+                                                    </TableCell>
+                                                    <TableCell align="right">
+                                                      Atendida
+                                                    </TableCell>
+                                                    <TableCell align="right">
+                                                      Saldo
+                                                    </TableCell>
+                                                    <TableCell>
+                                                      Entrega
+                                                    </TableCell>
+                                                  </TableRow>
+                                                </TableHead>
+                                                <TableBody>
+                                                  {order.items.map(
+                                                    (item, idx) => (
+                                                      <TableRow key={idx}>
+                                                        <TableCell
+                                                          sx={{ width: 50 }}
+                                                        >
+                                                          {item.linha || "-"}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                          <Tooltip
+                                                            title={
+                                                              item.item_descricao ||
+                                                              "-"
+                                                            }
+                                                          >
+                                                            <Typography
+                                                              sx={{
+                                                                maxWidth: 250,
+                                                                overflow:
+                                                                  "hidden",
+                                                                textOverflow:
+                                                                  "ellipsis",
+                                                                whiteSpace:
+                                                                  "nowrap",
+                                                              }}
+                                                            >
+                                                              {item.item_descricao ||
+                                                                "-"}
+                                                            </Typography>
+                                                          </Tooltip>
+                                                        </TableCell>
+                                                        <TableCell align="right">
+                                                          {item.quantidade !=
+                                                          null
+                                                            ? item.quantidade.toLocaleString(
+                                                                "pt-BR"
+                                                              )
+                                                            : "-"}
+                                                        </TableCell>
+                                                        <TableCell align="center">
+                                                          {item.unidade_medida ||
+                                                            "-"}
+                                                        </TableCell>
+                                                        <TableCell align="right">
+                                                          {item.preco_unitario !=
+                                                          null
+                                                            ? formatCurrency(
+                                                                item.preco_unitario
+                                                              )
+                                                            : "-"}
+                                                        </TableCell>
+                                                        <TableCell align="right">
+                                                          {item.total_item !=
+                                                          null
+                                                            ? formatCurrency(
+                                                                item.total_item
+                                                              )
+                                                            : "-"}
+                                                        </TableCell>
+                                                        <TableCell align="right">
+                                                          {item.qtde_atendida !=
+                                                          null
+                                                            ? item.qtde_atendida.toLocaleString(
+                                                                "pt-BR"
+                                                              )
+                                                            : "-"}
+                                                        </TableCell>
+                                                        <TableCell align="right">
+                                                          {item.qtde_saldo !=
+                                                          null ? (
+                                                            <Chip
+                                                              size="small"
+                                                              label={item.qtde_saldo.toLocaleString(
+                                                                "pt-BR"
+                                                              )}
+                                                              color={
+                                                                item.qtde_saldo >
+                                                                0
+                                                                  ? "warning"
+                                                                  : "success"
+                                                              }
+                                                              variant="outlined"
+                                                            />
+                                                          ) : (
+                                                            "-"
+                                                          )}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                          {item.dt_entrega
+                                                            ? formatDate(
+                                                                item.dt_entrega
+                                                              )
+                                                            : "-"}
+                                                        </TableCell>
+                                                      </TableRow>
+                                                    )
+                                                  )}
+                                                </TableBody>
+                                              </Table>
+                                            </Box>
+                                          </Collapse>
+                                        </TableCell>
+                                      </TableRow>
+                                    </React.Fragment>
+                                  );
+                                })}
+                              </TableBody>
+                            </Table>
+                          </>
+                        );
+                      })()}
+                    </Box>
+                  </Paper>
+                )}
 
               {/* No results message */}
               {(!results.nfes || results.nfes.length === 0) && (
@@ -997,6 +1823,17 @@ const NFESearch = () => {
           setShowTrackedCompanies(false);
           loadTrackedCompanies(); // Refresh companies after closing
         }}
+      />
+
+      {/* NFE Details Dialog */}
+      <NFEDetails
+        open={showNfeDetails}
+        onClose={() => {
+          setShowNfeDetails(false);
+          setSelectedNfe(null);
+        }}
+        nfeChave={selectedNfe?.chave}
+        nfeNumero={selectedNfe?.numero}
       />
     </LocalizationProvider>
   );

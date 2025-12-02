@@ -345,12 +345,12 @@ function PurchaseRow(props) {
         sx={{
           "& > *": { borderBottom: "unset" },
           backgroundColor: purchase.order.is_fulfilled
-            ? "#3c4b79ff"
-            : "#2d3548",
+            ? "#1e2631ff"
+            : "#165da5ff",
           "&:hover": {
             backgroundColor: purchase.order.is_fulfilled
-              ? "#35416bff"
-              : "#3d4559",
+              ? "#273241ff"
+              : "#1b69b8ff",
           },
         }}
       >
@@ -367,7 +367,7 @@ function PurchaseRow(props) {
         <TableCell
           colSpan={9}
           align="center"
-          sx={{ fontWeight: "bold", fontSize: "1.05rem", color: "#fff" }}
+          sx={{ fontWeight: "bold", fontSize: "1.05rem", color: "#ffffffe3" }}
         >
           Pedido de Compra: {purchase.order.cod_pedc}~{" "}
           {purchase.order.fornecedor_id}{" "}
@@ -394,16 +394,66 @@ function PurchaseRow(props) {
               <Table size="small" aria-label="items">
                 <TableHead>
                   <TableRow sx={{ backgroundColor: "#f5f7fa" }}>
-                    <TableCell align="center" sx={{ fontWeight: 600, color: "#1a1f2e" }}>Data Emissão</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 600, color: "#1a1f2e" }}>Cod. item</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 600, color: "#1a1f2e" }}>Descrição do item</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 600, color: "#1a1f2e" }}>Quantidade</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 600, color: "#1a1f2e" }}>Preço Unitário</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 600, color: "#1a1f2e" }}>IPI</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 600, color: "#1a1f2e" }}>Total</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 600, color: "#1a1f2e" }}>Qtde Atendida</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 600, color: "#1a1f2e" }}>Dt Entrada</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 600, color: "#1a1f2e" }}>NFEs</TableCell>
+                    <TableCell
+                      align="center"
+                      sx={{ fontWeight: 600, color: "#1a1f2e" }}
+                    >
+                      Data Emissão
+                    </TableCell>
+                    <TableCell
+                      align="center"
+                      sx={{ fontWeight: 600, color: "#1a1f2e" }}
+                    >
+                      Cod. item
+                    </TableCell>
+                    <TableCell
+                      align="center"
+                      sx={{ fontWeight: 600, color: "#1a1f2e" }}
+                    >
+                      Descrição do item
+                    </TableCell>
+                    <TableCell
+                      align="center"
+                      sx={{ fontWeight: 600, color: "#1a1f2e" }}
+                    >
+                      Quantidade
+                    </TableCell>
+                    <TableCell
+                      align="center"
+                      sx={{ fontWeight: 600, color: "#1a1f2e" }}
+                    >
+                      Preço Unitário
+                    </TableCell>
+                    <TableCell
+                      align="center"
+                      sx={{ fontWeight: 600, color: "#1a1f2e" }}
+                    >
+                      IPI
+                    </TableCell>
+                    <TableCell
+                      align="center"
+                      sx={{ fontWeight: 600, color: "#1a1f2e" }}
+                    >
+                      Total
+                    </TableCell>
+                    <TableCell
+                      align="center"
+                      sx={{ fontWeight: 600, color: "#1a1f2e" }}
+                    >
+                      Qtde Atendida
+                    </TableCell>
+                    <TableCell
+                      align="center"
+                      sx={{ fontWeight: 600, color: "#1a1f2e" }}
+                    >
+                      Dt Entrada
+                    </TableCell>
+                    <TableCell
+                      align="center"
+                      sx={{ fontWeight: 600, color: "#1a1f2e" }}
+                    >
+                      NFEs
+                    </TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -798,14 +848,22 @@ function PurchaseRow(props) {
                         <Typography
                           variant="body2"
                           component="div"
-                          sx={{ fontWeight: "bold", textAlign: "left", color: "#1a1f2e" }}
+                          sx={{
+                            fontWeight: "bold",
+                            textAlign: "left",
+                            color: "#1a1f2e",
+                          }}
                         >
                           Observação: {purchase.order.observacao}
                         </Typography>
                         <Typography
                           variant="body2"
                           component="div"
-                          sx={{ fontWeight: "bold", textAlign: "right", color: "#1a1f2e" }}
+                          sx={{
+                            fontWeight: "bold",
+                            textAlign: "right",
+                            color: "#1a1f2e",
+                          }}
                         >
                           Total c/ ipi:{" "}
                           {formatCurrency(purchase.order.total_pedido_com_ipi)}{" "}
