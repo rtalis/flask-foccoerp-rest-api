@@ -345,12 +345,12 @@ function PurchaseRow(props) {
         sx={{
           "& > *": { borderBottom: "unset" },
           backgroundColor: purchase.order.is_fulfilled
-            ? "#1e2631ff"
-            : "#165da5ff",
+            ? "#344053ff"
+            : "#44566eff",
           "&:hover": {
             backgroundColor: purchase.order.is_fulfilled
-              ? "#273241ff"
-              : "#1b69b8ff",
+              ? "#44536bff"
+              : "#506581ff",
           },
         }}
       >
