@@ -29,6 +29,7 @@ import {
   Sync as SyncIcon,
   ManageSearch as ManageSearchIcon,
   Business as BusinessIcon,
+  People as PeopleIcon,
 } from "@mui/icons-material";
 import TrackedCompanies from "./TrackedCompanies";
 
@@ -239,14 +240,15 @@ const Layout = ({ onLogout }) => {
       <Box sx={{ px: 1.5, pb: 2 }}>
         <Divider sx={{ borderColor: "rgba(255,255,255,0.08)", mb: 2 }} />
 
-        {/* Tracked Companies Button */}
+        {/* Users Button */}
         <Tooltip
-          title={!sidebarOpen ? "Empresas Rastreadas" : ""}
+          title={!sidebarOpen ? "Usuários" : ""}
           placement="right"
           arrow
         >
           <ListItemButton
-            onClick={() => setShowTrackedCompanies(true)}
+            onClick={() => handleNavigate("/register")}
+            selected={isActive("/register")}
             sx={{
               borderRadius: 2,
               mb: 0.5,
@@ -258,6 +260,11 @@ const Layout = ({ onLogout }) => {
                 bgcolor: "rgba(255,255,255,0.08)",
                 color: "#fff",
               },
+              "&.Mui-selected": {
+                bgcolor: "primary.main",
+                color: "#fff",
+                "&:hover": { bgcolor: "primary.dark" },
+              },
             }}
           >
             <ListItemIcon
@@ -268,11 +275,11 @@ const Layout = ({ onLogout }) => {
                 color: "inherit",
               }}
             >
-              <BusinessIcon />
+              <PeopleIcon />
             </ListItemIcon>
             {sidebarOpen && (
               <ListItemText
-                primary="Empresas Rastreadas"
+                primary="Usuários"
                 primaryTypographyProps={{ fontSize: "0.875rem" }}
               />
             )}
