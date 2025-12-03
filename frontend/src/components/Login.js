@@ -72,7 +72,7 @@ const Login = ({ onLogin }) => {
           touchZoom={false}
         >
           <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            url="https://{s}.basemaps.cartocdn.com/rastertiles/light_nolabels/{z}/{x}/{y}{r}.png"
           />
           <ZoomToLocation
             trigger={startAnimation}
@@ -100,6 +100,11 @@ const Login = ({ onLogin }) => {
           </button>
           {error && <p className="error-message">{error}</p>}
         </form>
+      </div>
+
+      {/* Copyright */}
+      <div className="copyright">
+        <span>© {new Date().getFullYear()} Roxel.dev | Criado por Ronaldo Talison | v2.0.0</span>
       </div>
     </div>
   );
