@@ -220,8 +220,9 @@ const NFESearch = () => {
   };
 
   const handleSearch = async () => {
-    if (!searchTerm.trim()) {
-      setError("Digite um termo para buscar");
+    // Allow search if query is provided OR if date range is set
+    if (!searchTerm.trim() && !startDate && !endDate) {
+      setError("Digite um termo para buscar ou selecione um período");
       return;
     }
 

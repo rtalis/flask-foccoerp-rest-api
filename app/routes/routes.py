@@ -3062,8 +3062,9 @@ def search_nfe():
     include_estimated = request.args.get('include_estimated', 'true').lower() == 'true'
     exact_term_search = request.args.get('exact_term_search', 'true').lower() == 'true'
     
-    if not query:
-        return jsonify({'error': 'Query parameter is required'}), 400
+    # Allow empty query if date range is provided
+    if not query and not start_date_str and not end_date_str:
+        return jsonify({'error': 'Query parameter or date range is required'}), 400
     
     try:
         # Parse dates
@@ -3077,17 +3078,19 @@ def search_nfe():
         # Build NFE query
         nfe_filters = []
         
-        if search_by_number:
-            # Use exact match or LIKE based on exact_term_search
-            nfe_filters.append(NFEData.numero == query)
-            if not exact_term_search:
-                nfe_filters.append(NFEData.numero.ilike(f'%{query}%'))
-        
-        if search_by_chave:
-            if exact_term_search:
-                nfe_filters.append(NFEData.chave == query)
-            else:
-                nfe_filters.append(NFEData.chave.ilike(f'%{query}%'))
+        # Only add search filters if query is provided
+        if query:
+            if search_by_number:
+                # Use exact match or LIKE based on exact_term_search
+                nfe_filters.append(NFEData.numero == query)
+                if not exact_term_search:
+                    nfe_filters.append(NFEData.numero.ilike(f'%{query}%'))
+            
+            if search_by_chave:
+                if exact_term_search:
+                    nfe_filters.append(NFEData.chave == query)
+                else:
+                    nfe_filters.append(NFEData.chave.ilike(f'%{query}%'))
         
         # Query NFEs
         nfe_query = NFEData.query
