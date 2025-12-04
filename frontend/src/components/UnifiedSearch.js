@@ -1064,7 +1064,7 @@ const UnifiedSearch = () => {
   const [searchParams, setSearchParams] = useState(getStoredSearchParams);
   const [results, setResults] = useState([]);
   const [selectedItemId, setSelectedItemId] = useState(null);
-  const [funcNames, setFuncNames] = useState([]); // Estado para armazenar os nomes dos compradores
+  const [funcNames, setFuncNames] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [noResults, setNoResults] = useState(0);
   const [perPage, setPerPage] = useState(100);
@@ -1092,7 +1092,6 @@ const UnifiedSearch = () => {
 
   const usingEnhanced = searchMode === "enhanced";
 
-  // Format date to readable format (e.g., "15 de Janeiro de 2025, 14:30")
   const formatLastUpdated = (dateStr) => {
     if (!dateStr) return "—";
     try {
@@ -1117,10 +1116,8 @@ const UnifiedSearch = () => {
       const day = date.getDate();
       const month = months[date.getMonth()];
       const year = date.getFullYear();
-      const hours = date.getHours().toString().padStart(2, "0");
-      const minutes = date.getMinutes().toString().padStart(2, "0");
 
-      return `${day} de ${month} de ${year}, ${hours}:${minutes}`;
+      return `${day} de ${month} de ${year}`;
     } catch {
       return dateStr;
     }
@@ -1159,7 +1156,7 @@ const UnifiedSearch = () => {
           { withCredentials: true }
         );
         const sortedFuncNames = response.data
-          .map((name) => name || "Sem nome") // Substituir nomes nulos por "Sem nome"
+          .map((name) => name || "Sem nome")
           .sort((a, b) => a.localeCompare(b));
 
         setFuncNames(sortedFuncNames);
@@ -1175,15 +1172,8 @@ const UnifiedSearch = () => {
           { withCredentials: true }
         );
         if (response.data && response.data.last_updated) {
-          const date = new Date(response.data.last_updated);
-          setLastUpdated(
-            date.toLocaleDateString("pt-BR", {
-              day: "2-digit",
-              month: "2-digit",
-              year: "numeric",
-              timeZone: "UTC",
-            })
-          );
+          // Store raw date string, formatLastUpdated will handle formatting
+          setLastUpdated(response.data.last_updated);
         }
       } catch (error) {
         console.error("Error fetching last update:", error);
