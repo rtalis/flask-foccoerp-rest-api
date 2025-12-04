@@ -1030,6 +1030,7 @@ const UnifiedSearch = () => {
     searchPrecision: "precisa",
     score_cutoff: 100,
     selectedFuncName: "todos",
+    selectedCodEmp1: "todos",
     searchByCodPedc: true,
     searchByFornecedor: true,
     searchByObservacao: true,
@@ -1065,6 +1066,7 @@ const UnifiedSearch = () => {
   const [results, setResults] = useState([]);
   const [selectedItemId, setSelectedItemId] = useState(null);
   const [funcNames, setFuncNames] = useState([]);
+  const [codEmp1Options, setCodEmp1Options] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [noResults, setNoResults] = useState(0);
   const [perPage, setPerPage] = useState(100);
@@ -1165,6 +1167,19 @@ const UnifiedSearch = () => {
       }
     };
 
+    // Buscar os códigos de empresa do backend
+    const fetchCompanies = async () => {
+      try {
+        const response = await axios.get(
+          `${process.env.REACT_APP_API_URL}/api/companies`,
+          { withCredentials: true }
+        );
+        setCodEmp1Options(response.data);
+      } catch (error) {
+        console.error("Error fetching companies: ", error);
+      }
+    };
+
     const fetchLastUpdate = async () => {
       try {
         const response = await axios.get(
@@ -1183,6 +1198,7 @@ const UnifiedSearch = () => {
 
     fetchLastUpdate();
     fetchFuncNames();
+    fetchCompanies();
   }, []);
 
   useEffect(() => {
@@ -1359,6 +1375,7 @@ const UnifiedSearch = () => {
               query: trimmedQuery || undefined,
               fields: resolveEnhancedFields().join(","),
               selectedFuncName: searchParams.selectedFuncName,
+              selectedCodEmp1: searchParams.selectedCodEmp1,
               minValue: searchParams.min_value || undefined,
               maxValue: searchParams.max_value || undefined,
               valueSearchType: searchParams.valueSearchType,
@@ -1385,6 +1402,7 @@ const UnifiedSearch = () => {
               searchByDescricao: searchParams.searchByDescricao,
               searchByNumNF: searchParams.searchByNumNF,
               selectedFuncName: searchParams.selectedFuncName,
+              selectedCodEmp1: searchParams.selectedCodEmp1,
               minValue: searchParams.min_value,
               maxValue: searchParams.max_value,
               valueSearchType: searchParams.valueSearchType,
@@ -1734,6 +1752,22 @@ const UnifiedSearch = () => {
                 {funcNames.map((funcName) => (
                   <MenuItem key={funcName} value={funcName}>
                     {funcName}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControl size="small" sx={{ minWidth: 150 }}>
+              <Select
+                value={searchParams.selectedCodEmp1}
+                onChange={handleChange}
+                name="selectedCodEmp1"
+                displayEmpty
+              >
+                <MenuItem value="todos">Todas as empresas</MenuItem>
+                {codEmp1Options.map((company) => (
+                  <MenuItem key={company.code} value={company.code}>
+                    {company.display}
                   </MenuItem>
                 ))}
               </Select>

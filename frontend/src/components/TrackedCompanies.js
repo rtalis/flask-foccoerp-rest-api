@@ -45,7 +45,7 @@ const TrackedCompanies = ({ open, onClose }) => {
   
   // Add company dialog
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [newCompany, setNewCompany] = useState({ name: "", cnpj: "" });
+  const [newCompany, setNewCompany] = useState({ name: "", cnpj: "", cod_emp1: "" });
   const [addingCompany, setAddingCompany] = useState(false);
   
   // Sync dialog
@@ -100,7 +100,7 @@ const TrackedCompanies = ({ open, onClose }) => {
   }, [open, fetchCompanies]);
 
   const handleAddCompany = async () => {
-    if (!newCompany.cnpj) return;
+    if (!newCompany.cnpj || !newCompany.cod_emp1) return;
     
     setAddingCompany(true);
     try {
@@ -109,7 +109,7 @@ const TrackedCompanies = ({ open, onClose }) => {
         newCompany,
         { withCredentials: true }
       );
-      setNewCompany({ name: "", cnpj: "" });
+      setNewCompany({ name: "", cnpj: "", cod_emp1: "" });
       setShowAddDialog(false);
       fetchCompanies();
     } catch (err) {
@@ -348,6 +348,7 @@ const TrackedCompanies = ({ open, onClose }) => {
             <Table>
               <TableHead>
                 <TableRow sx={{ bgcolor: "#f5f7fa" }}>
+                  <TableCell sx={{ fontWeight: 600 }}>Cód. emp</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Empresa</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>CNPJ</TableCell>
                   <TableCell sx={{ fontWeight: 600 }} align="center">
@@ -364,6 +365,11 @@ const TrackedCompanies = ({ open, onClose }) => {
                     key={company.id}
                     sx={{ "&:hover": { bgcolor: "#f5f7fa" } }}
                   >
+                    <TableCell>
+                      <Typography variant="body2" fontFamily="monospace" fontWeight={500} >
+                      {company.cod_emp1}
+                      </Typography>
+                    </TableCell>
                     <TableCell>
                       <Box>
                         <Typography variant="body1" fontWeight={500}>
@@ -427,6 +433,16 @@ const TrackedCompanies = ({ open, onClose }) => {
         <DialogContent>
           <Box sx={{ pt: 1, display: "flex", flexDirection: "column", gap: 2 }}>
             <TextField
+              label="Código empresa"
+              value={newCompany.cod_emp1}
+              onChange={(e) =>
+                setNewCompany({ ...newCompany, cod_emp1: e.target.value })
+              }
+              fullWidth
+              placeholder="Ex: 1"
+              helperText="Código da empresa no Focco ERP"
+            />
+            <TextField
               label="Nome da Empresa"
               value={newCompany.name}
               onChange={(e) =>
@@ -451,7 +467,7 @@ const TrackedCompanies = ({ open, onClose }) => {
           <Button
             variant="contained"
             onClick={handleAddCompany}
-            disabled={addingCompany || !newCompany.cnpj}
+            disabled={addingCompany || !newCompany.cnpj || !newCompany.cod_emp1}
             sx={{ bgcolor: "#1a1f2e", "&:hover": { bgcolor: "#2d3548" } }}
           >
             {addingCompany ? <CircularProgress size={20} /> : "Adicionar"}

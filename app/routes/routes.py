@@ -164,6 +164,36 @@ def get_purchasers():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@bp.route('/companies', methods=['GET'])
+@login_required
+def get_companies():
+    """Get distinct company codes from purchase orders, with names from Company table if available."""
+    from app.models import Company
+    try:
+        # Get distinct cod_emp1 from purchase orders
+        purchase_codes = db.session.query(PurchaseOrder.cod_emp1).distinct().all()
+        purchase_codes = [code[0] for code in purchase_codes if code[0] is not None]
+        
+        # Get company names from Company table
+        company_names = {}
+        companies = Company.query.all()
+        for company in companies:
+            company_names[str(company.cod_emp1)] = company.name
+        
+        # Build result with code and optional name
+        result = []
+        for code in sorted(purchase_codes):
+            name = company_names.get(str(code))
+            result.append({
+                'code': code,
+                'name': name,
+                'display': f"{code} - {name}" if name else str(code)
+            })
+        
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @bp.route('/purchases', methods=['GET'])
 @login_required
 def get_purchases():
@@ -692,6 +722,7 @@ def search_advanced():
     ignore_diacritics = request.args.get('ignoreDiacritics', 'true').lower() == 'true'
     fields_param = request.args.get('fields', '')
     search_by_func_nome = request.args.get('selectedFuncName', 'todos')
+    search_by_cod_emp1 = request.args.get('selectedCodEmp1', 'todos')
     min_value = request.args.get('minValue', type=float)
     max_value = request.args.get('maxValue', type=float)
     value_search_type = request.args.get('valueSearchType', 'item').lower()
@@ -757,6 +788,9 @@ def search_advanced():
 
     if search_by_func_nome and search_by_func_nome.lower() != 'todos':
         base_query = base_query.filter(PurchaseOrder.func_nome.ilike(f'%{search_by_func_nome}%'))
+
+    if search_by_cod_emp1 and str(search_by_cod_emp1).lower() != 'todos':
+        base_query = base_query.filter(PurchaseOrder.cod_emp1 == str(search_by_cod_emp1))
 
     token_filters = []
     for token in tokens:
@@ -873,6 +907,7 @@ def search_combined():
     search_by_descricao = request.args.get('searchByDescricao', 'false').lower() == 'true'
     search_by_num_nf = request.args.get('searchByNumNF', 'false').lower() == 'true' 
     search_by_func_nome = request.args.get('selectedFuncName')
+    search_by_cod_emp1 = request.args.get('selectedCodEmp1', 'todos')
     min_value = request.args.get('minValue', type=float)
     max_value = request.args.get('maxValue', type=float)
     value_search_type = request.args.get('valueSearchType', 'item')
@@ -943,6 +978,8 @@ def search_combined():
         items_query = items_query.filter(or_(*filters))
     if search_by_func_nome != 'todos':
         items_query = items_query.filter(and_(PurchaseOrder.func_nome.ilike(f'%{search_by_func_nome}%')))
+    if search_by_cod_emp1 and str(search_by_cod_emp1).lower() != 'todos':
+        items_query = items_query.filter(PurchaseOrder.cod_emp1 == str(search_by_cod_emp1))
     
     if score_cutoff < 100 and query:
         fuzzy_query = (
@@ -953,6 +990,8 @@ def search_combined():
         )
         if search_by_func_nome != 'todos':
             fuzzy_query =  fuzzy_query.filter(PurchaseOrder.func_nome.ilike(f'%{search_by_func_nome}%'))
+        if search_by_cod_emp1 and str(search_by_cod_emp1).lower() != 'todos':
+            fuzzy_query = fuzzy_query.filter(PurchaseOrder.cod_emp1 == str(search_by_cod_emp1))
         if value_filters:
             fuzzy_query = fuzzy_query.filter(and_(*value_filters))
         items = fuzzy_query.all()
@@ -3547,9 +3586,13 @@ def add_tracked_company():
     data = request.get_json()
     cnpj = data.get('cnpj', '').strip()
     name = data.get('name', '').strip()
+    cod_emp1 = data.get('cod_emp1', '').strip()
     
     if not cnpj:
         return jsonify({'error': 'CNPJ is required'}), 400
+    
+    if not cod_emp1:
+        return jsonify({'error': 'Código da empresa (cod_emp1) is required'}), 400
     
     # Clean CNPJ
     cnpj_clean = ''.join(filter(str.isdigit, cnpj))
@@ -3557,20 +3600,21 @@ def add_tracked_company():
     if len(cnpj_clean) != 14:
         return jsonify({'error': 'CNPJ must have 14 digits'}), 400
     
-    # Check if already exists
+    # Check if CNPJ already exists
     existing = Company.query.filter_by(cnpj=cnpj_clean).first()
     if existing:
         return jsonify({'error': 'Company with this CNPJ already exists'}), 400
     
+    # Check if cod_emp1 already exists
+    existing_cod = Company.query.filter_by(cod_emp1=cod_emp1).first()
+    if existing_cod:
+        return jsonify({'error': f'Company with cod_emp1 "{cod_emp1}" already exists'}), 400
+    
     try:
-        # Generate a unique cod_emp1
-        last_company = Company.query.order_by(Company.id.desc()).first()
-        new_cod = str(last_company.id + 1000) if last_company else '1000'
-        
         company = Company(
-            cod_emp1=new_cod,
+            cod_emp1=cod_emp1,
             cnpj=cnpj_clean,
-            name=name or f'Empresa {cnpj_clean}',
+            name=name or f'Empresa {cod_emp1}',
         )
         
         db.session.add(company)
