@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import "./ImportFile.css";
 
@@ -21,6 +21,8 @@ const ImportFile = () => {
   const [feedback, setFeedback] = useState(null);
   const fileInputRef = useRef(null);
   const abortControllerRef = useRef(null);
+  const filesQueueRef = useRef(null);
+  const activeFileRef = useRef(null);
 
   const notify = (text, type = "info") => setFeedback({ text, type });
 
@@ -59,6 +61,14 @@ const ImportFile = () => {
           : item
       )
     );
+
+    // Update active file ref for auto-scroll
+    if (
+      typeof updater === "object" &&
+      (updater.status === "uploading" || updater.status === "processing")
+    ) {
+      activeFileRef.current = fileId;
+    }
   };
 
   const addFilesToQueue = (newFiles) => {
@@ -269,6 +279,33 @@ const ImportFile = () => {
     ["pending", "error", "canceled"].includes(file.status)
   );
 
+  // Auto-scroll to active file
+  useEffect(() => {
+    if (activeFileRef.current && filesQueueRef.current) {
+      const activeElement = document.querySelector(
+        `[data-file-id="${activeFileRef.current}"]`
+      );
+      if (activeElement && filesQueueRef.current) {
+        const container = filesQueueRef.current;
+        const elementTop = activeElement.offsetTop;
+        const elementHeight = activeElement.offsetHeight;
+        const containerHeight = container.clientHeight;
+        const scrollTop = container.scrollTop;
+
+        // Check if element is not fully visible
+        if (
+          elementTop < scrollTop ||
+          elementTop + elementHeight > scrollTop + containerHeight
+        ) {
+          activeElement.scrollIntoView({
+            behavior: "smooth",
+            block: "nearest",
+          });
+        }
+      }
+    }
+  }, [files]);
+
   React.useEffect(() => {
     if (!isUploading && files.some((f) => f.status === "pending")) {
       startUpload();
@@ -326,7 +363,7 @@ const ImportFile = () => {
           </div>
         )}
 
-        <div className="files-queue">
+        <div className="files-queue" ref={filesQueueRef}>
           {files.length === 0 ? (
             <div className="empty-queue">
               <p>Nenhum arquivo na fila.</p>
@@ -334,7 +371,11 @@ const ImportFile = () => {
             </div>
           ) : (
             files.map((fileItem) => (
-              <div className="file-card" key={fileItem.id}>
+              <div
+                className="file-card"
+                key={fileItem.id}
+                data-file-id={fileItem.id}
+              >
                 <div className="file-card-header">
                   <div>
                     <p className="file-name">{fileItem.file.name}</p>

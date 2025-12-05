@@ -51,9 +51,7 @@ def parse_xml(xml_data):
             empr_id = g_cod_emp1.find('EMPR_ID2').text if g_cod_emp1.find('EMPR_ID2') is not None else None
             
             if empr_id:
-                # Extract company name without the code suffix like "(816)"
                 name = razao_social.strip() if razao_social else ''
-                # Remove trailing (XXX) pattern if present
                 import re
                 name = re.sub(r'\s*\(\d+\)\s*$', '', name).strip()
                 
@@ -137,8 +135,6 @@ def parse_xml(xml_data):
   
 
 def format_for_db(data):
-    namespace = 'format_for_db'
-
     purchase_orders = data['purchase_orders']
     formatted_orders = []
     formatted_items = []
@@ -300,9 +296,18 @@ def import_ruah(file_content):
             key = (adj['cod_pedc'], adj['cod_emp1'])
             adjustments_by_key[key].append(adj)
 
-        # Bulk fetch existing orders
-        incoming_cod_pedcs = {o['cod_pedc'] for o in formatted_orders}
-        existing_orders = PurchaseOrder.query.filter(PurchaseOrder.cod_pedc.in_(incoming_cod_pedcs)).all()
+        # Bulk fetch existing orders - need to match by both cod_pedc AND cod_emp1
+        incoming_keys = [(o['cod_pedc'], o['cod_emp1']) for o in formatted_orders]
+        # Build query conditions for all (cod_pedc, cod_emp1) pairs
+        from sqlalchemy import and_, or_
+        if incoming_keys:
+            conditions = [
+                and_(PurchaseOrder.cod_pedc == key[0], PurchaseOrder.cod_emp1 == key[1])
+                for key in incoming_keys
+            ]
+            existing_orders = PurchaseOrder.query.filter(or_(*conditions)).all()
+        else:
+            existing_orders = []
         existing_orders_map = {(o.cod_pedc, o.cod_emp1): o for o in existing_orders}
 
         orders_to_update_ids = []
@@ -347,6 +352,9 @@ def import_ruah(file_content):
         if orders_to_update_ids:
             PurchaseItem.query.filter(PurchaseItem.purchase_order_id.in_(orders_to_update_ids)).delete(synchronize_session=False)
             PurchaseAdjustment.query.filter(PurchaseAdjustment.purchase_order_id.in_(orders_to_update_ids)).delete(synchronize_session=False)
+        
+        # Flush to ensure new orders get proper IDs
+        db.session.flush()
 
         for order, order_data in processed_orders:
             order_key = (order_data['cod_pedc'], order_data['cod_emp1'])
@@ -410,9 +418,13 @@ def import_ruah(file_content):
         if relinked_count > 0:
             message += f', relinked {relinked_count} NFE matches'
         return jsonify({'message': message}), 201
-    except Exception:
+    except Exception as e:
         db.session.rollback()
-        raise Exception('Failed to import RUAH data')
+        import traceback
+        error_detail = str(e)
+        tb = traceback.format_exc()
+        logging.error(f"Failed to import RUAH data: {error_detail}\n{tb}")
+        raise Exception(f'Failed to import RUAH data: {error_detail}')
 
         
 
