@@ -2,7 +2,7 @@ import logging
 from collections import defaultdict
 from datetime import datetime, date
 from flask import jsonify, current_app, has_app_context
-from app.models import NFEntry, PurchaseAdjustment, PurchaseItem, PurchaseOrder, Quotation, PurchaseItemNFEMatch
+from app.models import NFEntry, PurchaseAdjustment, PurchaseItem, PurchaseOrder, Quotation, PurchaseItemNFEMatch, Company
 from app import db
 from fuzzywuzzy import fuzz
 from flask_mail import Mail, Message
@@ -39,10 +39,36 @@ def parse_xml(xml_data):
     import xml.etree.ElementTree as ET
 
     purchase_orders = []
+    companies = []
     total_items = 0
 
     try:
         root = ET.fromstring(xml_data)
+
+        # Extract company data from G_COD_EMP1 elements
+        for g_cod_emp1 in root.findall('.//G_COD_EMP1'):
+            razao_social = g_cod_emp1.find('RAZAO_SOCIAL').text if g_cod_emp1.find('RAZAO_SOCIAL') is not None else None
+            empr_id = g_cod_emp1.find('EMPR_ID2').text if g_cod_emp1.find('EMPR_ID2') is not None else None
+            
+            if empr_id:
+                # Extract company name without the code suffix like "(816)"
+                name = razao_social.strip() if razao_social else ''
+                # Remove trailing (XXX) pattern if present
+                import re
+                name = re.sub(r'\s*\(\d+\)\s*$', '', name).strip()
+                
+                company_data = {
+                    'cod_emp1': empr_id.strip(),
+                    'name': name,
+                    'cnpj': g_cod_emp1.find('CNPJ').text if g_cod_emp1.find('CNPJ') is not None else None,
+                    'address': g_cod_emp1.find('ENDERECO').text if g_cod_emp1.find('ENDERECO') is not None else None,
+                    'neighborhood': g_cod_emp1.find('BAIRRO').text if g_cod_emp1.find('BAIRRO') is not None else None,
+                    'city': g_cod_emp1.find('CIDADE').text if g_cod_emp1.find('CIDADE') is not None else None,
+                    'state': g_cod_emp1.find('UF').text if g_cod_emp1.find('UF') is not None else None,
+                    'zip_code': g_cod_emp1.find('CEP').text if g_cod_emp1.find('CEP') is not None else None,
+                    'inscricao_estadual': g_cod_emp1.find('INSEST').text if g_cod_emp1.find('INSEST') is not None else None,
+                }
+                companies.append(company_data)
 
         for order in root.findall('.//TPED_COMPRA'):
             cod_pedc = order.find('COD_PEDC').text if order.find('COD_PEDC') is not None else None
@@ -105,7 +131,7 @@ def parse_xml(xml_data):
             total_items += len(order_data['items'])
             purchase_orders.append(order_data)
 
-        return {'purchase_orders': purchase_orders}
+        return {'purchase_orders': purchase_orders, 'companies': companies}
     except Exception:
         raise Exception('Failed to parse XML data')
   
@@ -228,9 +254,38 @@ def import_ruah(file_content):
     itemcount = 0
     purchasecount = 0
     updated = 0
+    companies_created = 0
 
     try:
         data = parse_xml(file_content)
+
+        # Process company data - create if not exists
+        companies_data = data.get('companies', [])
+        if companies_data:
+            cod_emp1_list = [c['cod_emp1'] for c in companies_data if c.get('cod_emp1')]
+            existing_companies = Company.query.filter(Company.cod_emp1.in_(cod_emp1_list)).all()
+            existing_companies_map = {c.cod_emp1: c for c in existing_companies}
+            
+            for company_data in companies_data:
+                cod_emp1 = company_data.get('cod_emp1')
+                if not cod_emp1:
+                    continue
+                    
+                if cod_emp1 not in existing_companies_map:
+                    # Create new company
+                    company = Company(
+                        cod_emp1=cod_emp1,
+                        name=company_data.get('name') or f'Company {cod_emp1}',
+                        cnpj=company_data.get('cnpj'),
+                        address=company_data.get('address'),
+                        neighborhood=company_data.get('neighborhood'),
+                        city=company_data.get('city'),
+                        state=company_data.get('state'),
+                        zip_code=company_data.get('zip_code'),
+                        inscricao_estadual=company_data.get('inscricao_estadual'),
+                    )
+                    db.session.add(company)
+                    companies_created += 1
 
         formatted_orders, formatted_items, formatted_adjustments = format_for_db(data)
 
@@ -350,6 +405,8 @@ def import_ruah(file_content):
             itemcount,
             updated,
         )
+        if companies_created > 0:
+            message += f', created {companies_created} companies'
         if relinked_count > 0:
             message += f', relinked {relinked_count} NFE matches'
         return jsonify({'message': message}), 201
@@ -1031,7 +1088,6 @@ def relink_purchase_item_nfe_matches():
     
     Should be called after import_ruah to restore the relationships.
     """
-    # Find all unlinked matches
     unlinked_matches = PurchaseItemNFEMatch.query.filter(
         PurchaseItemNFEMatch.purchase_item_id.is_(None)
     ).all()
@@ -1041,7 +1097,6 @@ def relink_purchase_item_nfe_matches():
     
     relinked_count = 0
     
-    # Group matches by cod_pedc and cod_emp1 to minimize queries
     from collections import defaultdict
     matches_by_order = defaultdict(list)
     
@@ -1049,9 +1104,7 @@ def relink_purchase_item_nfe_matches():
         key = (match.cod_pedc, match.cod_emp1)
         matches_by_order[key].append(match)
     
-    # Process each group
     for (cod_pedc, cod_emp1), matches in matches_by_order.items():
-        # Get all purchase items for this order
         purchase_items = PurchaseItem.query.filter_by(
             cod_pedc=cod_pedc,
             cod_emp1=cod_emp1
@@ -1060,11 +1113,9 @@ def relink_purchase_item_nfe_matches():
         if not purchase_items:
             continue
         
-        # Create a lookup by linha (item_seq)
         items_by_linha = {item.linha: item for item in purchase_items}
         
         for match in matches:
-            # Try to find the matching purchase item by linha/item_seq
             purchase_item = items_by_linha.get(match.item_seq)
             
             if purchase_item:

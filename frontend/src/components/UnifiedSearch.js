@@ -64,14 +64,30 @@ function PurchaseRow(props) {
     getFirstWords,
     handleItemClick,
     hideFulfilledItems = false,
+    codEmp1Options = [],
   } = props;
-  const [open, setOpen] = useState(true); // Expanded by default
+
+  const formatCompanyShort = (codEmp1) => {
+    const company = codEmp1Options.find((c) => c.code === codEmp1);
+    if (!company || !company.name) {
+      return codEmp1;
+    }
+    const words = company.name.trim().split(/\s+/);
+    if (words.length === 0) return codEmp1;
+    if (words.length === 1) {
+      return `${codEmp1} - ${words[0]}`;
+    }
+    const firstWord = words[0];
+    const secondWordShort = words[1].substring(0, 3).toUpperCase();
+    return `${codEmp1} - ${firstWord} ${secondWordShort}...`;
+  };
+  const [open, setOpen] = useState(true);
   const [nfeData, setNfeData] = useState(null);
   const [loadingNfe, setLoadingNfe] = useState(false);
   const [showNfeDialog, setShowNfeDialog] = useState(false);
   const [showNfNotFoundDialog, setShowNfNotFoundDialog] = useState(false);
   const [nfNotFoundInfo, setNfNotFoundInfo] = useState(null);
-  const [loadingDanfeNf, setLoadingDanfeNf] = useState(null); // Track which NF is loading
+  const [loadingDanfeNf, setLoadingDanfeNf] = useState(null);
 
   const normalizeNumber = (value) => {
     if (value === null || value === undefined) {
@@ -251,8 +267,6 @@ function PurchaseRow(props) {
   const handleDanfeIconClick = async (nfEntry) => {
     setLoadingDanfeNf(nfEntry.num_nf); // Set loading for this specific NF
     try {
-      // First, try to find the NFE in the database by its number
-      // Pass supplier info and entry date for accurate matching when multiple NFEs exist
       const response = await axios.get(
         `${process.env.REACT_APP_API_URL}/api/get_nfe_by_number`,
         {
@@ -373,7 +387,8 @@ function PurchaseRow(props) {
           {purchase.order.fornecedor_id}{" "}
           {getFirstWords(purchase.order.fornecedor_descricao, 4)} -{" "}
           {formatCurrency(purchase.order.adjusted_total)} ~ Comprador:{" "}
-          {purchase.order.func_nome}. Empresa: {purchase.order.cod_emp1}
+          {purchase.order.func_nome}. Empresa:{" "}
+          {formatCompanyShort(purchase.order.cod_emp1)}
           {purchase.order.is_fulfilled && (
             <span style={{ marginLeft: "8px", color: "#4caf50" }}>
               ✓ Atendido
@@ -2162,6 +2177,7 @@ const UnifiedSearch = () => {
                     hideFulfilledItems={
                       !showFulfilled && purchase.order.is_fulfilled
                     }
+                    codEmp1Options={codEmp1Options}
                   />
                 ))}
               </TableBody>

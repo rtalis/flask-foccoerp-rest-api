@@ -493,25 +493,37 @@ const NFESearch = () => {
                           Nenhuma empresa
                         </Typography>
                       ) : (
-                        trackedCompanies.slice(0, 3).map((company) => (
-                          <Chip
-                            key={company.id}
-                            label={`${
-                              company.cod_emp1 ? company.cod_emp1 + " - " : ""
-                            }${
-                              company.name ||
-                              company.fantasy_name ||
-                              formatCNPJ(company.cnpj)
-                            }`}
-                            size="small"
-                            sx={{
-                              bgcolor: "rgba(255,255,255,0.2)",
-                              color: "#fff",
-                              fontSize: "0.7rem",
-                              height: 22,
-                            }}
-                          />
-                        ))
+                        trackedCompanies.slice(0, 3).map((company) => {
+                          const fullName =
+                            company.name ||
+                            company.fantasy_name ||
+                            formatCNPJ(company.cnpj);
+                          const shortName =
+                            fullName.length > 20
+                              ? fullName.substring(0, 20) + "..."
+                              : fullName;
+                          const label = `${
+                            company.cod_emp1 ? company.cod_emp1 + " - " : ""
+                          }${shortName}`;
+                          const fullLabel = `${
+                            company.cod_emp1 ? company.cod_emp1 + " - " : ""
+                          }${fullName}`;
+                          return (
+                            <Tooltip key={company.id} title={fullLabel}>
+                              <Chip
+                                label={label}
+                                size="small"
+                                sx={{
+                                  bgcolor: "rgba(255,255,255,0.2)",
+                                  color: "#fff",
+                                  fontSize: "0.7rem",
+                                  height: 22,
+                                  maxWidth: 180,
+                                }}
+                              />
+                            </Tooltip>
+                          );
+                        })
                       )}
                       {trackedCompanies.length > 3 && (
                         <Chip
