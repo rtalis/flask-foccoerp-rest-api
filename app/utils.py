@@ -2,7 +2,7 @@ import logging
 from collections import defaultdict
 from datetime import datetime, date
 from flask import jsonify, current_app, has_app_context
-from app.models import NFEntry, PurchaseAdjustment, PurchaseItem, PurchaseOrder, Quotation
+from app.models import NFEntry, PurchaseAdjustment, PurchaseItem, PurchaseOrder, Quotation, PurchaseItemNFEMatch
 from app import db
 from fuzzywuzzy import fuzz
 from flask_mail import Mail, Message
@@ -341,11 +341,17 @@ def import_ruah(file_content):
             order.is_fulfilled = check_order_fulfillment_memory(order_items)
 
         db.session.commit()
+        
+        # Re-link any PurchaseItemNFEMatch records that were orphaned
+        relinked_count = relink_purchase_item_nfe_matches()
+        
         message = 'Data imported successfully purchases {}, items {}, updated {}'.format(
             purchasecount - updated,
             itemcount,
             updated,
         )
+        if relinked_count > 0:
+            message += f', relinked {relinked_count} NFE matches'
         return jsonify({'message': message}), 201
     except Exception:
         db.session.rollback()
@@ -1013,6 +1019,62 @@ def check_order_fulfillment_memory(items_data):
         return False
 
     return True
+
+
+def relink_purchase_item_nfe_matches():
+    """
+    Re-link PurchaseItemNFEMatch records to newly created PurchaseItem records.
+    
+    This function finds all PurchaseItemNFEMatch records with purchase_item_id = NULL
+    and attempts to link them back to PurchaseItem records using the business keys:
+    cod_pedc, cod_emp1, and item_seq (which maps to linha).
+    
+    Should be called after import_ruah to restore the relationships.
+    """
+    # Find all unlinked matches
+    unlinked_matches = PurchaseItemNFEMatch.query.filter(
+        PurchaseItemNFEMatch.purchase_item_id.is_(None)
+    ).all()
+    
+    if not unlinked_matches:
+        return 0
+    
+    relinked_count = 0
+    
+    # Group matches by cod_pedc and cod_emp1 to minimize queries
+    from collections import defaultdict
+    matches_by_order = defaultdict(list)
+    
+    for match in unlinked_matches:
+        key = (match.cod_pedc, match.cod_emp1)
+        matches_by_order[key].append(match)
+    
+    # Process each group
+    for (cod_pedc, cod_emp1), matches in matches_by_order.items():
+        # Get all purchase items for this order
+        purchase_items = PurchaseItem.query.filter_by(
+            cod_pedc=cod_pedc,
+            cod_emp1=cod_emp1
+        ).all()
+        
+        if not purchase_items:
+            continue
+        
+        # Create a lookup by linha (item_seq)
+        items_by_linha = {item.linha: item for item in purchase_items}
+        
+        for match in matches:
+            # Try to find the matching purchase item by linha/item_seq
+            purchase_item = items_by_linha.get(match.item_seq)
+            
+            if purchase_item:
+                match.purchase_item_id = purchase_item.id
+                relinked_count += 1
+    
+    if relinked_count > 0:
+        db.session.commit()
+    
+    return relinked_count
 
 def score_purchase_nfe_match(cod_pedc, cod_emp1):
     """

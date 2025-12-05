@@ -440,8 +440,8 @@ class PurchaseItemNFEMatch(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     
-    # Purchase item reference
-    purchase_item_id = db.Column(db.Integer, db.ForeignKey('purchase_items.id'), nullable=False, index=True)
+    # Purchase item reference (nullable to allow PurchaseItem recreation without losing matches)
+    purchase_item_id = db.Column(db.Integer, db.ForeignKey('purchase_items.id', ondelete='SET NULL'), nullable=True, index=True)
     cod_pedc = db.Column(db.String(50), nullable=False, index=True)
     cod_emp1 = db.Column(db.String(20), nullable=False, index=True)
     item_seq = db.Column(db.Integer)  # Item sequence in the purchase order
@@ -484,6 +484,6 @@ class PurchaseItemNFEMatch(db.Model):
     nfe_item = db.relationship('NFEItem', backref=db.backref('purchase_matches', lazy='dynamic'))
     
     __table_args__ = (
-        db.UniqueConstraint('purchase_item_id', 'nfe_item_id', name='uq_purchase_item_nfe_match'),
-        db.Index('ix_purchase_item_nfe_match_score', 'purchase_item_id', 'match_score'),
+        db.UniqueConstraint('cod_pedc', 'cod_emp1', 'item_seq', 'nfe_item_id', name='uq_purchase_item_nfe_match'),
+        db.Index('ix_purchase_item_nfe_match_score', 'cod_pedc', 'cod_emp1', 'match_score'),
     )
