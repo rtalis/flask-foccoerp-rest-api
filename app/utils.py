@@ -1412,24 +1412,31 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
         cnpj_score = 0
         supplier_match_type = 'none'
         
-        # Check supplier name similarity
-        supplier_similarity = 0
-        if nfe_supplier and supplier_name:
-            supplier_similarity = fuzz.token_set_ratio(nfe_supplier.lower(), supplier_name)
-        
-        if supplier_similarity >= 85:
-            cnpj_score = 30
-            supplier_match_type = 'exact_name'
-        elif supplier_similarity >= 70:
-            cnpj_score = 25
-            supplier_match_type = 'high_similarity'
-        elif supplier_similarity >= 55:
-            cnpj_score = 15
-            supplier_match_type = 'partial_name'
-        elif supplier_similarity >= 40:
-            # Possible subsidiary/branch - will need stronger item matching
-            cnpj_score = 5
-            supplier_match_type = 'possible_related'
+        # Special case: MercadoPago (fornecedor_id = 1160) - ignore CNPJ scoring
+        # NFE will come from actual seller with different CNPJ, not MercadoPago
+        if purchase_order.fornecedor_id == 1160:
+            cnpj_score = 0
+            supplier_match_type = 'mercadopago_marketplace'
+            supplier_similarity = 0
+        else:
+            # Check supplier name similarity
+            supplier_similarity = 0
+            if nfe_supplier and supplier_name:
+                supplier_similarity = fuzz.token_set_ratio(nfe_supplier.lower(), supplier_name)
+            
+            if supplier_similarity >= 85:
+                cnpj_score = 30
+                supplier_match_type = 'exact_name'
+            elif supplier_similarity >= 70:
+                cnpj_score = 25
+                supplier_match_type = 'high_similarity'
+            elif supplier_similarity >= 55:
+                cnpj_score = 15
+                supplier_match_type = 'partial_name'
+            elif supplier_similarity >= 40:
+                # Possible subsidiary/branch - will need stronger item matching
+                cnpj_score = 5
+                supplier_match_type = 'possible_related'
         
         score += cnpj_score
         breakdown['cnpj_score'] = cnpj_score
@@ -1546,8 +1553,13 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
         # === Apply penalties/bonuses ===
         
         # Bonus: If supplier match is weak but items match very well, boost score
-        if supplier_match_type in ['possible_related', 'none'] and coverage >= 0.8 and avg_match_quality >= 70:
-            bonus = 10
+        if supplier_match_type in ['possible_related', 'none', 'mercadopago_marketplace'] and coverage >= 0.8 and avg_match_quality >= 70:
+            # Special case for MercadoPago (fornecedor_id = 1160) - CNPJ will never match
+            # Add extra 10 bonus points (total 20) since supplier CNPJ matching is impossible
+            if purchase_order.fornecedor_id == 1160:
+                bonus = 20
+            else:
+                bonus = 10
             score += bonus
             breakdown['weak_supplier_strong_items_bonus'] = bonus
         
