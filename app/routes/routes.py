@@ -9,7 +9,7 @@ from sqlalchemy import and_, or_, func, cast, tuple_
 from sqlalchemy.sql import exists
 from sqlalchemy.orm import joinedload
 from flask_login import login_user, logout_user, login_required, current_user
-from app.models import LoginHistory, NFEData, NFEntry, PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch, Quotation, User
+from app.models import LoginHistory, NFEData, NFEDestinatario, NFEntry, PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch, Quotation, User
 from app.utils import  apply_adjustments, check_order_fulfillment, fuzzy_search, import_rcot0300, import_rfor0302, import_rpdc0250c, import_ruah,_parse_date
 from app import db
 import tempfile
@@ -3665,18 +3665,41 @@ def get_company_nfe_count(company_id):
         return jsonify({'error': 'Company not found'}), 404
     
     try:
-        # Count NFEs where this company's CNPJ is the destination
+        # Count NFEs where this company's CNPJ is either emitente or destinatário
         cnpj_clean = ''.join(filter(str.isdigit, company.cnpj)) if company.cnpj else ''
         
-        # Count NFEs in database for this company
-        nfe_count = db.session.query(NFEData).join(
-            NFEEmitente, NFEData.id == NFEEmitente.nfe_id
-        ).filter(
-            NFEEmitente.cnpj.ilike(f'%{cnpj_clean[:8]}%')  # Match by CNPJ root
-        ).count() if cnpj_clean else 0
-        
-        # Also count NFEs where company is destinatário (using destinatario table if exists)
-        # For now just count based on emitente
+        if not cnpj_clean:
+            nfe_count = 0
+        else:
+            # Count NFEs where company is emitente (sender)
+            nfe_count_emitente = db.session.query(NFEData).join(
+                NFEEmitente, NFEData.id == NFEEmitente.nfe_id
+            ).filter(
+                NFEEmitente.cnpj.ilike(f'%{cnpj_clean}%') 
+            ).count()
+            
+            # Count NFEs where company is destinatário (receiver)
+            nfe_count_destinatario = db.session.query(NFEData).join(
+                NFEDestinatario, NFEData.id == NFEDestinatario.nfe_id
+            ).filter(
+                NFEDestinatario.cnpj.ilike(f'%{cnpj_clean}%')
+            ).count()
+            
+            # Get unique NFE IDs (in case same NFE appears in both - shouldn't happen but just in case)
+            nfe_ids_emitente = set(nfe.id for nfe in db.session.query(NFEData.id).join(
+                NFEEmitente, NFEData.id == NFEEmitente.nfe_id
+            ).filter(
+                NFEEmitente.cnpj.ilike(f'%{cnpj_clean}%')
+            ).all())
+            
+            nfe_ids_destinatario = set(nfe.id for nfe in db.session.query(NFEData.id).join(
+                NFEDestinatario, NFEData.id == NFEDestinatario.nfe_id
+            ).filter(
+                NFEDestinatario.cnpj.ilike(f'%{cnpj_clean}%')
+            ).all())
+            
+            # Total unique NFEs
+            nfe_count = len(nfe_ids_emitente | nfe_ids_destinatario)
         
         return jsonify({
             'company_id': company_id,
