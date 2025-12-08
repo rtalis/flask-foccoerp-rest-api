@@ -80,12 +80,12 @@ def _build_purchase_payload(items):
         order_key = (order.cod_emp1, cod_pedc)
         order_nf_entries = nf_entries_by_order.get(order_key, [])
 
-        if cod_pedc not in grouped_results:
+        if order_key not in grouped_results:
             adjustments = getattr(order, 'adjustments', [])
             base_total = order.total_pedido_com_ipi or 0
             adjusted_total = apply_adjustments(base_total, adjustments)
 
-            grouped_results[cod_pedc] = {
+            grouped_results[order_key] = {
                 'order': {
                     'order_id': order.id,
                     'cod_pedc': cod_pedc,
@@ -129,7 +129,7 @@ def _build_purchase_payload(items):
                 'items': []
             }
 
-        grouped_results[cod_pedc]['items'].append({
+        grouped_results[order_key]['items'].append({
             'id': item.id,
             'item_id': item.item_id,
             'descricao': item.descricao,
