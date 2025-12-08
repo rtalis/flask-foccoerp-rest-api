@@ -1555,9 +1555,9 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
         # Bonus: If supplier match is weak but items match very well, boost score
         if supplier_match_type in ['possible_related', 'none', 'mercadopago_marketplace'] and coverage >= 0.8 and avg_match_quality >= 70:
             # Special case for MercadoPago (fornecedor_id = 1160) - CNPJ will never match
-            # Add extra 10 bonus points (total 20) since supplier CNPJ matching is impossible
+            # Add extra 7 bonus points (total 17) since supplier CNPJ matching is impossible
             if purchase_order.fornecedor_id == 1160:
-                bonus = 20
+                bonus = 17
             else:
                 bonus = 10
             score += bonus

@@ -1628,6 +1628,7 @@ def get_nfe_by_purchase():
     if not purchase_order:
         return jsonify({'error': 'Purchase order not found'}), 404  
 
+
     if purchase_order.fornecedor_id:
         supplier = Supplier.query.filter( 
         (Supplier.cod_for == str(purchase_order.fornecedor_id))
@@ -2344,6 +2345,57 @@ def get_nfe_by_number():
         # Clean up num_nf - remove leading zeros for comparison
         num_nf_clean = str(num_nf).lstrip('0')
         
+        # Parse entry date if provided
+        dt_ent = None
+        if dt_ent_str:
+            try:
+                dt_ent = datetime.strptime(dt_ent_str[:10], '%Y-%m-%d').date()
+            except:
+                pass
+        
+        # Special case for Mercado Pago (marketplace - fornecedor won't match)
+        if fornecedor_id and str(fornecedor_id) == '1160':
+            # For Mercado Pago, search only by number and date validation
+            nfes = NFEData.query.filter_by(numero=num_nf).all()
+            if not nfes:
+                nfes = NFEData.query.filter(NFEData.numero == num_nf_clean).all()
+            
+            if not nfes:
+                return jsonify({'error': 'NFE not found in database', 'found': False}), 404
+            
+            # If date provided, only return NFE if it's after the purchase date
+            if dt_ent:
+                for nfe in nfes:
+                    nfe_date = nfe.data_emissao
+                    if hasattr(nfe_date, 'date'):
+                        nfe_date = nfe_date.date()
+                    # NFE must be on or after purchase date
+                    if nfe_date >= dt_ent:
+                        return jsonify({
+                            'found': True,
+                            'chave': nfe.chave,
+                            'numero': nfe.numero,
+                            'data_emissao': nfe.data_emissao.isoformat() if nfe.data_emissao else None,
+                            'valor': nfe.valor_total,
+                            'fornecedor': nfe.emitente.nome if nfe.emitente else None,
+                            'is_mercadopago': True
+                        }), 200
+                # No NFE found after purchase date
+                return jsonify({'error': 'NFE found but issued before purchase date', 'found': False}), 404
+            else:
+                # No date validation, return first match
+                nfe = nfes[0]
+                return jsonify({
+                    'found': True,
+                    'chave': nfe.chave,
+                    'numero': nfe.numero,
+                    'data_emissao': nfe.data_emissao.isoformat() if nfe.data_emissao else None,
+                    'valor': nfe.valor_total,
+                    'fornecedor': nfe.emitente.nome if nfe.emitente else None,
+                    'is_mercadopago': True
+                }), 200
+        
+        # Normal flow for other suppliers
         # Query NFEs with this number
         nfes = NFEData.query.filter_by(numero=num_nf).all()
         
@@ -2360,14 +2412,6 @@ def get_nfe_by_number():
             supplier = Supplier.query.filter(Supplier.cod_for == str(fornecedor_id)).first()
             if supplier and supplier.nvl_forn_cnpj_forn_cpf:
                 fornecedor_cnpj = ''.join(filter(str.isdigit, str(supplier.nvl_forn_cnpj_forn_cpf)))
-        
-        # Parse entry date if provided
-        dt_ent = None
-        if dt_ent_str:
-            try:
-                dt_ent = datetime.strptime(dt_ent_str[:10], '%Y-%m-%d').date()
-            except:
-                pass
         
         # Find the correct NFE by matching supplier (CNPJ or name) and date
         matched_nfe = None
