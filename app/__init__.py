@@ -10,6 +10,8 @@ from config import Config
 import os
 import jwt
 from flask_mail import Mail
+from datetime import date, datetime
+from flask.json.provider import DefaultJSONProvider
 
 mail = Mail()
 
@@ -17,8 +19,18 @@ db = SQLAlchemy()
 migrate = Migrate()
 login_manager = LoginManager()
 
+class CustomJSONProvider(DefaultJSONProvider):
+    """Custom JSON provider that handles date objects properly to avoid timezone issues."""
+    
+    def default(self, obj):
+        if isinstance(obj, date) and not isinstance(obj, datetime):
+            # Convert date to datetime at noon to avoid timezone conversion issues
+            return datetime.combine(obj, datetime.min.time().replace(hour=12)).isoformat()
+        return super().default(obj)
+
 def create_app():
     app = Flask(__name__)
+    app.json = CustomJSONProvider(app)
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
     limiter = Limiter(

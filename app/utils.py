@@ -13,6 +13,10 @@ from config import Config
 
 
 def _parse_date(value):
+    """
+    Parse date values from various formats.
+    Returns a date object that will be properly serialized by Flask's JSON provider.
+    """
     if not value:
         return None
 
@@ -27,7 +31,6 @@ def _parse_date(value):
         for fmt in ('%d/%m/%y', '%d/%m/%Y', '%Y-%m-%d', '%Y/%m/%d'):
             try:
                 parsed = datetime.strptime(trimmed, fmt)
-                parsed = parsed.replace(hour=12, minute=0, second=0, microsecond=0)
                 return parsed.date()
             except ValueError:
                 continue
