@@ -3240,6 +3240,9 @@ def search_nfe():
         # Sort all NFEs by date (most recent first) after merging
         nfes = sorted(nfes, key=lambda x: x.data_emissao or datetime.min, reverse=True)
         
+        # Hard cap on total NFEs to prevent slow responses on broad queries
+        nfes = nfes[:50]
+        
         # Format NFE results
         nfe_results = []
         nfe_numbers = set()
@@ -3391,9 +3394,9 @@ def search_nfe():
             nf_entries = NFEntry.query.filter(
                 or_(
                     NFEntry.num_nf == query,
-                    NFEntry.num_nf.ilike(f'%{query}%')
+                    NFEntry.num_nf.ilike(f'%{query}%') #??
                 )
-            ).all()
+            ).order_by(NFEntry.cod_pedc.desc()).limit(100).all()
         
         for entry in nf_entries:
             po = PurchaseOrder.query.filter_by(
@@ -3504,14 +3507,13 @@ def search_nfe():
         
         # 3. Search by purchase order number (cod_pedc) to find linked NFEs
         if exact_term_search:
-            purchase_entries = NFEntry.query.filter(NFEntry.cod_pedc == query).all()
+            purchase_entries = NFEntry.query.filter(
+                NFEntry.cod_pedc == query
+            ).order_by(NFEntry.cod_pedc.desc()).limit(100).all()
         else:
             purchase_entries = NFEntry.query.filter(
-                or_(
-                    NFEntry.cod_pedc == query,
-                    NFEntry.cod_pedc.ilike(f'%{query}%')
-                )
-            ).all()
+                NFEntry.cod_pedc.ilike(f'%{query}%')
+            ).order_by(NFEntry.cod_pedc.desc()).limit(100).all()
         
         for entry in purchase_entries:
             # Check if already added from section 1
@@ -3586,8 +3588,12 @@ def search_nfe():
                     'nfe_data': linked_nfe_data,
                 })
         
-        # Convert unlinked_purchases_map to list
-        unlinked_purchase_orders = list(unlinked_purchases_map.values())
+        # Convert unlinked_purchases_map to list and sort by dt_emis (most recent first)
+        unlinked_purchase_orders = sorted(
+            unlinked_purchases_map.values(),
+            key=lambda x: x.get('dt_emis') or '',
+            reverse=True
+        )
         
         return jsonify({
             'nfes': nfe_results,

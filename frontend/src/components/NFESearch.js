@@ -26,7 +26,7 @@ import {
 } from "@mui/material";
 import { DatePicker, LocalizationProvider } from "@mui/x-date-pickers";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
-import { ptBR } from "date-fns/locale";
+import { ptBR, tr } from "date-fns/locale";
 import ManageSearchIcon from "@mui/icons-material/ManageSearch";
 import SearchIcon from "@mui/icons-material/Search";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
@@ -192,6 +192,20 @@ const NFESearch = () => {
     return Object.values(grouped);
   };
 
+  // Helper function to build active filters description
+  const getActiveFiltersDescription = () => {
+    const filters = [];
+    if (searchByNumber) filters.push("Número NF");
+    if (searchByChave) filters.push("Chave");
+    if (searchByItem) filters.push("Descrição");
+    if (searchByFornecedor) filters.push("Fornecedor");
+    if (filters.length === 0) return "";
+    if (filters.length === 1) return filters[0];
+    return (
+      filters.slice(0, -1).join(", ") + " ou " + filters[filters.length - 1]
+    );
+  };
+
   const togglePurchaseOrderExpanded = (key) => {
     setExpandedPurchaseOrder((prev) => ({
       ...prev,
@@ -268,23 +282,10 @@ const NFESearch = () => {
   };
 
   const handleViewDanfe = async (nfe) => {
-    const nfeNumber = nfe.numero || nfe.nfe_numero;
-    setLoadingDanfe(nfeNumber);
-
+    const nfeChave = nfe.chave || nfe.nfe_chave;
+    setLoadingDanfe(nfeChave);
     try {
-      const nfeResponse = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/get_nfe_by_number`,
-        {
-          params: { num_nf: nfeNumber },
-          withCredentials: true,
-        }
-      );
-
-      if (
-        nfeResponse.data &&
-        nfeResponse.data.found &&
-        nfeResponse.data.chave
-      ) {
+      if (nfeChave) {
         const newWindow = window.open("", "_blank");
         if (!newWindow) {
           alert("Pop-up bloqueado pelo navegador.");
@@ -299,7 +300,7 @@ const NFESearch = () => {
         const pdfResponse = await axios.get(
           `${process.env.REACT_APP_API_URL}/api/get_danfe_pdf`,
           {
-            params: { xmlKey: nfeResponse.data.chave },
+            params: { xmlKey: nfeChave },
             withCredentials: true,
           }
         );
@@ -327,7 +328,7 @@ const NFESearch = () => {
 
         newWindow.location.href = blobUrl;
       } else {
-        setError("DANFE não encontrada para NF " + nfeNumber);
+        setError("DANFE não encontrada para NF " + nfe.numero);
       }
     } catch (err) {
       console.error("Error loading DANFE:", err);
@@ -1469,7 +1470,7 @@ const NFESearch = () => {
                               }}
                             >
                               <ReceiptIcon color="warning" />
-                              Pedidos com NF {results.query} mas sem NFE
+                              Pedidos contendo "{results.query}" mas sem NFE
                               correspondente ({groupedUnlinked.length}{" "}
                               pedido(s),{" "}
                               {results.unlinked_purchase_orders.length} item(s))
@@ -1479,9 +1480,10 @@ const NFESearch = () => {
                               color="text.secondary"
                               sx={{ mb: 2 }}
                             >
-                              Estes pedidos têm o número de NF {results.query}{" "}
-                              registrado, mas não foi encontrada uma NFE com
-                              fornecedor correspondente no banco de dados.
+                              Estes pedidos têm {getActiveFiltersDescription()}{" "}
+                              contendo "{results.query}" registrado, mas não foi
+                              encontrada uma NFE com fornecedor correspondente
+                              no banco de dados.
                             </Typography>
                             <Table
                               size="small"
