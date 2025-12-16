@@ -16,9 +16,12 @@ import Dashboard from "./components/Dashboard";
 import AdvancedSearch from "./components/AdvancedSearch";
 import TokenManager from "./components/TokenManager";
 import NFESearch from "./components/NFESearch";
+import ReleaseNotes from "./components/ReleaseNotes";
 
 const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showReleaseNotes, setShowReleaseNotes] = useState(false);
+  const [unseenReleases, setUnseenReleases] = useState([]);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -64,6 +67,28 @@ const App = () => {
   const handleLogin = () => {
     setIsAuthenticated(true);
     setTimeout(handleLogout, 3600000);
+
+    fetch("/release-notes.json")
+      .then((res) => res.json())
+      .then((releases) => {
+        if (!Array.isArray(releases)) return;
+        // Sort releases by version, assume semantic versioning with latest last
+        releases.sort((a, b) => (a.version > b.version ? 1 : -1));
+        const unseen = releases.filter(
+          (rel) => !localStorage.getItem(`releaseNotesSeen_${rel.version}`)
+        );
+        if (unseen.length > 0) {
+          setUnseenReleases(unseen);
+          setShowReleaseNotes(true);
+        } else {
+          setUnseenReleases([]);
+          setShowReleaseNotes(false);
+        }
+        // Mark all as seen after showing
+        unseen.forEach((rel) =>
+          localStorage.setItem(`releaseNotesSeen_${rel.version}`, "true")
+        );
+      });
   };
 
   const handleLogout = async () => {
@@ -81,47 +106,55 @@ const App = () => {
   };
 
   return (
-    <Router>
-      <Routes>
-        {/* Public routes - no sidebar */}
-        <Route
-          path="/login"
-          element={
-            isAuthenticated ? (
-              <Navigate to="/search" />
-            ) : (
-              <Login onLogin={handleLogin} />
-            )
-          }
+    <>
+      {showReleaseNotes && unseenReleases.length > 0 && (
+        <ReleaseNotes
+          onClose={() => setShowReleaseNotes(false)}
+          unseenReleases={unseenReleases}
         />
+      )}
+      <Router>
+        <Routes>
+          {/* Public routes - no sidebar */}
+          <Route
+            path="/login"
+            element={
+              isAuthenticated ? (
+                <Navigate to="/search" />
+              ) : (
+                <Login onLogin={handleLogin} />
+              )
+            }
+          />
 
-        {/* Protected routes with shared Layout */}
-        <Route
-          element={
-            isAuthenticated ? (
-              <Layout onLogout={handleLogout} />
-            ) : (
-              <Navigate to="/login" />
-            )
-          }
-        >
-          <Route path="/search" element={<UnifiedSearch />} />
-          <Route path="/nfe-search" element={<NFESearch />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/advanced-search" element={<AdvancedSearch />} />
-          <Route path="/quotation-analyzer" element={<QuotationAnalyzer />} />
-          <Route path="/import" element={<ImportFile />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/token-manager" element={<TokenManager />} />
-        </Route>
+          {/* Protected routes with shared Layout */}
+          <Route
+            element={
+              isAuthenticated ? (
+                <Layout onLogout={handleLogout} />
+              ) : (
+                <Navigate to="/login" />
+              )
+            }
+          >
+            <Route path="/search" element={<UnifiedSearch />} />
+            <Route path="/nfe-search" element={<NFESearch />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/advanced-search" element={<AdvancedSearch />} />
+            <Route path="/quotation-analyzer" element={<QuotationAnalyzer />} />
+            <Route path="/import" element={<ImportFile />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/token-manager" element={<TokenManager />} />
+          </Route>
 
-        {/* Default redirect */}
-        <Route
-          path="*"
-          element={<Navigate to={isAuthenticated ? "/search" : "/login"} />}
-        />
-      </Routes>
-    </Router>
+          {/* Default redirect */}
+          <Route
+            path="*"
+            element={<Navigate to={isAuthenticated ? "/search" : "/login"} />}
+          />
+        </Routes>
+      </Router>
+    </>
   );
 };
 
