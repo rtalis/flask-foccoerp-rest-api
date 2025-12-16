@@ -4,6 +4,10 @@ import { Link } from "react-router-dom";
 import ItemScreen from "./ItemScreen";
 import "./UnifiedSearch.css";
 
+import { exportPurchaseOrdersToExcel } from "../utils/exportPurchaseOrdersExcel";
+
+
+
 import {
   Table,
   TableBody,
@@ -504,18 +508,18 @@ function PurchaseRow(props) {
                           backgroundColor: isOverfulfilled
                             ? "#fff8e1"
                             : isFullyFulfilled
-                            ? "#e3f2fd"
-                            : isPartiallyFulfilled
-                            ? "#fce4ec"
-                            : "inherit",
+                              ? "#e3f2fd"
+                              : isPartiallyFulfilled
+                                ? "#fce4ec"
+                                : "inherit",
                           "&:hover": {
                             backgroundColor: isOverfulfilled
                               ? "#ffecb3"
                               : isFullyFulfilled
-                              ? "#bbdefb"
-                              : isPartiallyFulfilled
-                              ? "#f8bbd0"
-                              : "#f5f7fa",
+                                ? "#bbdefb"
+                                : isPartiallyFulfilled
+                                  ? "#f8bbd0"
+                                  : "#f5f7fa",
                           },
                         }}
                       >
@@ -524,9 +528,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}
                           }
                         >
@@ -540,9 +544,9 @@ function PurchaseRow(props) {
                             "&:hover": { textDecoration: "underline" },
                             ...(isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}),
                           }}
                         >
@@ -553,9 +557,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}
                           }
                         >
@@ -566,9 +570,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}
                           }
                         >
@@ -579,9 +583,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}
                           }
                         >
@@ -592,9 +596,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}
                           }
                         >
@@ -607,9 +611,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}
                           }
                         >
@@ -620,9 +624,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}
                           }
                         >
@@ -633,9 +637,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}
                           }
                         >
@@ -646,8 +650,8 @@ function PurchaseRow(props) {
                                   {nf.dt_ent ? formatDate(nf.dt_ent) : ""}
                                   {nf.qtde
                                     ? ` (${formatNumber(
-                                        normalizeNumber(nf?.qtde)
-                                      )} ${item.unidade_medida})`
+                                      normalizeNumber(nf?.qtde)
+                                    )} ${item.unidade_medida})`
                                     : ""}
                                 </>
                               )}
@@ -659,9 +663,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}
                           }
                         >
@@ -749,11 +753,10 @@ function PurchaseRow(props) {
                                       <Tooltip
                                         title={`NF estimada por IA (${item.estimated_nfe.match_score?.toFixed(
                                           0
-                                        )}% match)${
-                                          item.estimated_nfe.nfe_fornecedor
-                                            ? ` - ${item.estimated_nfe.nfe_fornecedor}`
-                                            : ""
-                                        }`}
+                                        )}% match)${item.estimated_nfe.nfe_fornecedor
+                                          ? ` - ${item.estimated_nfe.nfe_fornecedor}`
+                                          : ""
+                                          }`}
                                       >
                                         <span
                                           style={{
@@ -790,7 +793,7 @@ function PurchaseRow(props) {
                                             sx={{ padding: "2px" }}
                                           >
                                             {loadingDanfeNf ===
-                                            nfeNum.trim() ? (
+                                              nfeNum.trim() ? (
                                               <CircularProgress size={16} />
                                             ) : (
                                               <PictureAsPdfIcon
@@ -1108,7 +1111,10 @@ const UnifiedSearch = () => {
   const [showFulfilled, setShowFulfilled] = useState(true);
 
   const usingEnhanced = searchMode === "enhanced";
-
+  // Export to Excel handler
+  const handleExportExcel = () => {
+    exportPurchaseOrdersToExcel(results);
+  };
   const formatLastUpdated = (dateStr) => {
     if (!dateStr) return "—";
     try {
@@ -1158,11 +1164,6 @@ const UnifiedSearch = () => {
     }
   }, [showSuggestionsToggle]);
 
-  useEffect(() => {
-    if (resultsRef.current) {
-      const resultsPosition = resultsRef.current.offsetTop - 100;
-    }
-  }, [results.length]);
 
   useEffect(() => {
     // Buscar os nomes dos compradores do backend
@@ -2147,6 +2148,15 @@ const UnifiedSearch = () => {
                   </MenuItem>
                 ))}
               </Select>
+              <Button
+                variant="outlined"
+                size="small"
+                sx={{ ml: 2, textTransform: "none" }}
+                onClick={handleExportExcel}
+                disabled={results.length === 0}
+              >
+                Exportar para Excel
+              </Button>
             </Box>
           </Box>
         )}
@@ -2226,5 +2236,4 @@ const UnifiedSearch = () => {
     </Box>
   );
 };
-
 export default UnifiedSearch;
