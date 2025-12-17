@@ -20,7 +20,6 @@
   align-items: center;
   justify-content: center;
   visibility: hidden;
-
 }
 
 .botao-mostrar:hover {
@@ -80,7 +79,6 @@
   }
 }
 
-
 .checkbox-section {
   overflow: hidden;
 }
@@ -92,7 +90,6 @@
   margin-right: 5%;
   margin-bottom: 10px;
 }
-
 
 .checkbox-group label {
   display: block;
@@ -184,12 +181,6 @@
   margin: 0 10px;
 }
 
-
-
-
-
-
-
 .loading-overlay {
   position: fixed;
   top: 0;
@@ -226,11 +217,6 @@
   margin-top: 10px;
   font-size: 16px;
 }
-
-
-
-
-
 
 @keyframes spin {
   to {
@@ -303,5 +289,5 @@
 .purchaser-select:focus {
   outline: none;
   border-color: #007bff;
-  box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
 }

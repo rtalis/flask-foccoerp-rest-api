@@ -6,8 +6,6 @@ import "./UnifiedSearch.css";
 
 import { exportPurchaseOrdersToExcel } from "../utils/exportPurchaseOrdersExcel";
 
-
-
 import {
   Table,
   TableBody,
@@ -58,6 +56,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import TuneIcon from "@mui/icons-material/Tune";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import ScheduleIcon from "@mui/icons-material/Schedule";
+import FileDownloadIcon from "@mui/icons-material/FileDownload";
 
 function PurchaseRow(props) {
   const {
@@ -508,18 +507,18 @@ function PurchaseRow(props) {
                           backgroundColor: isOverfulfilled
                             ? "#fff8e1"
                             : isFullyFulfilled
-                              ? "#e3f2fd"
-                              : isPartiallyFulfilled
-                                ? "#fce4ec"
-                                : "inherit",
+                            ? "#e3f2fd"
+                            : isPartiallyFulfilled
+                            ? "#fce4ec"
+                            : "inherit",
                           "&:hover": {
                             backgroundColor: isOverfulfilled
                               ? "#ffecb3"
                               : isFullyFulfilled
-                                ? "#bbdefb"
-                                : isPartiallyFulfilled
-                                  ? "#f8bbd0"
-                                  : "#f5f7fa",
+                              ? "#bbdefb"
+                              : isPartiallyFulfilled
+                              ? "#f8bbd0"
+                              : "#f5f7fa",
                           },
                         }}
                       >
@@ -528,9 +527,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                textDecoration: "line-through",
-                                color: "#9e9e9e",
-                              }
+                                  textDecoration: "line-through",
+                                  color: "#9e9e9e",
+                                }
                               : {}
                           }
                         >
@@ -544,9 +543,9 @@ function PurchaseRow(props) {
                             "&:hover": { textDecoration: "underline" },
                             ...(isFullyCanceled
                               ? {
-                                textDecoration: "line-through",
-                                color: "#9e9e9e",
-                              }
+                                  textDecoration: "line-through",
+                                  color: "#9e9e9e",
+                                }
                               : {}),
                           }}
                         >
@@ -557,9 +556,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                textDecoration: "line-through",
-                                color: "#9e9e9e",
-                              }
+                                  textDecoration: "line-through",
+                                  color: "#9e9e9e",
+                                }
                               : {}
                           }
                         >
@@ -570,9 +569,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                textDecoration: "line-through",
-                                color: "#9e9e9e",
-                              }
+                                  textDecoration: "line-through",
+                                  color: "#9e9e9e",
+                                }
                               : {}
                           }
                         >
@@ -583,9 +582,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                textDecoration: "line-through",
-                                color: "#9e9e9e",
-                              }
+                                  textDecoration: "line-through",
+                                  color: "#9e9e9e",
+                                }
                               : {}
                           }
                         >
@@ -596,9 +595,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                textDecoration: "line-through",
-                                color: "#9e9e9e",
-                              }
+                                  textDecoration: "line-through",
+                                  color: "#9e9e9e",
+                                }
                               : {}
                           }
                         >
@@ -611,9 +610,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                textDecoration: "line-through",
-                                color: "#9e9e9e",
-                              }
+                                  textDecoration: "line-through",
+                                  color: "#9e9e9e",
+                                }
                               : {}
                           }
                         >
@@ -624,9 +623,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                textDecoration: "line-through",
-                                color: "#9e9e9e",
-                              }
+                                  textDecoration: "line-through",
+                                  color: "#9e9e9e",
+                                }
                               : {}
                           }
                         >
@@ -637,9 +636,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                textDecoration: "line-through",
-                                color: "#9e9e9e",
-                              }
+                                  textDecoration: "line-through",
+                                  color: "#9e9e9e",
+                                }
                               : {}
                           }
                         >
@@ -650,8 +649,8 @@ function PurchaseRow(props) {
                                   {nf.dt_ent ? formatDate(nf.dt_ent) : ""}
                                   {nf.qtde
                                     ? ` (${formatNumber(
-                                      normalizeNumber(nf?.qtde)
-                                    )} ${item.unidade_medida})`
+                                        normalizeNumber(nf?.qtde)
+                                      )} ${item.unidade_medida})`
                                     : ""}
                                 </>
                               )}
@@ -663,9 +662,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                textDecoration: "line-through",
-                                color: "#9e9e9e",
-                              }
+                                  textDecoration: "line-through",
+                                  color: "#9e9e9e",
+                                }
                               : {}
                           }
                         >
@@ -753,10 +752,11 @@ function PurchaseRow(props) {
                                       <Tooltip
                                         title={`NF estimada por IA (${item.estimated_nfe.match_score?.toFixed(
                                           0
-                                        )}% match)${item.estimated_nfe.nfe_fornecedor
-                                          ? ` - ${item.estimated_nfe.nfe_fornecedor}`
-                                          : ""
-                                          }`}
+                                        )}% match)${
+                                          item.estimated_nfe.nfe_fornecedor
+                                            ? ` - ${item.estimated_nfe.nfe_fornecedor}`
+                                            : ""
+                                        }`}
                                       >
                                         <span
                                           style={{
@@ -793,7 +793,7 @@ function PurchaseRow(props) {
                                             sx={{ padding: "2px" }}
                                           >
                                             {loadingDanfeNf ===
-                                              nfeNum.trim() ? (
+                                            nfeNum.trim() ? (
                                               <CircularProgress size={16} />
                                             ) : (
                                               <PictureAsPdfIcon
@@ -1034,7 +1034,7 @@ const UnifiedSearch = () => {
   const SEARCH_MODE_STORAGE_KEY = "searchModePreference";
   const SEARCH_PARAMS_STORAGE_KEY = "searchParamsPreference";
   const SHOW_SUGGESTIONS_STORAGE_KEY = "showSuggestionsPreference";
-  const PER_PAGE_OPTIONS = [50, 100, 200, 300, 500];
+  const PER_PAGE_OPTIONS = [50, 100, 200, 300, 500, 1000];
   const DEFAULT_ENHANCED_FIELDS = [
     "descricao",
     "item_id",
@@ -1163,7 +1163,6 @@ const UnifiedSearch = () => {
       );
     }
   }, [showSuggestionsToggle]);
-
 
   useEffect(() => {
     // Buscar os nomes dos compradores do backend
@@ -1299,6 +1298,7 @@ const UnifiedSearch = () => {
         });
       }
     } else {
+      console.log(name, type === "checkbox" ? checked : value);
       setSearchParams({
         ...searchParams,
         [name]: type === "checkbox" ? checked : value,
@@ -1396,6 +1396,8 @@ const UnifiedSearch = () => {
               maxValue: searchParams.max_value || undefined,
               valueSearchType: searchParams.valueSearchType,
               exactSearch: searchParams.exactSearch,
+              ignoreDiacritics: searchParams.ignoreDiacritics,
+              hideCancelled: searchParams.hideCancelled,
               page,
               per_page: perPageToUse,
             },
@@ -1422,6 +1424,8 @@ const UnifiedSearch = () => {
               minValue: searchParams.min_value,
               maxValue: searchParams.max_value,
               valueSearchType: searchParams.valueSearchType,
+              ignoreDiacritics: searchParams.ignoreDiacritics,
+              hideCancelled: searchParams.hideCancelled,
             },
             withCredentials: true,
           }
@@ -1798,7 +1802,27 @@ const UnifiedSearch = () => {
                   size="small"
                 />
               }
-              label={<Typography variant="body2">Busca exata</Typography>}
+              label={
+                <Tooltip title="Ativa a busca exata, retornando apenas resultados que correspondem exatamente ao termo pesquisado.">
+                  <Typography variant="body2">Busca exata</Typography>
+                </Tooltip>
+              }
+            />
+
+            <FormControlLabel
+              control={
+                <Checkbox
+                  name="hideCancelled"
+                  checked={searchParams.hideCancelled}
+                  onChange={handleChange}
+                  size="small"
+                />
+              }
+              label={
+                <Tooltip title="Oculta pedidos que foram cancelados.">
+                  <Typography variant="body2">Ocultar cancelados</Typography>
+                </Tooltip>
+              }
             />
 
             <Button
@@ -2148,15 +2172,6 @@ const UnifiedSearch = () => {
                   </MenuItem>
                 ))}
               </Select>
-              <Button
-                variant="outlined"
-                size="small"
-                sx={{ ml: 2, textTransform: "none" }}
-                onClick={handleExportExcel}
-                disabled={results.length === 0}
-              >
-                Exportar para Excel
-              </Button>
             </Box>
           </Box>
         )}
@@ -2199,33 +2214,61 @@ const UnifiedSearch = () => {
         {totalPages > 1 && (
           <Box
             sx={{
+              marginLeft: "auto",
               display: "flex",
               justifyContent: "center",
               alignItems: "center",
               gap: 1,
             }}
           >
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage === 1}
-              sx={{ textTransform: "none" }}
-            >
-              Anterior
-            </Button>
-            <Typography variant="body2" sx={{ mx: 2 }}>
-              Página {currentPage} de {totalPages}
-            </Typography>
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage === totalPages}
-              sx={{ textTransform: "none" }}
-            >
-              Próxima
-            </Button>
+            <Box flex={1} display="flex" justifyContent="center">
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                sx={{ textTransform: "none" }}
+              >
+                Anterior
+              </Button>
+              <Typography variant="body2" sx={{ mx: 2 }}>
+                Página {currentPage} de {totalPages}
+              </Typography>
+
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                sx={{
+                  textTransform: "none",
+                  display: "flex",
+                  justifyContent: "center",
+                }}
+              >
+                Próxima
+              </Button>
+            </Box>
+            <Tooltip title="Exporta os resultados da busca para um arquivo Excel">
+              <Button
+                variant="contained"
+                endIcon={<FileDownloadIcon />}
+                sx={{
+                  marginLeft: "auto",
+                  px: 3,
+                  py: 1,
+                  textTransform: "none",
+                  alignSelf: "center",
+                  fontWeight: 400,
+                  bgcolor: "#1a1f2e",
+                  "&:hover": { bgcolor: "#2d3548" },
+                }}
+                onClick={handleExportExcel}
+                disabled={results.length === 0}
+              >
+                Exportar para Excel
+              </Button>
+            </Tooltip>
           </Box>
         )}
 

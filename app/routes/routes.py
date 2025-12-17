@@ -727,6 +727,7 @@ def search_advanced():
     max_value = request.args.get('maxValue', type=float)
     value_search_type = request.args.get('valueSearchType', 'item').lower()
     exact_search = request.args.get('exactSearch', 'false').lower() == 'true'
+    hide_cancelled = request.args.get('hideCancelled', 'false').lower() == 'true'
 
     default_fields = {'cod_pedc', 'fornecedor', 'observacao', 'item_id', 'descricao', 'num_nf'}
     fields = {field.strip().lower() for field in fields_param.split(',') if field.strip()} or default_fields
@@ -792,6 +793,8 @@ def search_advanced():
     if search_by_cod_emp1 and str(search_by_cod_emp1).lower() != 'todos':
         base_query = base_query.filter(PurchaseOrder.cod_emp1 == str(search_by_cod_emp1))
 
+    if hide_cancelled:
+        base_query = base_query.filter(PurchaseItem.quantidade > PurchaseItem.qtde_canc)
     token_filters = []
     for token in tokens:
         pattern = build_like_pattern(token)
@@ -814,7 +817,6 @@ def search_advanced():
         base_query = base_query.filter(and_(*token_filters))
 
     base_query = base_query.order_by(PurchaseOrder.dt_emis.desc(), PurchaseItem.id.desc())
-
     if score_cutoff < 100 and tokens:
         items = base_query.all()
         items = fuzzy_search(' '.join(tokens), items, score_cutoff, 'descricao' in fields, 'observacao' in fields)
