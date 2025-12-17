@@ -2,8 +2,9 @@
   {
     "version": "2.0.1",
     "notes": [
-      "Adicionado as notas da versão para mostrar as mudanças recentes.",
-      "Improved performance and bug fixes."
+      "Adicionado filtro para ocultar itens cancelados na busca unificada de pedidos de compra.",
+      "Botão de exportação para excel dos resultados da busca por pedido de compra",
+      "Adicionado as notas da versão para mostrar as mudanças recentes."
     ]
   }
 ]
