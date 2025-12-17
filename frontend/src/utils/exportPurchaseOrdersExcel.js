@@ -18,7 +18,7 @@ export const exportPurchaseOrdersToExcel = (results) => {
           Fornecedor: order.order.fornecedor_descricao,
           "Total Bruto": order.order.total_bruto,
           "Total Líquido": order.order.total_liquido,
-          "Total Líquido IPI": order.order.total_liquido_ipi.replace(".", ","),
+          "Total Líquido IPI": order.order.total_liquido_ipi,
           Posição: order.order.posicao,
           Observação: order.order.observacao,
           Contato: order.order.contato,
