@@ -507,18 +507,18 @@ function PurchaseRow(props) {
                           backgroundColor: isOverfulfilled
                             ? "#fff8e1"
                             : isFullyFulfilled
-                            ? "#e3f2fd"
-                            : isPartiallyFulfilled
-                            ? "#fce4ec"
-                            : "inherit",
+                              ? "#e3f2fd"
+                              : isPartiallyFulfilled
+                                ? "#fce4ec"
+                                : "inherit",
                           "&:hover": {
                             backgroundColor: isOverfulfilled
                               ? "#ffecb3"
                               : isFullyFulfilled
-                              ? "#bbdefb"
-                              : isPartiallyFulfilled
-                              ? "#f8bbd0"
-                              : "#f5f7fa",
+                                ? "#bbdefb"
+                                : isPartiallyFulfilled
+                                  ? "#f8bbd0"
+                                  : "#f5f7fa",
                           },
                         }}
                       >
@@ -527,9 +527,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}
                           }
                         >
@@ -543,9 +543,9 @@ function PurchaseRow(props) {
                             "&:hover": { textDecoration: "underline" },
                             ...(isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}),
                           }}
                         >
@@ -556,9 +556,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}
                           }
                         >
@@ -569,9 +569,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}
                           }
                         >
@@ -582,9 +582,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}
                           }
                         >
@@ -595,9 +595,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}
                           }
                         >
@@ -610,9 +610,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}
                           }
                         >
@@ -623,9 +623,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}
                           }
                         >
@@ -636,9 +636,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}
                           }
                         >
@@ -649,8 +649,8 @@ function PurchaseRow(props) {
                                   {nf.dt_ent ? formatDate(nf.dt_ent) : ""}
                                   {nf.qtde
                                     ? ` (${formatNumber(
-                                        normalizeNumber(nf?.qtde)
-                                      )} ${item.unidade_medida})`
+                                      normalizeNumber(nf?.qtde)
+                                    )} ${item.unidade_medida})`
                                     : ""}
                                 </>
                               )}
@@ -662,9 +662,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}
                           }
                         >
@@ -752,11 +752,10 @@ function PurchaseRow(props) {
                                       <Tooltip
                                         title={`NF estimada por IA (${item.estimated_nfe.match_score?.toFixed(
                                           0
-                                        )}% match)${
-                                          item.estimated_nfe.nfe_fornecedor
+                                        )}% match)${item.estimated_nfe.nfe_fornecedor
                                             ? ` - ${item.estimated_nfe.nfe_fornecedor}`
                                             : ""
-                                        }`}
+                                          }`}
                                       >
                                         <span
                                           style={{
@@ -793,7 +792,7 @@ function PurchaseRow(props) {
                                             sx={{ padding: "2px" }}
                                           >
                                             {loadingDanfeNf ===
-                                            nfeNum.trim() ? (
+                                              nfeNum.trim() ? (
                                               <CircularProgress size={16} />
                                             ) : (
                                               <PictureAsPdfIcon
@@ -1059,6 +1058,8 @@ const UnifiedSearch = () => {
     searchByNumNF: true,
     min_value: "",
     max_value: "",
+    date_from: "",
+    date_to: "",
     valueSearchType: "item",
     ignoreDiacritics: true,
     exactSearch: false,
@@ -1360,6 +1361,8 @@ const UnifiedSearch = () => {
             searchByNumNF: searchParams.searchByNumNF,
             searchByDescricao: searchParams.searchByDescricao,
             selectedFuncName: searchParams.selectedFuncName,
+            date_from: searchParams.date_from || undefined,
+            date_to: searchParams.date_to || undefined,
           },
           withCredentials: true,
         }
@@ -1394,6 +1397,8 @@ const UnifiedSearch = () => {
               selectedCodEmp1: searchParams.selectedCodEmp1,
               minValue: searchParams.min_value || undefined,
               maxValue: searchParams.max_value || undefined,
+              date_from: searchParams.date_from || undefined,
+              date_to: searchParams.date_to || undefined,
               valueSearchType: searchParams.valueSearchType,
               exactSearch: searchParams.exactSearch,
               ignoreDiacritics: searchParams.ignoreDiacritics,
@@ -1423,6 +1428,8 @@ const UnifiedSearch = () => {
               selectedCodEmp1: searchParams.selectedCodEmp1,
               minValue: searchParams.min_value,
               maxValue: searchParams.max_value,
+              date_from: searchParams.date_from,
+              date_to: searchParams.date_to,
               valueSearchType: searchParams.valueSearchType,
               ignoreDiacritics: searchParams.ignoreDiacritics,
               hideCancelled: searchParams.hideCancelled,
@@ -1871,7 +1878,7 @@ const UnifiedSearch = () => {
             <Divider sx={{ mb: 3 }} />
             <Grid container spacing={4}>
               {/* Search Mode Options */}
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={3}>
                 <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
                   Modo de busca
                 </Typography>
@@ -1922,7 +1929,7 @@ const UnifiedSearch = () => {
               </Grid>
 
               {/* Value Filters */}
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={3}>
                 <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
                   Filtrar por valor
                 </Typography>
@@ -1973,10 +1980,39 @@ const UnifiedSearch = () => {
                     }}
                   />
                 </Box>
+          
+              </Grid>
+              <Grid item xs={12} md={3}>
+
+                  <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
+                  Filtrar por data
+                </Typography>
+                      <Box sx={{ display: "flex", gap: 1, mt: 2 }}>
+                  <TextField
+                    label="Data início"
+                    name="date_from"
+                    type="date"
+                    value={searchParams.date_from}
+                    onChange={handleChange}
+                    size="small"
+                    InputLabelProps={{ shrink: true }}
+                    fullWidth
+                  />
+                  <TextField
+                    label="Data fim"
+                    name="date_to"
+                    type="date"
+                    value={searchParams.date_to}
+                    onChange={handleChange}
+                    size="small"
+                    InputLabelProps={{ shrink: true }}
+                    fullWidth
+                  />
+                </Box>
               </Grid>
 
               {/* Search Precision (classic mode) */}
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={3}>
                 {!usingEnhanced && (
                   <>
                     <Typography

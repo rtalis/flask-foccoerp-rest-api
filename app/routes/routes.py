@@ -728,6 +728,19 @@ def search_advanced():
     value_search_type = request.args.get('valueSearchType', 'item').lower()
     exact_search = request.args.get('exactSearch', 'false').lower() == 'true'
     hide_cancelled = request.args.get('hideCancelled', 'false').lower() == 'true'
+    date_from_param = request.args.get('date_from', '').strip()
+    date_to_param = request.args.get('date_to', '').strip()
+    date_from = None
+    date_to = None
+    try:
+        if date_from_param:
+            date_from = datetime.strptime(date_from_param, '%Y-%m-%d')
+        if date_to_param:
+            date_to = datetime.strptime(date_to_param, '%Y-%m-%d')
+            date_to = date_to.replace(hour=23, minute=59, second=59, microsecond=999999)
+    except ValueError:
+        date_from = None
+        date_to = None
 
     default_fields = {'cod_pedc', 'fornecedor', 'observacao', 'item_id', 'descricao', 'num_nf'}
     fields = {field.strip().lower() for field in fields_param.split(',') if field.strip()} or default_fields
@@ -786,6 +799,11 @@ def search_advanced():
             value_filters.append(PurchaseItem.preco_unitario <= max_value)
     if value_filters:
         base_query = base_query.filter(and_(*value_filters))
+
+    if date_from is not None:
+        base_query = base_query.filter(PurchaseOrder.dt_emis >= date_from)
+    if date_to is not None:
+        base_query = base_query.filter(PurchaseOrder.dt_emis <= date_to)
 
     if search_by_func_nome and search_by_func_nome.lower() != 'todos':
         base_query = base_query.filter(PurchaseOrder.func_nome.ilike(f'%{search_by_func_nome}%'))
@@ -915,6 +933,19 @@ def search_combined():
     value_search_type = request.args.get('valueSearchType', 'item')
     value_filters = []
     ignore_diacritics = request.args.get('ignoreDiacritics', 'false').lower() == 'true'
+    date_from_param = request.args.get('date_from', '').strip()
+    date_to_param = request.args.get('date_to', '').strip()
+    date_from = None
+    date_to = None
+    try:
+        if date_from_param:
+            date_from = datetime.strptime(date_from_param, '%Y-%m-%d')
+        if date_to_param:
+            date_to = datetime.strptime(date_to_param, '%Y-%m-%d')
+            date_to = date_to.replace(hour=23, minute=59, second=59, microsecond=999999)
+    except ValueError:
+        date_from = None
+        date_to = None
 
     if ignore_diacritics:
         if db.engine.name == 'postgresql':
@@ -982,6 +1013,10 @@ def search_combined():
         items_query = items_query.filter(and_(PurchaseOrder.func_nome.ilike(f'%{search_by_func_nome}%')))
     if search_by_cod_emp1 and str(search_by_cod_emp1).lower() != 'todos':
         items_query = items_query.filter(PurchaseOrder.cod_emp1 == str(search_by_cod_emp1))
+    if date_from is not None:
+        items_query = items_query.filter(PurchaseOrder.dt_emis >= date_from)
+    if date_to is not None:
+        items_query = items_query.filter(PurchaseOrder.dt_emis <= date_to)
     
     if score_cutoff < 100 and query:
         fuzzy_query = (
@@ -1048,6 +1083,20 @@ def count_results():
 
     if search_by_func_nome != 'todos':
         count_query = count_query.filter(PurchaseOrder.func_nome.ilike(f'%{search_by_func_nome}%'))
+
+    date_from_param = request.args.get('date_from', '').strip()
+    date_to_param = request.args.get('date_to', '').strip()
+    try:
+        if date_from_param:
+            date_from = datetime.strptime(date_from_param, '%Y-%m-%d')
+            count_query = count_query.filter(PurchaseOrder.dt_emis >= date_from)
+        if date_to_param:
+            date_to = datetime.strptime(date_to_param, '%Y-%m-%d')
+            date_to = date_to.replace(hour=23, minute=59, second=59, microsecond=999999)
+            count_query = count_query.filter(PurchaseOrder.dt_emis <= date_to)
+    except ValueError:
+        # ignore invalid date formats
+        pass
 
     base_count = count_query.scalar()
 
