@@ -1998,16 +1998,19 @@ def dashboard_summary():
             })
             cur = (cur.replace(day=1) + timedelta(days=32)).replace(day=1)
 
-        # Daily usage
-        usage_days = max(int(request.args.get('usage_days', 14)), 1)
-        usage_start_date = end_date - timedelta(days=usage_days - 1)
+        # Daily usage - use the same date range as the dashboard request
+        usage_start_date = start_date
+        usage_end_date = end_date
+        # Calculate number of days for the iteration loop
+        usage_days = max((usage_end_date - usage_start_date).days + 1, 1)
 
         usage_rows = db.session.query(
             func.date(LoginHistory.login_time).label('login_date'),
             func.count(LoginHistory.id).label('login_count'),
             func.count(func.distinct(LoginHistory.user_id)).label('user_count')
         ).filter(
-            LoginHistory.login_time >= usage_start_date
+            func.date(LoginHistory.login_time) >= usage_start_date,
+            func.date(LoginHistory.login_time) <= usage_end_date
         ).group_by(
             'login_date'
         ).order_by(

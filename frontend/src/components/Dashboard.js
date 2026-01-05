@@ -105,6 +105,8 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [requestStartDate, setRequestStartDate] = useState("");
+  const [requestEndDate, setRequestEndDate] = useState("");
 
   const fetchData = useCallback(async () => {
     try {
@@ -114,13 +116,14 @@ const Dashboard = () => {
       // Build params based on whether custom dates are used
       const params = {
         limit: Math.max(months, 12) + 2,
-        usage_days: 30,
       };
 
-      // If custom dates are set, use them; otherwise use months
+      // Calculate dates for the request (used for both orders and daily usage)
+      let requestStartDate, requestEndDate;
       if (months === 0 && startDate && endDate) {
-        params.start_date = startDate;
-        params.end_date = endDate;
+        // Custom date range
+        requestStartDate = startDate;
+        requestEndDate = endDate;
         // Calculate months for chart display
         const start = new Date(startDate);
         const end = new Date(endDate);
@@ -128,10 +131,21 @@ const Dashboard = () => {
           Math.ceil((end - start) / (1000 * 60 * 60 * 24 * 30)) + 1;
         params.months = Math.max(diffMonths, 1);
       } else {
+        // Calculate dates from months
+        const end = new Date();
+        const start = new Date();
+        start.setMonth(start.getMonth() - months);
+        start.setDate(1);
+        requestStartDate = formatDateValue(start);
+        requestEndDate = formatDateValue(end);
         params.months = months;
       }
+      params.start_date = requestStartDate;
+      params.end_date = requestEndDate;
 
-      // Add buyer filter
+      // Store the request dates for use in chart grouping
+      setRequestStartDate(requestStartDate);
+      setRequestEndDate(requestEndDate);
       if (buyerFilter && buyerFilter !== "all") {
         params.buyer = buyerFilter;
       }
@@ -285,28 +299,97 @@ const Dashboard = () => {
 
   const dailyUsageChart = useMemo(() => {
     const rows = data?.daily_usage ?? [];
+    if (rows.length === 0) {
+      return {
+        labels: [],
+        datasets: [{ label: "Logins", data: [], borderColor: "#5b8def" }],
+      };
+    }
+
+    // Group by month if the date range is larger than 1 month
+    let shouldGroupByMonth = false;
+    if (requestStartDate && requestEndDate) {
+      const start = new Date(requestStartDate);
+      const end = new Date(requestEndDate);
+      const daysDiff = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+      shouldGroupByMonth = daysDiff > 30;
+    }
+
+    if (!shouldGroupByMonth) {
+      // Daily view
+      return {
+        labels: rows.map((r) => {
+          if (!r.date) return "";
+          const parts = String(r.date).split("-");
+          let dObj;
+          if (parts.length === 3) {
+            const y = Number(parts[0]);
+            const m = Number(parts[1]) - 1;
+            const d = Number(parts[2]);
+            dObj = new Date(y, m, d);
+          } else {
+            dObj = new Date(r.date);
+          }
+          return dObj.toLocaleDateString("pt-BR", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "2-digit",
+          });
+        }),
+        datasets: [
+          {
+            label: "Logins",
+            data: rows.map((r) => r.logins),
+            borderColor: "#5b8def",
+            backgroundColor: "rgba(91, 141, 239, 0.15)",
+            fill: true,
+            tension: 0.35,
+            pointRadius: 2,
+          },
+        ],
+      };
+    }
+
+    // Monthly grouped view
+    const monthlyData = {};
+    rows.forEach((r) => {
+      if (!r.date) return;
+      const parts = String(r.date).split("-");
+      if (parts.length === 3) {
+        const y = Number(parts[0]);
+        const m = Number(parts[1]);
+        const monthKey = `${y}-${String(m).padStart(2, "0")}`;
+        if (!monthlyData[monthKey]) {
+          monthlyData[monthKey] = { logins: 0, date: new Date(y, m - 1, 1) };
+        }
+        monthlyData[monthKey].logins += r.logins;
+      }
+    });
+
+    const sortedMonths = Object.entries(monthlyData).sort(
+      ([, a], [, b]) => a.date - b.date
+    );
+
     return {
-      labels: rows.map((r) => {
-        if (!r.date) return "";
-        const d = new Date(r.date);
-        return d.toLocaleDateString("pt-BR", {
-          day: "2-digit",
-          month: "2-digit",
+      labels: sortedMonths.map(([, data]) => {
+        return data.date.toLocaleDateString("pt-BR", {
+          month: "short",
+          year: "2-digit",
         });
       }),
       datasets: [
         {
           label: "Logins",
-          data: rows.map((r) => r.logins),
+          data: sortedMonths.map(([, data]) => data.logins),
           borderColor: "#5b8def",
           backgroundColor: "rgba(91, 141, 239, 0.15)",
           fill: true,
           tension: 0.35,
-          pointRadius: 2,
+          pointRadius: 4,
         },
       ],
     };
-  }, [data]);
+  }, [data, requestStartDate, requestEndDate]);
 
   const supplierChart = useMemo(() => {
     const rows = (data?.supplier_data ?? []).slice(0, 6);
@@ -1269,7 +1352,7 @@ const Dashboard = () => {
             {/* Uso Diário do Sistema */}
             <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
               <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                Uso Diário do Sistema (30 dias)
+                Uso do Sistema (Logins)
               </Typography>
               <Box sx={{ height: 220 }}>
                 {data.daily_usage?.length > 0 ? (

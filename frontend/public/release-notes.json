@@ -7,5 +7,11 @@
       "Botão de exportação para excel dos resultados da busca por pedido de compra",
       "Adicionado as notas da versão para mostrar as mudanças recentes."
     ]
+  },
+  {
+    "version": "2.0.2",
+    "notes": [
+      "Consertado relatório de uso diário do sistema que não estava exibindo corretamente os logins dos usuários."
+    ]
   }
 ]
