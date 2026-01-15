@@ -2455,7 +2455,7 @@ def get_nfe_by_number():
         
         # Also try with the cleaned version
         if not nfes:
-            nfes = NFEData.query.filter(NFEData.numero == num_nf_clean).all()
+            nfes = NFEData.query.filter(NFEData.numero == num_nf_clean).order_by(NFEData.data_emissao.desc()).all()
         
         if not nfes:
             return jsonify({'error': 'NFE not found in database', 'found': False}), 404
@@ -2474,7 +2474,7 @@ def get_nfe_by_number():
             # 1. Check CNPJ match (primary criteria if available)
             if fornecedor_cnpj and nfe.emitente and nfe.emitente.cnpj:
                 emit_cnpj_clean = ''.join(filter(str.isdigit, str(nfe.emitente.cnpj)))
-                if emit_cnpj_clean == fornecedor_cnpj:
+                if emit_cnpj_clean[:8] == fornecedor_cnpj[:8]:
                     # CNPJ matches - check date if provided
                     if dt_ent and nfe.data_emissao:
                         nfe_date = nfe.data_emissao
@@ -2577,6 +2577,146 @@ def match_purchase_nfe():
         'matches_found': len(result.get('matches', [])),
         'matches': result.get('matches', [])
     }), 200
+
+@bp.route('/manual_match_nfe', methods=['POST'])
+@login_required
+def manual_match_nfe():
+    """
+    Manually match an NFE to a purchase order item.
+    User can verify and confirm NFE matches for their purchase orders.
+    
+    Request body:
+    {
+        "nfe_id": <int>,                    # NFE database ID
+        "purchase_item_id": <int>,          # Purchase item ID (if available)
+        "cod_pedc": <string>,               # Purchase order code
+        "cod_emp1": <string>,               # Company code
+        "user_id": <string>                 # User ID making the match (from current_user)
+    }
+    
+    Returns:
+        The created PurchaseItemNFEMatch record with match details
+    """
+    from app.utils import score_purchase_nfe_match
+    
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        nfe_chave = data.get('nfe_chave')
+        cod_pedc = data.get('cod_pedc')
+        cod_emp1 = data.get('cod_emp1')
+        purchase_item_id = data.get('purchase_item_id')
+        
+        if not all([nfe_chave, cod_pedc, cod_emp1]):
+            return jsonify({
+                'error': 'Missing required fields: nfe_chave, cod_pedc, cod_emp1'
+            }), 400
+        
+        # Fetch NFE
+        nfe = NFEData.query.filter_by(chave=nfe_chave).first()
+        if not nfe:
+            return jsonify({'error': f'NFE with chave {nfe_chave} not found'}), 404
+        
+        # Fetch purchase order
+        purchase_order = PurchaseOrder.query.filter_by(
+            cod_pedc=cod_pedc,
+            cod_emp1=cod_emp1
+        ).first()
+        
+        if not purchase_order:
+            return jsonify({
+                'error': f'Purchase order {cod_pedc} for company {cod_emp1} not found'
+            }), 404
+        
+        # If purchase_item_id not provided, use first unfulfilled item
+        if not purchase_item_id:
+            unfulfilled_item = PurchaseItem.query.filter(
+                PurchaseItem.purchase_order_id == purchase_order.id,
+                (PurchaseItem.qtde_atendida == None) | 
+                (PurchaseItem.qtde_atendida < PurchaseItem.quantidade)
+            ).first()
+            
+            if unfulfilled_item:
+                purchase_item_id = unfulfilled_item.id
+        
+        # Score the match using existing logic
+        match_result = score_purchase_nfe_match(cod_pedc, cod_emp1)
+        
+        if isinstance(match_result, dict) and 'error' in match_result:
+            return jsonify(match_result), 400
+        
+        # Find the specific match for this NFE
+        nfe_matches = [m for m in match_result.get('matches', []) 
+                      if m.get('nfe_id') == nfe_id]
+        
+        if not nfe_matches:
+            # If no auto-match found, create a basic match record
+            match_data = {
+                'match_score': 75,  # Default moderate score for manual confirmation
+                'description_similarity': None,
+                'quantity_match': None,
+                'price_diff_pct': None,
+                'nfe_fornecedor': nfe.emitente.nome if nfe.emitente else 'Unknown',
+                'nfe_data_emissao': nfe.data_emissao,
+            }
+        else:
+            match_data = nfe_matches[0]
+        
+        # Create the match record
+        new_match = PurchaseItemNFEMatch(
+            purchase_item_id=purchase_item_id,
+            cod_pedc=cod_pedc,
+            cod_emp1=cod_emp1,
+            item_seq=purchase_order.purchase_items[0].linha if purchase_order.purchase_items else None,
+            nfe_id=nfe_id,
+            nfe_chave=nfe.chave,
+            nfe_numero=nfe.numero,
+            match_score=match_data.get('match_score', 75),
+            description_similarity=match_data.get('description_similarity'),
+            quantity_match=match_data.get('quantity_match'),
+            price_diff_pct=match_data.get('price_diff_pct'),
+            nfe_fornecedor=match_data.get('nfe_fornecedor'),
+            nfe_data_emissao=match_data.get('nfe_data_emissao'),
+            matched_by_user_id=str(current_user.id),
+            match_type='manual'
+        )
+        
+        # Check for duplicates
+        existing_match = PurchaseItemNFEMatch.query.filter_by(
+            cod_pedc=cod_pedc,
+            cod_emp1=cod_emp1,
+            nfe_id=nfe_id
+        ).first()
+        
+        if existing_match:
+            # Update existing match instead of creating duplicate
+            existing_match.matched_by_user_id = str(current_user.id)
+            existing_match.match_type = 'manual'
+            existing_match.updated_at = datetime.now()
+            db.session.commit()
+            return jsonify({
+                'status': 'updated',
+                'match_id': existing_match.id,
+                'message': f'Match updated by user {current_user.username}'
+            }), 200
+        
+        db.session.add(new_match)
+        db.session.commit()
+        
+        return jsonify({
+            'status': 'created',
+            'match_id': new_match.id,
+            'cod_pedc': new_match.cod_pedc,
+            'nfe_numero': new_match.nfe_numero,
+            'match_score': new_match.match_score,
+            'matched_by': current_user.username,
+            'message': f'NFE {nfe.numero} manually matched to purchase order {cod_pedc}'
+        }), 201
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
 @bp.route('/user_purchases', methods=['GET'])
 @login_required

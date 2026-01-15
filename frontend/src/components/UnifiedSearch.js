@@ -91,6 +91,8 @@ function PurchaseRow(props) {
   const [showNfNotFoundDialog, setShowNfNotFoundDialog] = useState(false);
   const [nfNotFoundInfo, setNfNotFoundInfo] = useState(null);
   const [loadingDanfeNf, setLoadingDanfeNf] = useState(null);
+  const [nfeChecked, setNfeChecked] = useState({});
+  const [matchingInProgress, setMatchingInProgress] = useState(false);
 
   const normalizeNumber = (value) => {
     if (value === null || value === undefined) {
@@ -355,6 +357,58 @@ function PurchaseRow(props) {
     }
   };
 
+  // Handle NFE checkbox for manual matching
+  const handleNfeCheckboxChange = async (nfe, isChecked) => {
+    if (isChecked) {
+      setNfeChecked((prev) => ({
+        ...prev,
+        [nfe.id]: true,
+      }));
+      setMatchingInProgress(true);
+
+      try {
+        const response = await axios.post(
+          `${process.env.REACT_APP_API_URL}/api/manual_match_nfe`,
+          {
+            nfe_chave: nfe.chave,
+            cod_pedc: purchase.order.cod_pedc,
+            cod_emp1: purchase.order.cod_emp1,
+          },
+          {
+            withCredentials: true,
+          }
+        );
+
+        console.log("NFE manual match result:", response.data);
+
+        // Optional: Show success message
+        if (response.status === 201 || response.status === 200) {
+          alert(
+            `Nota Fiscal ${nfe.numero} foi confirmada para o pedido ${purchase.order.cod_pedc}`
+          );
+        }
+      } catch (error) {
+        console.error("Error matching NFE:", error);
+        setNfeChecked((prev) => ({
+          ...prev,
+          [nfe.id]: false,
+        }));
+        alert(
+          `Erro ao confirmar a nota fiscal: ${
+            error.response?.data?.error || error.message
+          }`
+        );
+      } finally {
+        setMatchingInProgress(false);
+      }
+    } else {
+      setNfeChecked((prev) => ({
+        ...prev,
+        [nfe.id]: false,
+      }));
+    }
+  };
+
   return (
     <React.Fragment>
       {/* Purchase header row */}
@@ -507,18 +561,18 @@ function PurchaseRow(props) {
                           backgroundColor: isOverfulfilled
                             ? "#fff8e1"
                             : isFullyFulfilled
-                              ? "#e3f2fd"
-                              : isPartiallyFulfilled
-                                ? "#fce4ec"
-                                : "inherit",
+                            ? "#e3f2fd"
+                            : isPartiallyFulfilled
+                            ? "#fce4ec"
+                            : "inherit",
                           "&:hover": {
                             backgroundColor: isOverfulfilled
                               ? "#ffecb3"
                               : isFullyFulfilled
-                                ? "#bbdefb"
-                                : isPartiallyFulfilled
-                                  ? "#f8bbd0"
-                                  : "#f5f7fa",
+                              ? "#bbdefb"
+                              : isPartiallyFulfilled
+                              ? "#f8bbd0"
+                              : "#f5f7fa",
                           },
                         }}
                       >
@@ -527,9 +581,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                textDecoration: "line-through",
-                                color: "#9e9e9e",
-                              }
+                                  textDecoration: "line-through",
+                                  color: "#9e9e9e",
+                                }
                               : {}
                           }
                         >
@@ -543,9 +597,9 @@ function PurchaseRow(props) {
                             "&:hover": { textDecoration: "underline" },
                             ...(isFullyCanceled
                               ? {
-                                textDecoration: "line-through",
-                                color: "#9e9e9e",
-                              }
+                                  textDecoration: "line-through",
+                                  color: "#9e9e9e",
+                                }
                               : {}),
                           }}
                         >
@@ -556,9 +610,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                textDecoration: "line-through",
-                                color: "#9e9e9e",
-                              }
+                                  textDecoration: "line-through",
+                                  color: "#9e9e9e",
+                                }
                               : {}
                           }
                         >
@@ -569,9 +623,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                textDecoration: "line-through",
-                                color: "#9e9e9e",
-                              }
+                                  textDecoration: "line-through",
+                                  color: "#9e9e9e",
+                                }
                               : {}
                           }
                         >
@@ -582,9 +636,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                textDecoration: "line-through",
-                                color: "#9e9e9e",
-                              }
+                                  textDecoration: "line-through",
+                                  color: "#9e9e9e",
+                                }
                               : {}
                           }
                         >
@@ -595,9 +649,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                textDecoration: "line-through",
-                                color: "#9e9e9e",
-                              }
+                                  textDecoration: "line-through",
+                                  color: "#9e9e9e",
+                                }
                               : {}
                           }
                         >
@@ -610,9 +664,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                textDecoration: "line-through",
-                                color: "#9e9e9e",
-                              }
+                                  textDecoration: "line-through",
+                                  color: "#9e9e9e",
+                                }
                               : {}
                           }
                         >
@@ -623,9 +677,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                textDecoration: "line-through",
-                                color: "#9e9e9e",
-                              }
+                                  textDecoration: "line-through",
+                                  color: "#9e9e9e",
+                                }
                               : {}
                           }
                         >
@@ -636,9 +690,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                textDecoration: "line-through",
-                                color: "#9e9e9e",
-                              }
+                                  textDecoration: "line-through",
+                                  color: "#9e9e9e",
+                                }
                               : {}
                           }
                         >
@@ -649,8 +703,8 @@ function PurchaseRow(props) {
                                   {nf.dt_ent ? formatDate(nf.dt_ent) : ""}
                                   {nf.qtde
                                     ? ` (${formatNumber(
-                                      normalizeNumber(nf?.qtde)
-                                    )} ${item.unidade_medida})`
+                                        normalizeNumber(nf?.qtde)
+                                      )} ${item.unidade_medida})`
                                     : ""}
                                 </>
                               )}
@@ -662,9 +716,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                textDecoration: "line-through",
-                                color: "#9e9e9e",
-                              }
+                                  textDecoration: "line-through",
+                                  color: "#9e9e9e",
+                                }
                               : {}
                           }
                         >
@@ -752,10 +806,11 @@ function PurchaseRow(props) {
                                       <Tooltip
                                         title={`NF estimada por IA (${item.estimated_nfe.match_score?.toFixed(
                                           0
-                                        )}% match)${item.estimated_nfe.nfe_fornecedor
+                                        )}% match)${
+                                          item.estimated_nfe.nfe_fornecedor
                                             ? ` - ${item.estimated_nfe.nfe_fornecedor}`
                                             : ""
-                                          }`}
+                                        }`}
                                       >
                                         <span
                                           style={{
@@ -792,7 +847,7 @@ function PurchaseRow(props) {
                                             sx={{ padding: "2px" }}
                                           >
                                             {loadingDanfeNf ===
-                                              nfeNum.trim() ? (
+                                            nfeNum.trim() ? (
                                               <CircularProgress size={16} />
                                             ) : (
                                               <PictureAsPdfIcon
@@ -917,25 +972,60 @@ function PurchaseRow(props) {
               {nfeData.nfe_data.map((nfe, index) => (
                 <Card key={index} variant="outlined">
                   <CardContent>
-                    <Typography variant="h6" gutterBottom>
-                      NF-e Nº {nfe.numero}
-                    </Typography>
-                    <Typography variant="body2">
-                      <strong>Fornecedor:</strong> {nfe.fornecedor}
-                    </Typography>
-                    <Typography variant="body2">
-                      <strong>Data Emissão:</strong>{" "}
-                      {nfe.data_emissao
-                        ? new Date(nfe.data_emissao).toLocaleDateString("pt-BR")
-                        : ""}
-                    </Typography>
-                    <Typography variant="body2">
-                      <strong>Valor:</strong>{" "}
-                      {nfe.valor ? formatCurrency(parseFloat(nfe.valor)) : ""}
-                    </Typography>
-                    <Typography variant="body2">
-                      <strong>Chave:</strong> {nfe.chave}
-                    </Typography>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                      }}
+                    >
+                      <Box sx={{ flex: 1 }}>
+                        <Typography variant="h6" gutterBottom>
+                          NF-e Nº {nfe.numero}
+                        </Typography>
+                        <Typography variant="body2">
+                          <strong>Fornecedor:</strong> {nfe.fornecedor}
+                        </Typography>
+                        <Typography variant="body2">
+                          <strong>Data Emissão:</strong>{" "}
+                          {nfe.data_emissao
+                            ? new Date(nfe.data_emissao).toLocaleDateString(
+                                "pt-BR"
+                              )
+                            : ""}
+                        </Typography>
+                        <Typography variant="body2">
+                          <strong>Valor:</strong>{" "}
+                          {nfe.valor
+                            ? formatCurrency(parseFloat(nfe.valor))
+                            : ""}
+                        </Typography>
+                        <Typography variant="body2">
+                          <strong>Chave:</strong> {nfe.chave}
+                        </Typography>
+                      </Box>
+                      <Tooltip title="Marcar se esta nota atende ao pedido de compra">
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={nfeChecked[nfe.id] || false}
+                              onChange={(e) => {
+                                handleNfeCheckboxChange(nfe, e.target.checked);
+                                console.log(
+                                  "Checkbox changed for NFE",
+                                  nfe,
+                                  e.target.checked
+                                );
+                              }}
+                              disabled={matchingInProgress}
+                              color="primary"
+                            />
+                          }
+                          label="Atende"
+                          sx={{ ml: 2, whiteSpace: "nowrap" }}
+                        />
+                      </Tooltip>
+                    </Box>
                   </CardContent>
                   <CardActions>
                     <Button
@@ -1980,14 +2070,12 @@ const UnifiedSearch = () => {
                     }}
                   />
                 </Box>
-          
               </Grid>
               <Grid item xs={12} md={3}>
-
-                  <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
+                <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
                   Filtrar por data
                 </Typography>
-                      <Box sx={{ display: "flex", gap: 1, mt: 2 }}>
+                <Box sx={{ display: "flex", gap: 1, mt: 2 }}>
                   <TextField
                     label="Data início"
                     name="date_from"

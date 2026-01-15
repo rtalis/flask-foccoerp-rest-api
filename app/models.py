@@ -478,6 +478,10 @@ class PurchaseItemNFEMatch(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.now)
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
     
+    # User tracking
+    matched_by_user_id = db.Column(db.String(50), default='0000')  # '0000' for auto-matches, user ID for manual
+    match_type = db.Column(db.String(50), default='auto')  # 'auto' or 'manual'
+    
     # Relationships
     purchase_item = db.relationship('PurchaseItem', backref=db.backref('nfe_matches', lazy='dynamic'))
     nfe = db.relationship('NFEData', backref=db.backref('purchase_item_matches', lazy='dynamic'))

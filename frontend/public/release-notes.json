@@ -13,5 +13,12 @@
     "notes": [
       "Consertado relatório de uso diário do sistema que não estava exibindo corretamente os logins dos usuários."
     ]
+  },
+  {
+    "version": "2.0.3",
+    "notes": [
+      "Correção ao abrir nota fiscal emitida por filial com matriz cadastrada no sistema",
+      "Correção de uma nova pesquisa mostrar resultados de pesquisas anteriores em cache"
+    ]
   }
 ]
