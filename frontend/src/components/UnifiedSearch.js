@@ -138,7 +138,7 @@ function PurchaseRow(props) {
         {
           params: { cod_pedc: purchase.order.cod_pedc },
           withCredentials: true,
-        }
+        },
       );
       setNfeData(response.data);
       setShowNfeDialog(true);
@@ -156,7 +156,7 @@ function PurchaseRow(props) {
       const newWindow = window.open("", "_blank");
       if (!newWindow) {
         alert(
-          "Pop-up bloqueado pelo navegador. Por favor, permita pop-ups para este site."
+          "Pop-up bloqueado pelo navegador. Por favor, permita pop-ups para este site.",
         );
         return;
       }
@@ -198,7 +198,7 @@ function PurchaseRow(props) {
         {
           params: { xmlKey: nfe.chave },
           withCredentials: true,
-        }
+        },
       );
 
       if (!response.data) {
@@ -218,7 +218,7 @@ function PurchaseRow(props) {
       } else {
         const possibleBase64 = Object.entries(response.data)
           .filter(
-            ([key, value]) => typeof value === "string" && value.length > 100
+            ([key, value]) => typeof value === "string" && value.length > 100,
           )
           .sort((a, b) => b[1].length - a[1].length)[0];
 
@@ -282,7 +282,7 @@ function PurchaseRow(props) {
             dt_ent: nfEntry.dt_ent,
           },
           withCredentials: true,
-        }
+        },
       );
 
       if (response.data && response.data.found && response.data.chave) {
@@ -325,7 +325,7 @@ function PurchaseRow(props) {
             dt_ent: nfEntry.dt_ent,
           },
           withCredentials: true,
-        }
+        },
       );
 
       if (
@@ -376,7 +376,7 @@ function PurchaseRow(props) {
           },
           {
             withCredentials: true,
-          }
+          },
         );
 
         console.log("NFE manual match result:", response.data);
@@ -384,7 +384,7 @@ function PurchaseRow(props) {
         // Optional: Show success message
         if (response.status === 201 || response.status === 200) {
           alert(
-            `Nota Fiscal ${nfe.numero} foi confirmada para o pedido ${purchase.order.cod_pedc}`
+            `Nota Fiscal ${nfe.numero} foi confirmada para o pedido ${purchase.order.cod_pedc}`,
           );
         }
       } catch (error) {
@@ -396,7 +396,7 @@ function PurchaseRow(props) {
         alert(
           `Erro ao confirmar a nota fiscal: ${
             error.response?.data?.error || error.message
-          }`
+          }`,
         );
       } finally {
         setMatchingInProgress(false);
@@ -561,18 +561,18 @@ function PurchaseRow(props) {
                           backgroundColor: isOverfulfilled
                             ? "#fff8e1"
                             : isFullyFulfilled
-                            ? "#e3f2fd"
-                            : isPartiallyFulfilled
-                            ? "#fce4ec"
-                            : "inherit",
+                              ? "#e3f2fd"
+                              : isPartiallyFulfilled
+                                ? "#fce4ec"
+                                : "inherit",
                           "&:hover": {
                             backgroundColor: isOverfulfilled
                               ? "#ffecb3"
                               : isFullyFulfilled
-                              ? "#bbdefb"
-                              : isPartiallyFulfilled
-                              ? "#f8bbd0"
-                              : "#f5f7fa",
+                                ? "#bbdefb"
+                                : isPartiallyFulfilled
+                                  ? "#f8bbd0"
+                                  : "#f5f7fa",
                           },
                         }}
                       >
@@ -703,7 +703,7 @@ function PurchaseRow(props) {
                                   {nf.dt_ent ? formatDate(nf.dt_ent) : ""}
                                   {nf.qtde
                                     ? ` (${formatNumber(
-                                        normalizeNumber(nf?.qtde)
+                                        normalizeNumber(nf?.qtde),
                                       )} ${item.unidade_medida})`
                                     : ""}
                                 </>
@@ -724,7 +724,7 @@ function PurchaseRow(props) {
                         >
                           {(() => {
                             const actualNfes = purchase.order.nfes.filter(
-                              (nf) => nf.linha == item.linha && nf.num_nf
+                              (nf) => nf.linha == item.linha && nf.num_nf,
                             );
                             if (actualNfes.length > 0) {
                               return (
@@ -805,7 +805,7 @@ function PurchaseRow(props) {
                                     >
                                       <Tooltip
                                         title={`NF estimada por IA (${item.estimated_nfe.match_score?.toFixed(
-                                          0
+                                          0,
                                         )}% match)${
                                           item.estimated_nfe.nfe_fornecedor
                                             ? ` - ${item.estimated_nfe.nfe_fornecedor}`
@@ -990,7 +990,7 @@ function PurchaseRow(props) {
                           <strong>Data Emissão:</strong>{" "}
                           {nfe.data_emissao
                             ? new Date(nfe.data_emissao).toLocaleDateString(
-                                "pt-BR"
+                                "pt-BR",
                               )
                             : ""}
                         </Typography>
@@ -1004,6 +1004,7 @@ function PurchaseRow(props) {
                           <strong>Chave:</strong> {nfe.chave}
                         </Typography>
                       </Box>
+                      {/*
                       <Tooltip title="Marcar se esta nota atende ao pedido de compra">
                         <FormControlLabel
                           control={
@@ -1014,7 +1015,7 @@ function PurchaseRow(props) {
                                 console.log(
                                   "Checkbox changed for NFE",
                                   nfe,
-                                  e.target.checked
+                                  e.target.checked,
                                 );
                               }}
                               disabled={matchingInProgress}
@@ -1025,6 +1026,7 @@ function PurchaseRow(props) {
                           sx={{ ml: 2, whiteSpace: "nowrap" }}
                         />
                       </Tooltip>
+                      */}
                     </Box>
                   </CardContent>
                   <CardActions>
@@ -1184,6 +1186,7 @@ const UnifiedSearch = () => {
   const [lastUpdated, setLastUpdated] = useState("");
   const [estimatedResults, setEstimatedResults] = useState(0);
   const resultsRef = useRef(null);
+  const activeRequestRef = useRef(null); // Tracks the latest in-flight search to avoid race conditions
   const [searchMode, setSearchMode] = useState(() => {
     if (typeof window === "undefined") {
       return "enhanced";
@@ -1241,7 +1244,7 @@ const UnifiedSearch = () => {
     if (typeof window !== "undefined") {
       localStorage.setItem(
         SEARCH_PARAMS_STORAGE_KEY,
-        JSON.stringify(searchParams)
+        JSON.stringify(searchParams),
       );
     }
   }, [searchParams]);
@@ -1250,7 +1253,7 @@ const UnifiedSearch = () => {
     if (typeof window !== "undefined") {
       localStorage.setItem(
         SHOW_SUGGESTIONS_STORAGE_KEY,
-        JSON.stringify(showSuggestionsToggle)
+        JSON.stringify(showSuggestionsToggle),
       );
     }
   }, [showSuggestionsToggle]);
@@ -1261,7 +1264,7 @@ const UnifiedSearch = () => {
       try {
         const response = await axios.get(
           `${process.env.REACT_APP_API_URL}/api/purchasers`,
-          { withCredentials: true }
+          { withCredentials: true },
         );
         const sortedFuncNames = response.data
           .map((name) => name || "Sem nome")
@@ -1278,7 +1281,7 @@ const UnifiedSearch = () => {
       try {
         const response = await axios.get(
           `${process.env.REACT_APP_API_URL}/api/companies`,
-          { withCredentials: true }
+          { withCredentials: true },
         );
         setCodEmp1Options(response.data);
       } catch (error) {
@@ -1290,7 +1293,7 @@ const UnifiedSearch = () => {
       try {
         const response = await axios.get(
           `${process.env.REACT_APP_API_URL}/api/last_update`,
-          { withCredentials: true }
+          { withCredentials: true },
         );
         if (response.data && response.data.last_updated) {
           // Store raw date string, formatLastUpdated will handle formatting
@@ -1334,11 +1337,11 @@ const UnifiedSearch = () => {
           {
             params: { term, limit: 10 },
             withCredentials: true,
-          }
+          },
         );
         if (isActive) {
           setSuggestions(
-            (data?.suggestions || []).map((suggestion) => suggestion.value)
+            (data?.suggestions || []).map((suggestion) => suggestion.value),
           );
         }
       } catch (err) {
@@ -1357,6 +1360,14 @@ const UnifiedSearch = () => {
       clearTimeout(handler);
     };
   }, [searchParams.query, usingEnhanced, showSuggestionsToggle]);
+
+  useEffect(() => {
+    return () => {
+      if (activeRequestRef.current) {
+        activeRequestRef.current.abort();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     setNoResults(results.length);
@@ -1455,7 +1466,7 @@ const UnifiedSearch = () => {
             date_to: searchParams.date_to || undefined,
           },
           withCredentials: true,
-        }
+        },
       );
       setEstimatedResults(response.data.count);
       setTotalPages(response.data.estimated_pages);
@@ -1468,7 +1479,14 @@ const UnifiedSearch = () => {
     const trimmedQuery = (searchParams.query || "").trim();
     const perPageToUse = perPageOverride ?? perPage;
 
+    if (activeRequestRef.current) {
+      activeRequestRef.current.abort();
+    }
+    const controller = new AbortController();
+    activeRequestRef.current = controller;
+
     setLoading(true);
+    setResults([]); // Clear previous results while new search is loading
     if (!usingEnhanced) {
       await getEstimatedResults();
     }
@@ -1497,7 +1515,8 @@ const UnifiedSearch = () => {
               per_page: perPageToUse,
             },
             withCredentials: true,
-          }
+            signal: controller.signal,
+          },
         );
       } else {
         response = await axios.get(
@@ -1525,8 +1544,17 @@ const UnifiedSearch = () => {
               hideCancelled: searchParams.hideCancelled,
             },
             withCredentials: true,
-          }
+            signal: controller.signal,
+          },
         );
+      }
+
+      // Ignore responses from canceled or outdated requests
+      if (
+        controller.signal.aborted ||
+        activeRequestRef.current !== controller
+      ) {
+        return;
       }
 
       const purchases = response.data?.purchases || [];
@@ -1538,13 +1566,19 @@ const UnifiedSearch = () => {
         setEstimatedResults(response.data?.total_results ?? purchases.length);
       }
     } catch (error) {
+      if (controller.signal.aborted || error?.code === "ERR_CANCELED") {
+        return;
+      }
       console.error("Error fetching data", error);
       setResults([]);
       setCurrentPage(1);
       setTotalPages(1);
       setNoResults(0);
     } finally {
-      setLoading(false);
+      if (activeRequestRef.current === controller) {
+        activeRequestRef.current = null;
+        setLoading(false);
+      }
     }
   };
 
