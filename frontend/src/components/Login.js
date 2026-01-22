@@ -28,6 +28,9 @@ const Login = ({ onLogin }) => {
   const [loginSuccess, setLoginSuccess] = useState(false);
   const [startAnimation, setStartAnimation] = useState(false);
   const [version, setVersion] = useState("");
+  const [showSessionWarning, setShowSessionWarning] = useState(false);
+  const [warningMessage, setWarningMessage] = useState("");
+
   useEffect(() => {
     fetch("/release-notes.json")
       .then((res) => res.json())
@@ -35,7 +38,7 @@ const Login = ({ onLogin }) => {
         if (Array.isArray(data) && data.length > 0) {
           // Sort by version (assume semantic versioning, latest last)
           const sorted = [...data].sort((a, b) =>
-            a.version > b.version ? 1 : -1
+            a.version > b.version ? 1 : -1,
           );
           setVersion(sorted[sorted.length - 1].version);
         }
@@ -48,19 +51,34 @@ const Login = ({ onLogin }) => {
   const targetLocation = [-3.123873, -40.127983];
   const targetZoom = 14;
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const performLogin = async (force = false) => {
     setLoading(true);
     setError("");
-    setStartAnimation(true);
+    if (!force) {
+      setStartAnimation(true);
+    }
 
     try {
       const response = await axios.post(
         `${process.env.REACT_APP_API_URL}/auth/login`,
-        { email, password },
-        { withCredentials: true }
+        { email, password, force },
+        { withCredentials: true },
       );
+
       if (response.status === 200) {
+        // Check if this is a warning about existing session
+        if (
+          response.data.warning === "active_session" &&
+          response.data.requires_confirmation
+        ) {
+          setWarningMessage(response.data.message);
+          setShowSessionWarning(true);
+          setStartAnimation(false);
+          setLoading(false);
+          return;
+        }
+
+        // Successful login
         setLoginSuccess(true);
         setTimeout(() => {
           onLogin();
@@ -72,6 +90,21 @@ const Login = ({ onLogin }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    performLogin(false);
+  };
+
+  const handleConfirmLogin = () => {
+    setShowSessionWarning(false);
+    performLogin(true);
+  };
+
+  const handleCancelLogin = () => {
+    setShowSessionWarning(false);
+    setStartAnimation(false);
   };
 
   return (
@@ -97,6 +130,25 @@ const Login = ({ onLogin }) => {
           />
         </MapContainer>
       </div>
+
+      {/* Session Warning Dialog */}
+      {showSessionWarning && (
+        <div className="session-warning-overlay">
+          <div className="session-warning-dialog">
+            <div className="warning-icon">⚠️</div>
+            <h3>Sessão Ativa Detectada</h3>
+            <p>{warningMessage}</p>
+            <div className="warning-buttons">
+              <button className="btn-cancel" onClick={handleCancelLogin}>
+                Cancelar
+              </button>
+              <button className="btn-confirm" onClick={handleConfirmLogin}>
+                Continuar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Login Form Overlay */}
       <div className={`login-overlay ${loginSuccess ? "fade-out" : ""}`}>

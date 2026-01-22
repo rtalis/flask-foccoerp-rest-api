@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, make_response
+from flask import Blueprint, request, jsonify, make_response, current_app
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 import jwt
@@ -66,12 +66,26 @@ def login():
     data = request.get_json()
     email = data.get('email', '').lower()
     password = data.get('password')
+    force = data.get('force', False)  
     user = User.query.filter_by(email=email).first()
 
     if user and check_password_hash(user.password, password):
-        # Generate a new session token - this invalidates any previous session
+        has_existing_session = False
+        if user.session_token and user.session_token_created_at:
+            session_age = datetime.now() - user.session_token_created_at
+            if session_age < current_app.config['PERMANENT_SESSION_LIFETIME']:
+                has_existing_session = True
+        
+        if has_existing_session and not force:
+            return jsonify({
+                'warning': 'active_session',
+                'message': 'Há uma sessão ativa em outro dispositivo. Se você continuar, a outra sessão será encerrada.',
+                'requires_confirmation': True
+            }), 200
+        
         new_session_token = secrets.token_hex(32)
         user.session_token = new_session_token
+        user.session_token_created_at = datetime.now()
         db.session.commit()
         
         login_user(user)
@@ -89,8 +103,8 @@ def login():
                 'allowed_screens': user.allowed_screens or []
             }
         }), 200)
-        # Set the session token as a cookie for validation
-        resp.set_cookie('session_token', new_session_token, httponly=True, samesite='Lax', max_age=3600)
+        session_lifetime = int(current_app.config['PERMANENT_SESSION_LIFETIME'].total_seconds())
+        resp.set_cookie('session_token', new_session_token, httponly=True, samesite='Lax', max_age=session_lifetime)
         session_cookie = request.cookies.get('session')
         if session_cookie:
             resp.set_cookie('session', session_cookie, httponly=True, samesite='Lax')
@@ -153,10 +167,16 @@ def register():
 @login_required
 @limiter.limit("5 per 5 seconds")
 def logout():
+    # Clear session token to invalidate the session
+    current_user.session_token = None
+    current_user.session_token_created_at = None
+    db.session.commit()
+    
     _record_logout_event(current_user, request)
     logout_user()
     response = make_response(jsonify({'message': 'Logged out successfully'}), 200)
     response.delete_cookie('session')
+    response.delete_cookie('session_token')
     return response
 
 
