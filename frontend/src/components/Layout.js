@@ -24,11 +24,9 @@ import {
   Logout as LogoutIcon,
   Menu as MenuIcon,
   ChevronLeft as ChevronLeftIcon,
-  Settings as SettingsIcon,
   Key as KeyIcon,
   Sync as SyncIcon,
   ManageSearch as ManageSearchIcon,
-  Business as BusinessIcon,
   People as PeopleIcon,
 } from "@mui/icons-material";
 import TrackedCompanies from "./TrackedCompanies";
@@ -241,11 +239,7 @@ const Layout = ({ onLogout }) => {
         <Divider sx={{ borderColor: "rgba(255,255,255,0.08)", mb: 2 }} />
 
         {/* Users Button */}
-        <Tooltip
-          title={!sidebarOpen ? "Usuários" : ""}
-          placement="right"
-          arrow
-        >
+        <Tooltip title={!sidebarOpen ? "Usuários" : ""} placement="right" arrow>
           <ListItemButton
             onClick={() => handleNavigate("/register")}
             selected={isActive("/register")}

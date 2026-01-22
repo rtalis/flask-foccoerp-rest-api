@@ -6,6 +6,11 @@ import {
   Routes,
   Navigate,
 } from "react-router-dom";
+
+import {
+  ServerErrorProvider,
+  useServerError,
+} from "./context/ServerErrorContext";
 import Layout from "./components/Layout";
 import UnifiedSearch from "./components/UnifiedSearch";
 import Login from "./components/Login";
@@ -17,19 +22,22 @@ import AdvancedSearch from "./components/AdvancedSearch";
 import TokenManager from "./components/TokenManager";
 import NFESearch from "./components/NFESearch";
 import ReleaseNotes from "./components/ReleaseNotes";
+import ServerErrorPopup from "./components/ServerErrorPopup";
 
-const App = () => {
+const AppContent = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
   const [unseenReleases, setUnseenReleases] = useState([]);
+  const { showError, showSessionError } = useServerError();
+
+  const apiUrl = process.env.REACT_APP_API_URL;
 
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const response = await axios.get(
-          `${process.env.REACT_APP_API_URL}/auth/protected`,
-          { withCredentials: true }
-        );
+        const response = await axios.get(`${apiUrl}/auth/protected`, {
+          withCredentials: true,
+        });
         if (response.status === 200) {
           setIsAuthenticated(true);
 
@@ -43,12 +51,23 @@ const App = () => {
     };
 
     checkAuth();
-  }, []);
+  }, [apiUrl]);
 
+  // Interceptor for 401 (auth) errors and session invalidation
   useEffect(() => {
     const interceptorId = axios.interceptors.response.use(
       (response) => response,
       (error) => {
+        // Check for session invalidation (logged in from another device)
+        if (error?.response?.status === 403 && 
+            error?.response?.data?.code === 'SESSION_INVALIDATED') {
+          setIsAuthenticated(false);
+          showSessionError({
+            message: error.response.data.message || 'Você foi desconectado porque fez login em outro dispositivo.',
+          });
+          return Promise.reject(error);
+        }
+        
         if (error?.response?.status === 401) {
           setIsAuthenticated(false);
           if (window.location.pathname !== "/login") {
@@ -56,13 +75,57 @@ const App = () => {
           }
         }
         return Promise.reject(error);
-      }
+      },
     );
 
     return () => {
       axios.interceptors.response.eject(interceptorId);
     };
-  }, []);
+  }, [showSessionError]);
+
+  // Interceptor for server errors (network errors, 500+, timeouts)
+  useEffect(() => {
+    const serverErrorInterceptorId = axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        // Check if it's a server error or network error
+        const isNetworkError = !error.response && error.message;
+        const isServerError = error.response?.status >= 500;
+        const isTimeout =
+          error.code === "ECONNABORTED" || error.message?.includes("timeout");
+
+        // Ignore cancelled requests
+        if (axios.isCancel(error)) {
+          return Promise.reject(error);
+        }
+
+        if (isNetworkError || isServerError || isTimeout) {
+          let errorMessage = "Erro desconhecido";
+
+          if (isTimeout) {
+            errorMessage = "Tempo limite de conexão excedido";
+          } else if (isNetworkError) {
+            errorMessage =
+              error.message || "Não foi possível conectar ao servidor";
+          } else if (isServerError) {
+            errorMessage = `Erro do servidor (${error.response.status}): ${error.response.statusText || "Erro interno"}`;
+          }
+
+          showError({
+            message: errorMessage,
+            status: error.response?.status,
+            url: error.config?.url,
+          });
+        }
+
+        return Promise.reject(error);
+      },
+    );
+
+    return () => {
+      axios.interceptors.response.eject(serverErrorInterceptorId);
+    };
+  }, [showError]);
 
   const handleLogin = () => {
     setIsAuthenticated(true);
@@ -72,10 +135,9 @@ const App = () => {
       .then((res) => res.json())
       .then((releases) => {
         if (!Array.isArray(releases)) return;
-        // Sort releases by version, assume semantic versioning with latest last
         releases.sort((a, b) => (a.version > b.version ? 1 : -1));
         const unseen = releases.filter(
-          (rel) => !localStorage.getItem(`releaseNotesSeen_${rel.version}`)
+          (rel) => !localStorage.getItem(`releaseNotesSeen_${rel.version}`),
         );
         if (unseen.length > 0) {
           setUnseenReleases(unseen);
@@ -84,20 +146,15 @@ const App = () => {
           setUnseenReleases([]);
           setShowReleaseNotes(false);
         }
-        // Mark all as seen after showing
         unseen.forEach((rel) =>
-          localStorage.setItem(`releaseNotesSeen_${rel.version}`, "true")
+          localStorage.setItem(`releaseNotesSeen_${rel.version}`, "true"),
         );
       });
   };
 
   const handleLogout = async () => {
     try {
-      await axios.post(
-        `${process.env.REACT_APP_API_URL}/auth/logout`,
-        {},
-        { withCredentials: true }
-      );
+      await axios.post(`${apiUrl}/auth/logout`, {}, { withCredentials: true });
     } catch (error) {
       console.error("Error logging out:", error);
     } finally {
@@ -107,6 +164,7 @@ const App = () => {
 
   return (
     <>
+      <ServerErrorPopup />
       {showReleaseNotes && unseenReleases.length > 0 && (
         <ReleaseNotes
           onClose={() => setShowReleaseNotes(false)}
@@ -155,6 +213,14 @@ const App = () => {
         </Routes>
       </Router>
     </>
+  );
+};
+
+const App = () => {
+  return (
+    <ServerErrorProvider>
+      <AppContent />
+    </ServerErrorProvider>
   );
 };
 

@@ -80,6 +80,7 @@ class User(UserMixin, db.Model):
     initial_screen = db.Column(db.String(100), nullable=False, default='/dashboard')
     allowed_screens = db.Column(db.JSON, nullable=False, default=list)
     system_name = db.Column(db.String(150), nullable= True)
+    session_token = db.Column(db.String(64), nullable=True)  # Token to enforce single-device login
 
 class Company(db.Model):
     __tablename__ = 'companies'

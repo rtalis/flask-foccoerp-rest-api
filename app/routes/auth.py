@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, make_response
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 import jwt
+import secrets
 from app.models import User, LoginHistory, UserToken
 from app import db, login_manager
 
@@ -68,6 +69,11 @@ def login():
     user = User.query.filter_by(email=email).first()
 
     if user and check_password_hash(user.password, password):
+        # Generate a new session token - this invalidates any previous session
+        new_session_token = secrets.token_hex(32)
+        user.session_token = new_session_token
+        db.session.commit()
+        
         login_user(user)
         login_history = _record_login_event(user, request, method='password')
         send_login_notification_email(user, login_history.login_ip)
@@ -83,6 +89,8 @@ def login():
                 'allowed_screens': user.allowed_screens or []
             }
         }), 200)
+        # Set the session token as a cookie for validation
+        resp.set_cookie('session_token', new_session_token, httponly=True, samesite='Lax', max_age=3600)
         session_cookie = request.cookies.get('session')
         if session_cookie:
             resp.set_cookie('session', session_cookie, httponly=True, samesite='Lax')
