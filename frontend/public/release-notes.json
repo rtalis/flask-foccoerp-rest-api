@@ -25,6 +25,7 @@
     "version": "2.0.4",
     "notes": [
       "Ao ser detectado um erro no servidor ou conexão, o usuário pode ser redirecionado automaticamente para o servidor de backup.",
+      "Função adicionada: Agora o usuário pode alterar seus dados (Senha, Email, etc.) clicando em \"Conta\" no canto inferior esquerdo.",
       "Adicionada validação de multiplas sessões de um mesmo usuário em dispositivos diferentes."
     ]
   }
