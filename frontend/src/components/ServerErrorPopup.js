@@ -3,15 +3,22 @@ import { useServerError } from "../context/ServerErrorContext";
 import "./ServerErrorPopup.css";
 
 const ServerErrorPopup = () => {
-  const { error, isVisible, errorType, hideError, goToBackupServer, goToLogin, backupUrl } =
-    useServerError();
+  const {
+    error,
+    isVisible,
+    errorType,
+    hideError,
+    goToBackupServer,
+    goToLogin,
+    backupUrl,
+  } = useServerError();
 
   if (!isVisible) {
     return null;
   }
 
   // Session invalidated popup (logged in from another device)
-  if (errorType === 'session') {
+  if (errorType === "session") {
     return (
       <div className="server-error-overlay">
         <div className="server-error-popup">
@@ -30,11 +37,16 @@ const ServerErrorPopup = () => {
           <h2 className="server-error-title">Sessão Encerrada</h2>
 
           <p className="server-error-message">
-            Você foi desconectado porque sua conta foi acessada em outro dispositivo.
+            Você foi desconectado porque sua conta foi acessada em outro
+            dispositivo.
           </p>
 
-          <p className="server-error-message" style={{ marginTop: '8px', fontSize: '0.9rem', color: '#6c757d' }}>
-            Apenas uma sessão ativa é permitida por vez. Se não foi você, recomendamos alterar sua senha.
+          <p
+            className="server-error-message"
+            style={{ marginTop: "8px", fontSize: "0.9rem", color: "#6c757d" }}
+          >
+            Apenas uma sessão ativa é permitida por vez. Se não foi você,
+            recomendamos alterar sua senha.
           </p>
 
           <div className="server-error-actions">

@@ -135,8 +135,8 @@ const Login = ({ onLogin }) => {
       {showSessionWarning && (
         <div className="session-warning-overlay">
           <div className="session-warning-dialog">
-            <div className="warning-icon">⚠️</div>
-            <h3>Sessão Ativa Detectada</h3>
+            <div className="dialog-icon">ℹ️</div>
+            <h3>Sessão em Andamento</h3>
             <p>{warningMessage}</p>
             <div className="warning-buttons">
               <button className="btn-cancel" onClick={handleCancelLogin}>

@@ -460,6 +460,61 @@ def update_user(user_id):
     db.session.commit()
     return jsonify({'message': 'User updated successfully'}), 200
 
+@auth_bp.route('/me', methods=['PUT'])
+@login_required
+@limiter.limit("5 per minute")
+def update_me():
+    """Allow users to update their own account info and password"""
+    import re
+    data = request.get_json() or {}
+    user = current_user
+    
+    # Email validation regex
+    email_regex = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+    
+    # Update username if provided
+    if 'username' in data:
+        if not data['username'] or not data['username'].strip():
+            return jsonify({'error': 'Nome de usuário é obrigatório'}), 400
+        username = data['username'].lower().strip()
+        existing = User.query.filter_by(username=username).first()
+        if existing and existing.id != user.id:
+            return jsonify({'error': 'Nome de usuário já existe'}), 400
+        user.username = username
+    
+    # Update email if provided
+    if 'email' in data:
+        if not data['email'] or not email_regex.match(data['email']):
+            return jsonify({'error': 'Email válido é obrigatório'}), 400
+        email = data['email'].lower().strip()
+        existing = User.query.filter_by(email=email).first()
+        if existing and existing.id != user.id:
+            return jsonify({'error': 'Email já existe'}), 400
+        user.email = email
+    
+    # Update purchaser_name (display name) if provided
+    if 'purchaser_name' in data:
+        user.purchaser_name = data['purchaser_name']
+    
+    # Update password if provided (requires current password verification)
+    if 'new_password' in data and data['new_password']:
+        current_password = data.get('current_password', '')
+        if not current_password:
+            return jsonify({'error': 'Senha atual é obrigatória'}), 400
+        if not check_password_hash(user.password, current_password):
+            return jsonify({'error': 'Senha atual incorreta'}), 400
+        if len(data['new_password']) < 8:
+            return jsonify({'error': 'A nova senha deve ter pelo menos 8 caracteres'}), 400
+        user.password = generate_password_hash(data['new_password'])
+    
+    db.session.commit()
+    return jsonify({
+        'message': 'Conta atualizada com sucesso',
+        'username': user.username,
+        'email': user.email,
+        'purchaser_name': user.purchaser_name
+    }), 200
+
 @auth_bp.route('/users/<int:user_id>', methods=['DELETE'])
 @login_required
 def delete_user(user_id):

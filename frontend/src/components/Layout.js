@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import axios from "axios";
 import { useNavigate, useLocation, Outlet } from "react-router-dom";
 import {
   Box,
@@ -28,6 +29,7 @@ import {
   Sync as SyncIcon,
   ManageSearch as ManageSearchIcon,
   People as PeopleIcon,
+  AccountCircle as AccountCircleIcon,
 } from "@mui/icons-material";
 import TrackedCompanies from "./TrackedCompanies";
 
@@ -43,6 +45,24 @@ const Layout = ({ onLogout }) => {
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showTrackedCompanies, setShowTrackedCompanies] = useState(false);
+  const [userRole, setUserRole] = useState(null);
+
+  const isAdmin = userRole === "admin";
+
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      try {
+        const response = await axios.get(
+          `${process.env.REACT_APP_API_URL}/auth/me`,
+          { withCredentials: true },
+        );
+        setUserRole(response.data.role);
+      } catch (error) {
+        console.error("Error fetching user role:", error);
+      }
+    };
+    fetchUserRole();
+  }, []);
 
   const drawerWidth = sidebarOpen ? DRAWER_WIDTH : DRAWER_WIDTH_COLLAPSED;
 
@@ -238,58 +258,16 @@ const Layout = ({ onLogout }) => {
       <Box sx={{ px: 1.5, pb: 2 }}>
         <Divider sx={{ borderColor: "rgba(255,255,255,0.08)", mb: 2 }} />
 
-        {/* Users Button */}
-        <Tooltip title={!sidebarOpen ? "Usuários" : ""} placement="right" arrow>
-          <ListItemButton
-            onClick={() => handleNavigate("/register")}
-            selected={isActive("/register")}
-            sx={{
-              borderRadius: 2,
-              mb: 0.5,
-              minHeight: 44,
-              px: sidebarOpen ? 2 : 1.5,
-              justifyContent: sidebarOpen ? "flex-start" : "center",
-              color: "rgba(255,255,255,0.7)",
-              "&:hover": {
-                bgcolor: "rgba(255,255,255,0.08)",
-                color: "#fff",
-              },
-              "&.Mui-selected": {
-                bgcolor: "primary.main",
-                color: "#fff",
-                "&:hover": { bgcolor: "primary.dark" },
-              },
-            }}
-          >
-            <ListItemIcon
-              sx={{
-                minWidth: 0,
-                mr: sidebarOpen ? 2 : 0,
-                justifyContent: "center",
-                color: "inherit",
-              }}
-            >
-              <PeopleIcon />
-            </ListItemIcon>
-            {sidebarOpen && (
-              <ListItemText
-                primary="Usuários"
-                primaryTypographyProps={{ fontSize: "0.875rem" }}
-              />
-            )}
-          </ListItemButton>
-        </Tooltip>
-
-        {bottomMenuItems.map((item) => (
+        {/* Admin-only: Users Button */}
+        {isAdmin && (
           <Tooltip
-            key={item.path}
-            title={!sidebarOpen ? item.text : ""}
+            title={!sidebarOpen ? "Usuários" : ""}
             placement="right"
             arrow
           >
             <ListItemButton
-              onClick={() => handleNavigate(item.path)}
-              selected={isActive(item.path)}
+              onClick={() => handleNavigate("/register")}
+              selected={isActive("/register")}
               sx={{
                 borderRadius: 2,
                 mb: 0.5,
@@ -316,17 +294,109 @@ const Layout = ({ onLogout }) => {
                   color: "inherit",
                 }}
               >
-                {item.icon}
+                <PeopleIcon />
               </ListItemIcon>
               {sidebarOpen && (
                 <ListItemText
-                  primary={item.text}
+                  primary="Usuários"
                   primaryTypographyProps={{ fontSize: "0.875rem" }}
                 />
               )}
             </ListItemButton>
           </Tooltip>
-        ))}
+        )}
+
+        {/* Admin-only: Tokens */}
+        {isAdmin &&
+          bottomMenuItems.map((item) => (
+            <Tooltip
+              key={item.path}
+              title={!sidebarOpen ? item.text : ""}
+              placement="right"
+              arrow
+            >
+              <ListItemButton
+                onClick={() => handleNavigate(item.path)}
+                selected={isActive(item.path)}
+                sx={{
+                  borderRadius: 2,
+                  mb: 0.5,
+                  minHeight: 44,
+                  px: sidebarOpen ? 2 : 1.5,
+                  justifyContent: sidebarOpen ? "flex-start" : "center",
+                  color: "rgba(255,255,255,0.7)",
+                  "&:hover": {
+                    bgcolor: "rgba(255,255,255,0.08)",
+                    color: "#fff",
+                  },
+                  "&.Mui-selected": {
+                    bgcolor: "primary.main",
+                    color: "#fff",
+                    "&:hover": { bgcolor: "primary.dark" },
+                  },
+                }}
+              >
+                <ListItemIcon
+                  sx={{
+                    minWidth: 0,
+                    mr: sidebarOpen ? 2 : 0,
+                    justifyContent: "center",
+                    color: "inherit",
+                  }}
+                >
+                  {item.icon}
+                </ListItemIcon>
+                {sidebarOpen && (
+                  <ListItemText
+                    primary={item.text}
+                    primaryTypographyProps={{ fontSize: "0.875rem" }}
+                  />
+                )}
+              </ListItemButton>
+            </Tooltip>
+          ))}
+
+        {/* Account Button - visible to all users */}
+        <Tooltip title={!sidebarOpen ? "Conta" : ""} placement="right" arrow>
+          <ListItemButton
+            onClick={() => handleNavigate("/account")}
+            selected={isActive("/account")}
+            sx={{
+              borderRadius: 2,
+              mb: 0.5,
+              minHeight: 44,
+              px: sidebarOpen ? 2 : 1.5,
+              justifyContent: sidebarOpen ? "flex-start" : "center",
+              color: "rgba(255,255,255,0.7)",
+              "&:hover": {
+                bgcolor: "rgba(255,255,255,0.08)",
+                color: "#fff",
+              },
+              "&.Mui-selected": {
+                bgcolor: "primary.main",
+                color: "#fff",
+                "&:hover": { bgcolor: "primary.dark" },
+              },
+            }}
+          >
+            <ListItemIcon
+              sx={{
+                minWidth: 0,
+                mr: sidebarOpen ? 2 : 0,
+                justifyContent: "center",
+                color: "inherit",
+              }}
+            >
+              <AccountCircleIcon />
+            </ListItemIcon>
+            {sidebarOpen && (
+              <ListItemText
+                primary="Conta"
+                primaryTypographyProps={{ fontSize: "0.875rem" }}
+              />
+            )}
+          </ListItemButton>
+        </Tooltip>
 
         {/* Logout Button */}
         <Tooltip title={!sidebarOpen ? "Sair" : ""} placement="right" arrow>
