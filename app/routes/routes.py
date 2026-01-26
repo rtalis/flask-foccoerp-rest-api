@@ -2513,6 +2513,19 @@ def get_nfe_by_number():
                         matched_nfe = nfe
                         break
         
+        # 3. If no match yet, check if NFE emission date is within 15 days of dt_ent
+        if not matched_nfe and dt_ent:
+            for nfe in nfes:
+                if nfe.data_emissao:
+                    nfe_date = nfe.data_emissao
+                    if hasattr(nfe_date, 'date'):
+                        nfe_date = nfe_date.date()
+                    # If emission date is within 15 days of entry date, accept it
+                    days_diff = abs((nfe_date - dt_ent).days)
+                    if days_diff <= 15:
+                        matched_nfe = nfe
+                        break
+        
         # If no match found with strict criteria, return not found
         if not matched_nfe:
             return jsonify({'error': 'NFE not found matching criteria', 'found': False}), 404
