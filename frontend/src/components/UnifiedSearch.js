@@ -285,8 +285,12 @@ function PurchaseRow(props) {
         },
       );
 
-      if (response.data && response.data.found && response.data.chave) {
-        // NFE found in database, open DANFE directly
+      if (
+        response.data &&
+        (response.data.found || response.data.estimated) &&
+        response.data.chave
+      ) {
+        // NFE found in database (exact or estimated match), open DANFE directly
         setLoadingDanfeNf(null); // Clear loading before opening new window
         handleNfeClick({
           chave: response.data.chave,
@@ -330,10 +334,10 @@ function PurchaseRow(props) {
 
       if (
         retryResponse.data &&
-        retryResponse.data.found &&
+        (retryResponse.data.found || retryResponse.data.estimated) &&
         retryResponse.data.chave
       ) {
-        // NFE found after sync, open DANFE
+        // NFE found after sync (exact or estimated match), open DANFE
         handleNfeClick({
           chave: retryResponse.data.chave,
           numero: retryResponse.data.numero || nfEntry.num_nf,
