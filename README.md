@@ -44,7 +44,7 @@ flask-foccoerp-rest-api/
 
 1. Clone o repositório:
    ```
-   git https://github.com/rtalis/flask-foccoerp-rest-api.git
+   git clone https://github.com/rtalis/flask-foccoerp-rest-api.git
    cd flask-foccoerp-rest-api
    ```
 
