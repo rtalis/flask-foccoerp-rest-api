@@ -18,7 +18,6 @@ import ImportFile from "./components/ImportFile";
 import Register from "./components/Register";
 import QuotationAnalyzer from "./components/QuotationAnalyzer";
 import Dashboard from "./components/Dashboard";
-import AdvancedSearch from "./components/AdvancedSearch";
 import TokenManager from "./components/TokenManager";
 import NFESearch from "./components/NFESearch";
 import ReleaseNotes from "./components/ReleaseNotes";
@@ -60,15 +59,19 @@ const AppContent = () => {
       (response) => response,
       (error) => {
         // Check for session invalidation (logged in from another device)
-        if (error?.response?.status === 403 && 
-            error?.response?.data?.code === 'SESSION_INVALIDATED') {
+        if (
+          error?.response?.status === 403 &&
+          error?.response?.data?.code === "SESSION_INVALIDATED"
+        ) {
           setIsAuthenticated(false);
           showSessionError({
-            message: error.response.data.message || 'Você foi desconectado porque fez login em outro dispositivo.',
+            message:
+              error.response.data.message ||
+              "Você foi desconectado porque fez login em outro dispositivo.",
           });
           return Promise.reject(error);
         }
-        
+
         if (error?.response?.status === 401) {
           setIsAuthenticated(false);
           if (window.location.pathname !== "/login") {
@@ -199,7 +202,6 @@ const AppContent = () => {
             <Route path="/search" element={<UnifiedSearch />} />
             <Route path="/nfe-search" element={<NFESearch />} />
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/advanced-search" element={<AdvancedSearch />} />
             <Route path="/quotation-analyzer" element={<QuotationAnalyzer />} />
             <Route path="/import" element={<ImportFile />} />
             <Route path="/register" element={<Register />} />

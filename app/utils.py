@@ -589,6 +589,10 @@ mail = Mail()
 
 def send_login_notification_email(user, ip_address):
     try:
+        # Skip email sending in testing mode
+        if has_app_context() and current_app.config.get('TESTING'):
+            return
+        
         msg = Message(
             'Nova tentativa de login',
             sender=Config.MAIL_USERNAME,
@@ -1256,10 +1260,6 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
             return ""
         return re.sub(r'\D', '', str(text))
     
-    def get_cnpj_root(cnpj):
-        """Get first 8 digits of CNPJ (company root)"""
-        digits = clean_digits(cnpj)
-        return digits[:8] if len(digits) >= 8 else digits
     
     def extract_po_numbers(text):
         """Extract potential PO numbers from NFe text"""
@@ -1407,7 +1407,7 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
         
         nfe_value = float(nfe.valor_total or 0)
         nfe_info_adic = str(nfe.informacoes_adicionais or '').lower()
-        
+ 
         score = 0
         breakdown = {}
         
@@ -1442,12 +1442,13 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
                 supplier_match_type = 'possible_related'
         
         score += cnpj_score
+        #max score so far: 30
         breakdown['cnpj_score'] = cnpj_score
         breakdown['supplier_match_type'] = supplier_match_type
         breakdown['supplier_similarity'] = supplier_similarity
         
         # === 2. PO Reference in NFe (0-15 points) ===
-        po_ref_score = 0
+        po_ref_score = 5
         po_ref_type = 'none'
         
         nfe_po_refs = extract_po_numbers(nfe_info_adic)
@@ -1463,6 +1464,7 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
             po_ref_type = 'extracted_partial'
         
         score += po_ref_score
+        # max score so far: 30 + 15 = 45
         breakdown['po_ref_score'] = po_ref_score
         breakdown['po_ref_type'] = po_ref_type
         
@@ -1472,13 +1474,14 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
         all_items = po_data['itens']
         
         # Match against all items using original quantities
-        item_matches, avg_match_quality, coverage = match_items(all_items, nfe_items_db, use_original_qty=True)
+        item_matches, avg_match_quality, coverage = match_items(all_items, nfe_items_db, use_original_qty=False)
         
         # Item score based on coverage and quality
         # coverage * 20 (up to 20 points) + quality * 15 / 100 (up to 15 points)
         item_score = (coverage * 20) + (avg_match_quality * 15 / 100)
         
         score += item_score
+        #max score so far: 30 + 15 + 35  = 80
         breakdown['item_score'] = round(item_score, 2)
         breakdown['items_matched'] = len(item_matches)
         breakdown['items_to_match'] = len(all_items)
@@ -1492,6 +1495,7 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
         # Compare against remaining value or total value
         compare_value = total_remaining_value if total_remaining_value > 0 else po_data['valor_total']
         
+        #TODO check the compare value (purchase order value) + ipi is not a better match for the value
         if compare_value > 0 and nfe_value > 0:
             value_diff_pct = abs(nfe_value - compare_value) / compare_value * 100
             
@@ -1505,6 +1509,7 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
                 value_score = 15
                 value_match_type = 'close'
             elif value_diff_pct < 10:
+
                 value_score = 12
                 value_match_type = 'near'
             elif value_diff_pct < 20:
@@ -1518,6 +1523,7 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
                     value_match_type = 'partial'
         
         score += value_score
+        # max score so far: 100
         breakdown['value_score'] = value_score
         breakdown['value_match_type'] = value_match_type
         breakdown['nfe_value'] = nfe_value
@@ -1545,7 +1551,6 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
                 elif days_from_po <= 90:
                     date_bonus = 2
             else:
-                # NFE before PO - less likely to be correct, small penalty
                 if days_from_po <= 7:  # Small allowance for pre-dated NFEs
                     date_bonus = 2
         
@@ -1592,216 +1597,7 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
     
     # Sort by score descending
     results.sort(key=lambda x: x['score'], reverse=True)
-    
-    # === COMBINE NFEs FROM SAME SUPPLIER ===
-    # Group NFEs from the same supplier within 45 days of each other
-    from datetime import timedelta
-    from collections import defaultdict
-    
-    MAX_DAYS_FROM_PO = 120  # Allow NFEs up to 120 days after PO
-    MAX_DAYS_BETWEEN_NFES = 45  # NFEs must be within 45 days of each other
-    po_date = po_data.get('dt_emis')
-    
-    combined_results = []
-    
-    # Group results by supplier (using CNPJ as key)
-    supplier_groups = defaultdict(list)
-    for r in results:
-        supplier_key = r.get('nfe_cnpj', '') or r.get('nfe_supplier', '')
-        if supplier_key:
-            supplier_groups[supplier_key].append(r)
-    
-    # Track which NFEs have been combined
-    combined_nfe_ids = set()
-    
-    for supplier_key, supplier_nfes in supplier_groups.items():
-        if len(supplier_nfes) < 2:
-            continue
-            
-        # Sort by date
-        supplier_nfes_with_date = []
-        for nfe in supplier_nfes:
-            nfe_date = None
-            if nfe.get('nfe_date'):
-                try:
-                    from datetime import datetime
-                    if isinstance(nfe['nfe_date'], str):
-                        nfe_date = datetime.fromisoformat(nfe['nfe_date']).date()
-                    else:
-                        nfe_date = nfe['nfe_date']
-                except:
-                    pass
-            supplier_nfes_with_date.append((nfe, nfe_date))
-        
-        # Sort by score (highest first) to prioritize best matches for combination
-        supplier_nfes_with_date.sort(key=lambda x: x[0]['score'], reverse=True)
-        
-        # Get PO value for limiting combined value
-        po_value = po_data.get('valor_total', 0)
-        MAX_COMBINED_VALUE_RATIO = 2.0  # Combined value shouldn't exceed 200% of PO value
-        
-        # Find groups of NFEs that can be combined
-        i = 0
-        while i < len(supplier_nfes_with_date):
-            group_start = supplier_nfes_with_date[i]
-            if group_start[0]['nfe_id'] in combined_nfe_ids:
-                i += 1
-                continue
-                
-            group = [group_start]
-            start_date = group_start[1]
-            group_value = group_start[0].get('nfe_value', 0)
-            
-            # Check date constraints for the first NFE
-            if start_date and po_date:
-                days_from_po = abs((start_date - po_date).days)
-                if days_from_po > MAX_DAYS_FROM_PO:
-                    i += 1
-                    continue
-            
-            # Find additional NFEs that can be combined (within date and value limits)
-            j = i + 1
-            while j < len(supplier_nfes_with_date):
-                next_nfe, next_date = supplier_nfes_with_date[j]
-                
-                if next_nfe['nfe_id'] in combined_nfe_ids:
-                    j += 1
-                    continue
-                
-                # Check if within 120 days from PO
-                if next_date and po_date:
-                    days_from_po = abs((next_date - po_date).days)
-                    if days_from_po > MAX_DAYS_FROM_PO:
-                        j += 1
-                        continue
-                
-                # Check if within 45 days from ANY NFE already in group
-                date_ok = False
-                if next_date:
-                    for g_nfe, g_date in group:
-                        if g_date:
-                            days_between = abs((next_date - g_date).days)
-                            if days_between <= MAX_DAYS_BETWEEN_NFES:
-                                date_ok = True
-                                break
-                else:
-                    date_ok = True  # No date info, allow it
-                
-                if not date_ok:
-                    j += 1
-                    continue
-                
-                # Check if adding this NFE would exceed value limit
-                next_value = next_nfe.get('nfe_value', 0)
-                if po_value > 0 and (group_value + next_value) > (po_value * MAX_COMBINED_VALUE_RATIO):
-                    j += 1
-                    continue
-                
-                group.append((next_nfe, next_date))
-                group_value += next_value
-                j += 1
-            
-            # Only create combined result if we have 2+ NFEs
-            if len(group) >= 2:
-                # Calculate combined metrics
-                combined_nfe_numbers = [g[0]['nfe_number'] for g in group]
-                combined_value = sum(g[0]['nfe_value'] for g in group)
-                combined_item_matches = []
-                matched_po_item_ids = set()
-                
-                for g in group:
-                    for item_match in g[0].get('item_matches', []):
-                        po_item_id = item_match.get('po_item_id')
-                        # Avoid duplicate matches for the same PO item
-                        if po_item_id not in matched_po_item_ids:
-                            combined_item_matches.append(item_match)
-                            matched_po_item_ids.add(po_item_id)
-                        else:
-                            # Add quantity from this NFE to existing match
-                            for existing in combined_item_matches:
-                                if existing.get('po_item_id') == po_item_id:
-                                    existing['nfe_qty'] = existing.get('nfe_qty', 0) + item_match.get('nfe_qty', 0)
-                                    break
-                
-                # Calculate combined coverage
-                total_items = len(po_data['itens'])
-                combined_coverage = len(matched_po_item_ids) / total_items if total_items > 0 else 0
-                
-                # Calculate combined score
-                # Base it on the best individual score + bonus for better coverage
-                best_individual_score = max(g[0]['score'] for g in group)
-                avg_individual_score = sum(g[0]['score'] for g in group) / len(group)
-                
-                # Coverage bonus: up to 15 extra points for better combined coverage
-                best_individual_coverage = max(g[0]['breakdown'].get('coverage_pct', 0) for g in group) / 100
-                coverage_improvement = combined_coverage - best_individual_coverage
-                coverage_bonus = max(0, coverage_improvement * 30)  # Up to 30 bonus points
-                
-                # Value match bonus/penalty: if combined value is closer to PO value
-                combined_value_diff = abs(combined_value - po_data['valor_total']) / po_data['valor_total'] * 100 if po_data['valor_total'] > 0 else 100
-                best_value_diff = min(g[0]['breakdown'].get('value_diff_pct', 100) or 100 for g in group)
-                value_improvement_bonus = 0
-                value_excess_penalty = 0
-                
-                if combined_value_diff < best_value_diff:
-                    value_improvement_bonus = min(10, (best_value_diff - combined_value_diff) * 0.5)
-                
-                # Penalty if combined value exceeds PO value significantly
-                if combined_value > po_data['valor_total']:
-                    excess_pct = (combined_value - po_data['valor_total']) / po_data['valor_total'] * 100
-                    if excess_pct > 50:  # More than 50% over
-                        value_excess_penalty = min(30, excess_pct * 0.3)  # Up to 30 point penalty
-                    elif excess_pct > 20:  # More than 20% over
-                        value_excess_penalty = min(15, excess_pct * 0.2)  # Up to 15 point penalty
-                
-                combined_score = best_individual_score + coverage_bonus + value_improvement_bonus - value_excess_penalty
-                combined_score = max(10, min(100, combined_score))  # Cap between 10 and 100
-                
-                # Mark these NFEs as combined
-                for g in group:
-                    combined_nfe_ids.add(g[0]['nfe_id'])
-                
-                combined_result = {
-                    'nfe_id': f"combined_{'+'.join(combined_nfe_numbers)}",
-                    'nfe_number': ' + '.join(combined_nfe_numbers),
-                    'nfe_chave': None,
-                    'nfe_value': combined_value,
-                    'nfe_date': group[0][1].isoformat() if group[0][1] else None,
-                    'nfe_supplier': group[0][0]['nfe_supplier'],
-                    'nfe_cnpj': group[0][0]['nfe_cnpj'],
-                    'score': round(combined_score, 2),
-                    'max_possible_score': 110,
-                    'match_quality': 'high' if combined_score >= 70 else 'medium' if combined_score >= 45 else 'low',
-                    'is_combined': True,
-                    'combined_nfes': [g[0]['nfe_number'] for g in group],
-                    'combined_count': len(group),
-                    'breakdown': {
-                        'type': 'combined',
-                        'individual_scores': [g[0]['score'] for g in group],
-                        'best_individual_score': best_individual_score,
-                        'coverage_bonus': round(coverage_bonus, 2),
-                        'value_improvement_bonus': round(value_improvement_bonus, 2),
-                        'value_excess_penalty': round(value_excess_penalty, 2),
-                        'combined_coverage_pct': round(combined_coverage * 100, 2),
-                        'combined_value_diff_pct': round(combined_value_diff, 2),
-                        'po_value': po_data['valor_total'],
-                        'items_matched': len(matched_po_item_ids),
-                        'items_to_match': total_items,
-                        'cnpj_score': group[0][0]['breakdown'].get('cnpj_score', 0),
-                        'supplier_match_type': group[0][0]['breakdown'].get('supplier_match_type', 'unknown')
-                    },
-                    'item_matches': combined_item_matches
-                }
-                combined_results.append(combined_result)
-            
-            i += 1
-    
-    # Add combined results to the main results list
-    all_results = results + combined_results
-    
-    # Sort all results by score
-    all_results.sort(key=lambda x: x['score'], reverse=True)
-    
+       
     # Add purchase order info to response
     return {
         'purchase_order': {
@@ -1816,5 +1612,5 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
             'items_partial': len(partially_fulfilled_items),
             'items_unfulfilled': len(unfulfilled_items)
         },
-        'matches': all_results
+        'matches': results
     }

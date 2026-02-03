@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 from flask import Flask
 from flask.testing import FlaskClient
 from app import create_app, db
-from app.models import PurchaseOrder, PurchaseItem, User, LoginHistory
+from app.models import PurchaseOrder, PurchaseItem, User, LoginHistory, NFEntry, Quotation
 from app.utils import check_order_fulfillment
 from werkzeug.security import generate_password_hash
 
@@ -14,7 +14,8 @@ def app():
     app.config.update({
         "TESTING": True,
         "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
-        "WTF_CSRF_ENABLED": False
+        "WTF_CSRF_ENABLED": False,
+        "MAIL_SUPPRESS_SEND": True
     })
 
     with app.app_context():
@@ -440,3 +441,521 @@ def test_check_order_fulfillment_counts_canceled_items(auth_client: FlaskClient)
         db.session.commit()
 
         assert check_order_fulfillment(pending_order.id) is False
+
+
+# ==================== NEW ENDPOINT TESTS ====================
+
+def test_get_companies(auth_client: FlaskClient):
+    """Test getting distinct company codes from purchase orders."""
+    with auth_client.application.app_context():
+        order = PurchaseOrder(
+            cod_pedc='COMP-001',
+            dt_emis=date(2024, 5, 1),
+            fornecedor_id=1,
+            fornecedor_descricao='Fornecedor Teste',
+            cod_emp1='001'
+        )
+        db.session.add(order)
+        db.session.commit()
+
+    response = auth_client.get('/api/companies')
+    assert response.status_code == 200
+    assert isinstance(response.json, list)
+
+
+def test_search_items(auth_client: FlaskClient):
+    """Test searching items by description and item_id."""
+    with auth_client.application.app_context():
+        order = PurchaseOrder(
+            cod_pedc='SEARCH-001',
+            dt_emis=date(2024, 6, 1),
+            fornecedor_id=100,
+            fornecedor_descricao='Fornecedor Busca'
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        item = PurchaseItem(
+            purchase_order_id=order.id,
+            item_id='VALVE-001',
+            dt_emis=date(2024, 6, 1),
+            cod_pedc='SEARCH-001',
+            descricao='Valvula de controle pneumatica',
+            quantidade=10,
+            preco_unitario=500,
+            total=5000
+        )
+        db.session.add(item)
+        db.session.commit()
+
+    # Search by description
+    response = auth_client.get('/api/search_items', query_string={'descricao': 'valvula'})
+    assert response.status_code == 200
+    assert isinstance(response.json, list)
+
+    # Search by item_id
+    response = auth_client.get('/api/search_items', query_string={'item_id': 'VALVE-001'})
+    assert response.status_code == 200
+    assert len(response.json) >= 1
+    assert response.json[0]['item_id'] == 'VALVE-001'
+
+
+def test_search_purchases(auth_client: FlaskClient):
+    """Test searching purchase orders by cod_pedc, fornecedor, and observacao."""
+    with auth_client.application.app_context():
+        order = PurchaseOrder(
+            cod_pedc='SRCPO-001',
+            dt_emis=date(2024, 6, 15),
+            fornecedor_id=200,
+            fornecedor_descricao='Fornecedor Especial',
+            observacao='Urgente para producao'
+        )
+        db.session.add(order)
+        db.session.commit()
+
+    # Search by cod_pedc
+    response = auth_client.get('/api/search_purchases', query_string={'cod_pedc': 'SRCPO'})
+    assert response.status_code == 200
+
+    # Search by fornecedor
+    response = auth_client.get('/api/search_purchases', query_string={'fornecedor_descricao': 'Especial'})
+    assert response.status_code == 200
+
+    # Search by observacao
+    response = auth_client.get('/api/search_purchases', query_string={'observacao': 'Urgente'})
+    assert response.status_code == 200
+
+
+def test_search_item_id(auth_client: FlaskClient):
+    """Test searching by exact item_id."""
+    with auth_client.application.app_context():
+        order = PurchaseOrder(
+            cod_pedc='ITEMID-001',
+            dt_emis=date(2024, 7, 1),
+            fornecedor_id=300,
+            fornecedor_descricao='Fornecedor Item'
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        item = PurchaseItem(
+            purchase_order_id=order.id,
+            item_id='EXACT-ITEM-123',
+            dt_emis=date(2024, 7, 1),
+            cod_pedc='ITEMID-001',
+            descricao='Item com ID exato',
+            quantidade=5,
+            preco_unitario=100,
+            total=500
+        )
+        db.session.add(item)
+        db.session.commit()
+
+    # Missing item_id should return error
+    response = auth_client.get('/api/search_item_id')
+    assert response.status_code == 400
+
+    # Search with valid item_id
+    response = auth_client.get('/api/search_item_id', query_string={'item_id': 'EXACT-ITEM-123'})
+    assert response.status_code == 200
+    assert isinstance(response.json, list)
+
+
+def test_get_purchase(auth_client: FlaskClient):
+    """Test getting purchase order by cod_pedc."""
+    with auth_client.application.app_context():
+        order = PurchaseOrder(
+            cod_pedc='GETPO-001',
+            dt_emis=date(2024, 7, 15),
+            fornecedor_id=400,
+            fornecedor_descricao='Fornecedor GET'
+        )
+        db.session.add(order)
+        db.session.commit()
+
+    # Missing cod_pedc should return error
+    response = auth_client.get('/api/get_purchase')
+    assert response.status_code == 400
+
+    # Get with valid cod_pedc
+    response = auth_client.get('/api/get_purchase', query_string={'cod_pedc': 'GETPO-001'})
+    assert response.status_code == 200
+    assert isinstance(response.json, list)
+    assert len(response.json) >= 1
+    assert response.json[0]['cod_pedc'] == 'GETPO-001'
+
+
+def test_quotations(auth_client: FlaskClient):
+    """Test getting quotations by item_id."""
+    from app.models import Quotation
+    
+    with auth_client.application.app_context():
+        quotation = Quotation(
+            cod_cot='COT-001',
+            dt_emissao=date(2024, 8, 1),
+            fornecedor_id=500,
+            fornecedor_descricao='Fornecedor Cotacao',
+            item_id='QUOT-ITEM-001',
+            descricao='Item para cotacao',
+            quantidade=20,
+            preco_unitario=150
+        )
+        db.session.add(quotation)
+        db.session.commit()
+
+    # Missing item_id should return error
+    response = auth_client.get('/api/quotations')
+    assert response.status_code == 400
+
+    # Get with valid item_id
+    response = auth_client.get('/api/quotations', query_string={'item_id': 'QUOT-ITEM-001'})
+    assert response.status_code == 200
+    assert isinstance(response.json, list)
+
+
+def test_quotation_items(auth_client: FlaskClient):
+    """Test getting quotation items by cod_cot."""
+    from app.models import Quotation
+    
+    with auth_client.application.app_context():
+        quotation = Quotation(
+            cod_cot='COTITEMS-001',
+            dt_emissao=date(2024, 8, 15),
+            fornecedor_id=600,
+            fornecedor_descricao='Fornecedor COT Items',
+            item_id='COTITEM-001',
+            descricao='Primeiro item cotacao',
+            quantidade=10,
+            preco_unitario=200
+        )
+        db.session.add(quotation)
+        db.session.commit()
+
+    # Missing cod_cot should return error
+    response = auth_client.get('/api/quotation_items')
+    assert response.status_code == 400
+
+    # Get with valid cod_cot
+    response = auth_client.get('/api/quotation_items', query_string={'cod_cot': 'COTITEMS-001'})
+    assert response.status_code == 200
+    assert 'cod_cot' in response.json
+    assert 'items' in response.json
+
+
+def test_search_fuzzy(auth_client: FlaskClient):
+    """Test fuzzy search for items and orders."""
+    with auth_client.application.app_context():
+        order = PurchaseOrder(
+            cod_pedc='FUZZY-001',
+            dt_emis=date(2024, 9, 1),
+            fornecedor_id=700,
+            fornecedor_descricao='Fornecedor Fuzzy',
+            observacao='Motor eletrico industrial'
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        item = PurchaseItem(
+            purchase_order_id=order.id,
+            item_id='FUZZ-ITEM',
+            dt_emis=date(2024, 9, 1),
+            cod_pedc='FUZZY-001',
+            descricao='Motoredutor industrial',
+            quantidade=2,
+            preco_unitario=3000,
+            total=6000
+        )
+        db.session.add(item)
+        db.session.commit()
+
+    # Missing query should return error
+    response = auth_client.get('/api/search_fuzzy')
+    assert response.status_code == 400
+
+    # Fuzzy search
+    response = auth_client.get('/api/search_fuzzy', query_string={
+        'query': 'motor',
+        'score_cutoff': 60
+    })
+    assert response.status_code == 200
+    assert 'items' in response.json
+    assert 'purchases' in response.json
+
+
+def test_auth_me(auth_client: FlaskClient):
+    """Test getting current user info."""
+    response = auth_client.get('/auth/me')
+    assert response.status_code == 200
+    assert 'username' in response.json
+    assert 'email' in response.json
+    assert response.json['email'] == 'test@example.com'
+
+
+def test_auth_me_update(auth_client: FlaskClient):
+    """Test updating current user's account info."""
+    response = auth_client.put('/auth/me', json={
+        'username': 'testuser_updated',
+        'purchaser_name': 'Test User Display Name'
+    })
+    assert response.status_code == 200
+    assert 'username' in response.json
+
+
+def test_auth_register_requires_admin(auth_client: FlaskClient):
+    """Test that registration requires admin role."""
+    # Default test user is not admin, should be forbidden
+    response = auth_client.post('/auth/register', json={
+        'username': 'newuser',
+        'email': 'newuser@example.com',
+        'password': 'newpass123'
+    })
+    assert response.status_code == 403
+
+
+def test_auth_users_requires_admin(auth_client: FlaskClient):
+    """Test that getting users list requires admin role."""
+    response = auth_client.get('/auth/users')
+    assert response.status_code == 403
+
+
+def test_search_advanced_with_date_range(auth_client: FlaskClient):
+    """Test advanced search with date range filters."""
+    with auth_client.application.app_context():
+        order = PurchaseOrder(
+            cod_pedc='DATE-001',
+            dt_emis=date(2024, 10, 15),
+            fornecedor_id=800,
+            fornecedor_descricao='Fornecedor Date Test'
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        item = PurchaseItem(
+            purchase_order_id=order.id,
+            item_id='DATE-ITEM',
+            dt_emis=date(2024, 10, 15),
+            cod_pedc='DATE-001',
+            descricao='Item with date',
+            quantidade=5,
+            preco_unitario=100,
+            total=500
+        )
+        db.session.add(item)
+        db.session.commit()
+
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': 'date',
+        'date_from': '2024-10-01',
+        'date_to': '2024-10-31',
+        'fields': 'cod_pedc,descricao'
+    })
+    assert response.status_code == 200
+    assert 'purchases' in response.json
+
+
+def test_search_advanced_with_value_filters(auth_client: FlaskClient):
+    """Test advanced search with min/max value filters."""
+    with auth_client.application.app_context():
+        order = PurchaseOrder(
+            cod_pedc='VALUE-001',
+            dt_emis=date(2024, 11, 1),
+            fornecedor_id=900,
+            fornecedor_descricao='Fornecedor Value',
+            total_pedido_com_ipi=50000
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        item = PurchaseItem(
+            purchase_order_id=order.id,
+            item_id='EXPENSIVE-ITEM',
+            dt_emis=date(2024, 11, 1),
+            cod_pedc='VALUE-001',
+            descricao='Expensive industrial equipment',
+            quantidade=1,
+            preco_unitario=50000,
+            total=50000
+        )
+        db.session.add(item)
+        db.session.commit()
+
+    # Search with minimum value
+    response = auth_client.get('/api/search_advanced', query_string={
+        'minValue': 10000,
+        'valueSearchType': 'item',
+        'fields': 'descricao'
+    })
+    assert response.status_code == 200
+
+
+def test_search_advanced_hide_cancelled(auth_client: FlaskClient):
+    """Test advanced search with hide cancelled filter."""
+    with auth_client.application.app_context():
+        order = PurchaseOrder(
+            cod_pedc='CANC-001',
+            dt_emis=date(2024, 11, 15),
+            fornecedor_id=950,
+            fornecedor_descricao='Fornecedor Cancelados'
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        active_item = PurchaseItem(
+            purchase_order_id=order.id,
+            item_id='ACTIVE-ITEM',
+            dt_emis=date(2024, 11, 15),
+            cod_pedc='CANC-001',
+            descricao='Active item filter test',
+            quantidade=10,
+            preco_unitario=100,
+            total=1000,
+            qtde_canc=0
+        )
+        cancelled_item = PurchaseItem(
+            purchase_order_id=order.id,
+            item_id='CANCELLED-ITEM',
+            dt_emis=date(2024, 11, 15),
+            cod_pedc='CANC-001',
+            descricao='Cancelled item filter test',
+            quantidade=5,
+            preco_unitario=200,
+            total=1000,
+            qtde_canc=5
+        )
+        db.session.add_all([active_item, cancelled_item])
+        db.session.commit()
+
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': 'filter test',
+        'hideCancelled': 'true',
+        'fields': 'descricao'
+    })
+    assert response.status_code == 200
+
+
+def test_dashboard_summary_with_buyer_filter(auth_client: FlaskClient):
+    """Test dashboard summary with buyer filter."""
+    with auth_client.application.app_context():
+        order = PurchaseOrder(
+            cod_pedc='DASH-001',
+            dt_emis=date(2024, 12, 1),
+            fornecedor_id=1000,
+            fornecedor_descricao='Fornecedor Dashboard',
+            func_nome='Comprador Teste',
+            total_pedido_com_ipi=15000
+        )
+        db.session.add(order)
+        db.session.commit()
+
+    response = auth_client.get('/api/dashboard_summary', query_string={
+        'months': 3,
+        'buyer': 'Comprador Teste'
+    })
+    assert response.status_code == 200
+    assert 'summary' in response.json
+    assert 'monthly_data' in response.json
+    assert 'buyer_data' in response.json
+
+
+def test_dashboard_summary_with_date_range(auth_client: FlaskClient):
+    """Test dashboard summary with custom date range."""
+    response = auth_client.get('/api/dashboard_summary', query_string={
+        'start_date': '2024-01-01',
+        'end_date': '2024-12-31'
+    })
+    assert response.status_code == 200
+    assert 'summary' in response.json
+
+
+def test_purchase_by_nf(auth_client: FlaskClient):
+    """Test getting purchase order by NF number."""
+    from app.models import NFEntry
+    
+    with auth_client.application.app_context():
+        order = PurchaseOrder(
+            cod_pedc='NFTEST-001',
+            dt_emis=date(2024, 12, 15),
+            fornecedor_id=1100,
+            fornecedor_descricao='Fornecedor NF Test',
+            cod_emp1='001'
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        item = PurchaseItem(
+            purchase_order_id=order.id,
+            item_id='NF-ITEM',
+            dt_emis=date(2024, 12, 15),
+            cod_pedc='NFTEST-001',
+            cod_emp1='001',
+            linha='1',
+            descricao='Item com NF',
+            quantidade=3,
+            preco_unitario=1000,
+            total=3000
+        )
+        db.session.add(item)
+        db.session.flush()
+
+        nf_entry = NFEntry(
+            cod_emp1='001',
+            cod_pedc='NFTEST-001',
+            linha='1',
+            num_nf='123456'
+        )
+        db.session.add(nf_entry)
+        db.session.commit()
+
+    # Missing num_nf should return error
+    response = auth_client.get('/api/purchase_by_nf')
+    assert response.status_code == 400
+
+    # Get with valid num_nf
+    response = auth_client.get('/api/purchase_by_nf', query_string={'num_nf': '123456'})
+    assert response.status_code == 200
+    assert response.json['cod_pedc'] == 'NFTEST-001'
+
+
+def test_search_nfe_requires_params(auth_client: FlaskClient):
+    """Test that search_nfe requires query or date range."""
+    response = auth_client.get('/api/search_nfe')
+    assert response.status_code == 400
+    assert 'error' in response.json
+
+
+def test_search_nfe_with_date_range(auth_client: FlaskClient):
+    """Test NFE search with date range only."""
+    response = auth_client.get('/api/search_nfe', query_string={
+        'start_date': '2024-01-01',
+        'end_date': '2024-12-31'
+    })
+    assert response.status_code == 200
+    assert 'nfes' in response.json
+    assert 'purchase_orders' in response.json
+
+
+def test_tracked_companies(auth_client: FlaskClient):
+    """Test getting tracked companies."""
+    response = auth_client.get('/api/tracked_companies')
+    assert response.status_code == 200
+    assert 'companies' in response.json
+    assert isinstance(response.json['companies'], list)
+
+
+def test_tracked_companies_add_requires_cnpj(auth_client: FlaskClient):
+    """Test that adding tracked company requires CNPJ."""
+    response = auth_client.post('/api/tracked_companies', json={
+        'name': 'Test Company'
+    })
+    assert response.status_code == 400
+    assert 'CNPJ' in response.json['error']
+
+
+def test_tracked_companies_add_requires_cod_emp1(auth_client: FlaskClient):
+    """Test that adding tracked company requires cod_emp1."""
+    response = auth_client.post('/api/tracked_companies', json={
+        'cnpj': '12345678901234',
+        'name': 'Test Company'
+    })
+    assert response.status_code == 400
+    assert 'cod_emp1' in response.json['error']

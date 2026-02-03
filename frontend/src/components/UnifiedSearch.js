@@ -272,33 +272,41 @@ function PurchaseRow(props) {
   const handleDanfeIconClick = async (nfEntry) => {
     setLoadingDanfeNf(nfEntry.num_nf); // Set loading for this specific NF
     try {
-      const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/get_nfe_by_number`,
-        {
-          params: {
-            num_nf: nfEntry.num_nf,
-            fornecedor_id: purchase.order.fornecedor_id,
-            fornecedor_nome: purchase.order.fornecedor_descricao,
-            dt_ent: nfEntry.dt_ent,
-          },
-          withCredentials: true,
-        },
-      );
-
-      if (
-        response.data &&
-        (response.data.found || response.data.estimated) &&
-        response.data.chave
-      ) {
-        // NFE found in database (exact or estimated match), open DANFE directly
-        setLoadingDanfeNf(null); // Clear loading before opening new window
+      //if an nfe key is available, use it right away to retrieve the data
+      if (nfEntry.chave) {
         handleNfeClick({
-          chave: response.data.chave,
-          numero: response.data.numero || nfEntry.num_nf,
+          chave: nfEntry.chave,
         });
       } else {
-        // NFE not found, try to sync from SIEG first
-        await syncAndRetryDanfe(nfEntry);
+        const response = await axios.get(
+          `${process.env.REACT_APP_API_URL}/api/get_nfe_by_number`,
+          {
+            params: {
+              num_nf: nfEntry.num_nf,
+              fornecedor_id: purchase.order.fornecedor_id,
+              fornecedor_nome: purchase.order.fornecedor_descricao,
+              chave: nfEntry.chave,
+              dt_ent: nfEntry.dt_ent,
+            },
+            withCredentials: true,
+          },
+        );
+
+        if (
+          response.data &&
+          (response.data.found || response.data.estimated) &&
+          response.data.chave
+        ) {
+          // NFE found in database (exact or estimated match), open DANFE directly
+          setLoadingDanfeNf(null); // Clear loading before opening new window
+          handleNfeClick({
+            chave: response.data.chave,
+            numero: response.data.numero || nfEntry.num_nf,
+          });
+        } else {
+          // NFE not found, try to sync from SIEG first
+          await syncAndRetryDanfe(nfEntry);
+        }
       }
     } catch (error) {
       // If error (likely 404), try to sync from SIEG and retry
@@ -789,6 +797,7 @@ function PurchaseRow(props) {
                               const nfeNumbers = item.estimated_nfe.nfe_numero
                                 ? item.estimated_nfe.nfe_numero.split(" + ")
                                 : [];
+                              const chave = item.estimated_nfe.nfe_chave;
                               return (
                                 <div
                                   style={{
@@ -843,6 +852,7 @@ function PurchaseRow(props) {
                                             onClick={() =>
                                               handleDanfeIconClick({
                                                 num_nf: nfeNum.trim(),
+                                                chave: chave,
                                               })
                                             }
                                             disabled={

@@ -68,6 +68,7 @@ def _build_purchase_payload(items):
                     'nfe_numero': match.nfe_numero,
                     'match_score': match.match_score,
                     'nfe_fornecedor': match.nfe_fornecedor,
+                    'nfe_chave': match.nfe_chave,
                     'nfe_data_emissao': match.nfe_data_emissao.isoformat() if match.nfe_data_emissao else None
                 }
 
@@ -265,7 +266,7 @@ def search_items():
             'qtde_atendida': item.qtde_atendida,
             'qtde_saldo': item.qtde_saldo
         }
-        order = PurchaseOrder.query.get(item.purchase_order_id)
+        order = db.session.get(PurchaseOrder, item.purchase_order_id)
         if order:
             item_data['order'] = {
                 'order_id': order.id,
@@ -458,7 +459,7 @@ def search_fuzzy():
                 'qtde_atendida': item.qtde_atendida,
                 'qtde_saldo': item.qtde_saldo
             }
-            order = PurchaseOrder.query.get(item.purchase_order_id)
+            order = db.session.get(PurchaseOrder, item.purchase_order_id)
             if order:
                 item_data['order'] = {
                     'order_id': order.id,
@@ -2391,6 +2392,10 @@ def get_nfe_by_number():
     fornecedor_id = request.args.get('fornecedor_id')
     fornecedor_nome = request.args.get('fornecedor_nome')
     dt_ent_str = request.args.get('dt_ent')
+    chave = request.args.get('chave')
+    
+
+
     
     if not num_nf:
         return jsonify({'error': 'num_nf is required'}), 400
@@ -2853,7 +2858,7 @@ def view_danfe_template(nfe_id):
     """Render the DANFE using the template from cfirmo33/template-nfe"""
     from app.models import NFEData, NFEItem, NFEEmitente, NFEDestinatario
     
-    nfe = NFEData.query.get(nfe_id)
+    nfe = db.session.get(NFEData, nfe_id)
     if not nfe:
         return jsonify({'error': 'NFE not found'}), 404
     
@@ -3537,9 +3542,9 @@ def search_nfe():
                     ).all()
                     
                     for match in estimated_matches:
-                        item = PurchaseItem.query.get(match.purchase_item_id)
+                        item = db.session.get(PurchaseItem, match.purchase_item_id)
                         if item:
-                            po = PurchaseOrder.query.get(item.purchase_order_id)
+                            po = db.session.get(PurchaseOrder, item.purchase_order_id)
                             if po:
                                 # Check if already in linked_purchases
                                 key = (po.cod_pedc, po.cod_emp1, str(item.linha) if item.linha else None)
@@ -3666,9 +3671,9 @@ def search_nfe():
                 ).all()
             
             for match in estimated_matches:
-                item = PurchaseItem.query.get(match.purchase_item_id)
+                item = db.session.get(PurchaseItem, match.purchase_item_id)
                 if item:
-                    po = PurchaseOrder.query.get(item.purchase_order_id)
+                    po = db.session.get(PurchaseOrder, item.purchase_order_id)
                     if po:
                         # Check if this PO is already in the list
                         existing = next(
@@ -3898,7 +3903,7 @@ def remove_tracked_company(company_id):
     """Remove a company from tracking."""
     from app.models import Company
     
-    company = Company.query.get(company_id)
+    company = db.session.get(Company, company_id)
     if not company:
         return jsonify({'error': 'Company not found'}), 404
     
@@ -3917,7 +3922,7 @@ def get_company_nfe_count(company_id):
     """Get NFE count for a company from database."""
     from app.models import Company, NFEData, NFEEmitente
     
-    company = Company.query.get(company_id)
+    company = db.session.get(Company, company_id)
     if not company:
         return jsonify({'error': 'Company not found'}), 404
     
@@ -4040,7 +4045,7 @@ def sync_company_nfes(company_id):
     from app.models import Company, NFEData
     from app.utils import parse_and_store_nfe_xml
     
-    company = Company.query.get(company_id)
+    company = db.session.get(Company, company_id)
     if not company:
         return jsonify({'error': 'Company not found'}), 404
     
@@ -4158,7 +4163,7 @@ def sync_company_nfes_chunk(company_id):
     from app.models import Company, NFEData
     from app.utils import parse_and_store_nfe_xml
     
-    company = Company.query.get(company_id)
+    company = db.session.get(Company, company_id)
     if not company:
         return jsonify({'error': 'Company not found'}), 404
     
