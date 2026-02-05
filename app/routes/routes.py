@@ -1203,6 +1203,76 @@ def process_file():
         if os.path.exists(final_file_path):
             os.remove(final_file_path)
 
+
+@bp.route('/import', methods=['POST'])
+@login_required
+def import_file():
+    """
+    Import and process XML file directly.
+    Supports RPDC0250, RPDC0250C, RCOT0300, and RFOR0302 document types.
+    
+    Request:
+        - Content-Type: multipart/form-data
+        - file: XML file to process
+    
+    Returns:
+        - Processed import result from appropriate handler
+    """
+    try:
+        # Check if file is present in request
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided. Please upload an XML file.'}), 400
+        
+        file = request.files['file']
+        
+        # Check if file is empty
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        # Validate file extension
+        if not allowed_file(file.filename):
+            return jsonify({'error': 'File must be in XML format (.xml)'}), 400
+        
+        # Read file content
+        content = file.read()
+        
+        if not content:
+            return jsonify({'error': 'File is empty'}), 400
+        
+        # Validate XML structure
+        if not is_valid_xml(content):
+            return jsonify({'error': 'Invalid XML file. Failed to parse XML structure.'}), 400
+        
+        # Determine document type and select handler
+        if b'<RPDC0250_RUAH>' in content or b'<RPDC0250>' in content:
+            doc_type = 'RPDC0250'
+            handler = import_ruah
+        elif b'<RPDC0250C>' in content:
+            doc_type = 'RPDC0250C'
+            handler = import_rpdc0250c
+        elif b'<RCOT0300>' in content:
+            doc_type = 'RCOT0300'
+            handler = import_rcot0300
+        elif b'<RFOR0302>' in content:
+            doc_type = 'RFOR0302'
+            handler = import_rfor0302
+        else:
+            return jsonify({
+                'error': 'Unsupported XML document type. Supported types: RPDC0250, RPDC0250C, RCOT0300, RFOR0302'
+            }), 400
+        
+        # Process file with appropriate handler
+        result = handler(content)
+        
+        return result
+    
+    except Exception as e:
+        # Rollback any database changes on error
+        db.session.rollback()
+        current_app.logger.exception("import_file: failure | filename=%s", request.files.get('file', {}).filename if 'file' in request.files else 'unknown')
+        return jsonify({'error': f'Error processing file: {str(e)}'}), 500
+
+
 def is_valid_xml(content):
     import xml.etree.ElementTree as ET
     try:
