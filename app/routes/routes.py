@@ -10,6 +10,7 @@ from sqlalchemy.sql import exists
 from sqlalchemy.orm import joinedload
 from flask_login import login_user, logout_user, login_required, current_user
 from app.models import LoginHistory, NFEData, NFEDestinatario, NFEntry, PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch, Quotation, User
+from app.routes.auth import token_required
 from app.utils import  apply_adjustments, check_order_fulfillment, fuzzy_search, import_rcot0300, import_rfor0302, import_rpdc0250c, import_ruah,_parse_date
 from app import db
 import tempfile
@@ -1205,8 +1206,8 @@ def process_file():
 
 
 @bp.route('/import', methods=['POST'])
-@login_required
-def import_file():
+@token_required
+def import_file(user):
     """
     Import and process XML file directly.
     Supports RPDC0250, RPDC0250C, RCOT0300, and RFOR0302 document types.

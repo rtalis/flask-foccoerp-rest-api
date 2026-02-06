@@ -57,13 +57,35 @@ def test_protected_route_without_auth(client: FlaskClient):
     response = client.get('/api/purchases')
     assert response.status_code in (302, 401)
 
-# def test_import_xml(auth_client: FlaskClient):
-#     data = {
-#         'file': (BytesIO(b'<RCOT0300></RCOT0300>'), 'test_data.xml')
-#     }
-#     response = auth_client.post('/api/import', data=data, content_type='multipart/form-data')
-#     assert response.status_code == 201
-#     assert b'Data imported successfully' in response.data
+def test_import_requires_file_with_token(auth_client: FlaskClient):
+    token_response = auth_client.post('/auth/generate_jwt_token', json={'expires_in': 60})
+    assert token_response.status_code == 200
+    token = token_response.json['token']
+
+    response = auth_client.post(
+        '/api/import',
+        headers={'Authorization': f'Bearer {token}'}
+    )
+    assert response.status_code == 400
+    assert 'error' in response.json
+
+
+def test_import_rejects_invalid_xml(auth_client: FlaskClient):
+    token_response = auth_client.post('/auth/generate_jwt_token', json={'expires_in': 60})
+    assert token_response.status_code == 200
+    token = token_response.json['token']
+
+    data = {
+        'file': (BytesIO(b'not-xml'), 'invalid.xml')
+    }
+    response = auth_client.post(
+        '/api/import',
+        data=data,
+        content_type='multipart/form-data',
+        headers={'Authorization': f'Bearer {token}'}
+    )
+    assert response.status_code == 400
+    assert 'error' in response.json
 
 def test_get_purchases(auth_client: FlaskClient):
     response = auth_client.get('/api/purchases')

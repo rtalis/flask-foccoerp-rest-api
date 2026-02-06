@@ -12,6 +12,8 @@ from datetime import datetime, timedelta, timezone
 import datetime as dt
 from app.utils import send_login_notification_email
 from config import Config
+from functools import wraps
+
 
 auth_bp = Blueprint('auth', __name__)
 limiter = Limiter(key_func=get_remote_address)
@@ -286,6 +288,16 @@ def _serialize_token_record(record):
         'disabled_at': record.disabled_at.isoformat() if record.disabled_at else None,
         'disabled_by': _user_payload(record.disabled_by),
     }
+
+
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        user = _user_from_authorization(request)
+        if not user:
+            return jsonify({'message': 'Token inválido ou ausente'}), 401
+        return f(user, *args, **kwargs)
+    return decorated
 
 
 @login_manager.request_loader

@@ -57,19 +57,19 @@ def create_app():
 
         db.create_all()
 
-    # Session token validation - checks if user logged in from another device
     @app.before_request
     def validate_session_token():
-        # Skip validation for login, logout, and static files
         if request.endpoint in ('auth.login', 'auth.logout', 'auth.register', 'static'):
             return None
         if request.path.startswith('/auth/login') or request.path.startswith('/auth/logout'):
             return None
+
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.lower().startswith('bearer '):
+            return None
             
-        # Only check for authenticated users
         if current_user.is_authenticated:
             session_token = request.cookies.get('session_token')
-            # If user has a session_token set and it doesn't match the cookie, they were logged out
             if current_user.session_token and session_token != current_user.session_token:
                 return jsonify({
                     'error': 'Session invalidated',
