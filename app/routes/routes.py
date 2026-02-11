@@ -1878,7 +1878,9 @@ def extract_xml_value(root, xpath):
     except:
         return ''
     
-    
+
+
+
 @bp.route('/get_danfe_pdf', methods=['GET'])
 @login_required
 def get_danfe_pdf():
@@ -2299,6 +2301,171 @@ def dashboard_summary():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     
+#TODO join both get_nfe_data and get_danfe_data into a single endpoint 
+
+
+@bp.route('/get_danfe_data', methods=['GET'])
+@login_required
+def get_danfe_data():
+    chave = request.args.get('chave')
+    if not chave:
+        return jsonify({'error': 'Parametro \"chave\" é requerido'}), 400
+
+    nfe = NFEData.query.filter_by(chave=chave).first()
+    if not nfe:
+        return jsonify({'error': 'NFE não encontrada'}), 404
+
+    emit = nfe.emitente
+    dest = nfe.destinatario
+    trans = nfe.transportadora
+    volumes = [
+        {
+            'quantidade': v.quantidade,
+            'especie': v.especie,
+            'marca': v.marca,
+            'numeracao': v.numeracao,
+            'peso_bruto': v.peso_bruto,
+            'peso_liquido': v.peso_liquido,
+        } for v in nfe.volumes
+    ]
+    items = []
+    for it in nfe.itens:
+        items.append({
+            'numero_item': it.numero_item,
+            'codigo': it.codigo,
+            'descricao': it.descricao,
+            'ncm': it.ncm,
+            'cfop': it.cfop,
+            'unidade': it.unidade_comercial,
+            'quantidade': it.quantidade_comercial,
+            'valor_unitario': it.valor_unitario_comercial,
+            'valor_total': it.valor_total_bruto,
+            'icms': {
+                'vBC': it.icms_vbc,
+                'pICMS': it.icms_picms,
+                'vICMS': it.icms_vicms,
+                'origem': it.icms_origem,
+                'cst': it.icms_cst,
+            },
+            'ipi': {
+                'cEnq': it.ipi_cenq,
+                'cst': it.ipi_cst,
+            },
+            'pis': {
+                'cst': it.pis_cst,
+                'vBC': it.pis_vbc,
+                'pPIS': it.pis_ppis,
+                'vPIS': it.pis_vpis,
+            },
+            'cofins': {
+                'cst': it.cofins_cst,
+                'vBC': it.cofins_vbc,
+                'pCOFINS': it.cofins_pcofins,
+                'vCOFINS': it.cofins_vcofins,
+            },
+            'inf_ad_prod': it.inf_ad_prod,
+        })
+
+    # Emitente / Destinatario mapping (endereço como objeto)
+    emitente = {
+        'nome': emit.nome if emit else None,
+        'cnpj': emit.cnpj if emit else None,
+        'inscricao_estadual': emit.inscricao_estadual if emit else None,
+        'telefone': emit.telefone if emit else None,
+        'email': emit.email if emit else None,
+        'endereco': {
+            'logradouro': emit.logradouro if emit else None,
+            'numero': emit.numero if emit else None,
+            'complemento': emit.complemento if emit else None,
+            'bairro': emit.bairro if emit else None,
+            'municipio': emit.municipio if emit else None,
+            'uf': emit.uf if emit else None,
+            'cep': emit.cep if emit else None,
+        },
+        'logo_url': None  # será preenchido abaixo se disponível
+    }
+
+    destinatario = {
+        'nome': dest.nome if dest else None,
+        'cpf_cnpj': dest.cpf or dest.cnpj if dest else None,
+        'inscricao_estadual': dest.inscricao_estadual if dest else None,
+        'telefone': dest.telefone if dest else None,
+        'email': dest.email if dest else None,
+        'endereco': {
+            'logradouro': dest.logradouro if dest else None,
+            'numero': dest.numero if dest else None,
+            'complemento': dest.complemento if dest else None,
+            'bairro': dest.bairro if dest else None,
+            'municipio': dest.municipio if dest else None,
+            'uf': dest.uf if dest else None,
+            'cep': dest.cep if dest else None,
+        },
+    }
+
+    transportadora = None
+    if trans:
+        transportadora = {
+            'nome': trans.nome,
+            'cnpj': trans.cnpj,
+            'inscricao_estadual': trans.inscricao_estadual,
+            'endereco': trans.endereco,
+            'municipio': trans.municipio,
+            'uf': trans.uf,
+            'placa': trans.placa,
+            'uf_veiculo': trans.uf_veiculo,
+            'rntc': trans.rntc,
+        }
+
+    impostos = {
+        'valor_total': nfe.valor_total,
+        'valor_produtos': nfe.valor_produtos,
+        'valor_frete': nfe.valor_frete,
+        'valor_seguro': nfe.valor_seguro,
+        'valor_desconto': nfe.valor_desconto,
+        'valor_icms': nfe.valor_icms,
+        'valor_icms_st': nfe.valor_icms_st,
+        'valor_ipi': nfe.valor_ipi,
+        'valor_pis': nfe.valor_pis,
+        'valor_cofins': nfe.valor_cofins,
+        'valor_outros': nfe.valor_outros,
+    }
+
+    # logo_url attempt: prefer company.logo_path (if Company exists linked by cod_emp1), else None
+    logo_url = None
+    try:
+        if nfe.emitente and nfe.emitente.cnpj:
+            # se existir uma Company com esse CNPJ/por cod_emp1, ajustar conforme seu modelo
+            from app.models import Company
+            company = Company.query.filter((Company.cnpj == nfe.emitente.cnpj) | (Company.name == nfe.emitente.nome)).first()
+            if company and company.logo_path:
+                logo_url = company.logo_path
+    except Exception:
+        logo_url = None
+
+    emitente['logo_url'] = logo_url
+
+    result = {
+        'chave': nfe.chave,
+        'numero': nfe.numero,
+        'serie': nfe.serie,
+        'data_emissao': nfe.data_emissao.isoformat() if nfe.data_emissao else None,
+        'data_saida': nfe.data_saida.isoformat() if nfe.data_saida else None,
+        'natureza_operacao': nfe.natureza_operacao,
+        'tipo_operacao': nfe.tipo_operacao,
+        'protocolo': nfe.protocolo,
+        'data_autorizacao': nfe.data_autorizacao.isoformat() if nfe.data_autorizacao else None,
+        'ambiente': nfe.ambiente,
+        'modality_frete': nfe.modalidade_frete,
+        'informacoes_adicionais': nfe.informacoes_adicionais,
+        'emitente': emitente,
+        'destinatario': destinatario,
+        'transportador': transportadora,
+        'impostos': impostos,
+        'volumes': volumes,
+        'items': items,
+    }
+
+    return jsonify(result), 200
 
 @bp.route('/get_nfe_data', methods=['GET'])
 @login_required
@@ -2432,7 +2599,7 @@ def get_nfe_data():
             return jsonify({'error': f'Error fetching NFe XML: {xml_response.status_code}'}), xml_response.status_code
         
         xml_content = xml_response.text
-        nfe_data = parse_and_store_nfe_xml(xml_content)
+        parse_and_store_nfe_xml(xml_content)
         
         return get_nfe_data()
         

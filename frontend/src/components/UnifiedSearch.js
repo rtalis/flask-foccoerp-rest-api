@@ -153,38 +153,13 @@ function PurchaseRow(props) {
 
   const handleNfeClick = async (nfe) => {
     try {
-      const newWindow = window.open("", "_blank");
+      const newWindow = window.open("/danfe-loading.html", "_blank");
       if (!newWindow) {
         alert(
           "Pop-up bloqueado pelo navegador. Por favor, permita pop-ups para este site.",
         );
         return;
       }
-      newWindow.document.write(`
-      <html>
-        <head>
-          <title>Visualizando DANFE</title>
-          <style>
-            body { 
-              font-family: Arial, sans-serif; 
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              height: 100vh;
-              margin: 0;
-              flex-direction: column;
-            }
-            .loading { margin-bottom: 20px; }
-          </style>
-        </head>
-        <body>
-          <div class="loading">Carregando DANFE...</div>
-                          <div className="spinner"></div>
-
-        </body>
-      </html>
-    `);
-      newWindow.document.close();
 
       // First ensure the NFE data is stored in the database
       await axios.get(`${process.env.REACT_APP_API_URL}/api/get_nfe_data`, {
@@ -244,20 +219,9 @@ function PurchaseRow(props) {
 
       const blobUrl = URL.createObjectURL(blob);
 
-      newWindow.document.write(`
-      <html>
-        <head>
-          <title>DANFE - ${nfe.numero || nfe.chave}</title>
-          <style>
-            body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; }
-            #pdf-viewer { width: 100%; height: 100%; }
-          </style>
-        </head>
-        <body>
-          <embed id="pdf-viewer" src="${blobUrl}" type="application/pdf" width="100%" height="100%">
-        </body>
-      </html>
-    `);
+      const number = nfe.numero || nfe.num_nf || nfe.number || nfe.numero_nf;
+      newWindow.postMessage({ type: "pdfBlobUrl", url: blobUrl, number }, "*");
+
       newWindow.document.close();
     } catch (error) {
       console.error("Error fetching DANFE PDF:", error);
