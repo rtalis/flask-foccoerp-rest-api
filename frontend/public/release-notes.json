@@ -1,27 +1,5 @@
 [
   {
-    "version": "2.0.1",
-    "notes": [
-      "Adicionado filtro avançado de busca por data em \"Buscar pedidos de compra.\"",
-      "Adicionado filtro para ocultar itens cancelados",
-      "Botão de exportação para excel dos resultados da busca por pedido de compra",
-      "Adicionado as notas da versão para mostrar as mudanças recentes."
-    ]
-  },
-  {
-    "version": "2.0.2",
-    "notes": [
-      "Consertado relatório de uso diário do sistema que não estava exibindo corretamente os logins dos usuários."
-    ]
-  },
-  {
-    "version": "2.0.3",
-    "notes": [
-      "Correção ao abrir nota fiscal emitida por filial com matriz cadastrada no sistema",
-      "Correção de uma nova pesquisa mostrar resultados de pesquisas anteriores em cache"
-    ]
-  },
-  {
     "version": "2.0.4",
     "notes": [
       "Ao ser detectado um erro no servidor ou conexão, o usuário pode ser redirecionado automaticamente para o servidor de backup.",
@@ -35,6 +13,12 @@
     "notes": [
       "Melhoria no algoritmo de match para encontrar mais notas fiscais relacionadas a pedidos de compra.",
       "Correção ao abrir uma nota fiscal em match não abrindo por meio do pedido de compra."
+    ]
+  },
+  {
+    "version": "2.0.6",
+    "notes": [
+      "Fallback local: o sistema irá gerar a DANFE com dados da base local caso o SIEG esteja indisponpivel."
     ]
   }
 ]

@@ -1887,6 +1887,8 @@ def get_danfe_pdf():
     from app.models import NFEData
     from app.utils import parse_and_store_nfe_xml
     import xml.etree.ElementTree as ET
+    import base64
+    import requests
     
     xml_key = request.args.get('xmlKey')
     if not xml_key:
@@ -1897,7 +1899,6 @@ def get_danfe_pdf():
         existing_nfe = NFEData.query.filter_by(chave=xml_key).first()
         
         if existing_nfe:
-            # Just return NFE details if requested
             if request.args.get('details', 'false').lower() == 'true':
                 return jsonify({
                     'source': 'database',
@@ -1922,13 +1923,27 @@ def get_danfe_pdf():
                     }
                 }), 200
 
-        # Use SIEG API to generate DANFE PDF
-        # Even if NFE is in database, SIEG generates the official DANFE format
-        pdf_response = requests.get(
-            f'https://api.sieg.com/api/Arquivos/GerarDanfeViaChave?xmlKey={xml_key}&api_key={Config.SIEG_API_KEY}',
-            headers={'Accept': 'application/json'}
-        )
-        
+        # Use SIEG API to generate DANFE PDF (timeout: 5s)
+        try:
+            pdf_response = requests.get(
+                f'https://api.sieg.com/api/Arquivos/GerarDanfeViaChave?xmlKey={xml_key}&api_key={Config.SIEG_API_KEY}',
+                headers={'Accept': 'application/json'},
+                timeout=5,
+            )
+        except requests.Timeout:
+            if existing_nfe:
+                from brazilfiscalreport.danfe import Danfe
+                danfe = Danfe(xml=existing_nfe.xml_content)
+                pdf_output = danfe.output(dest='S')
+                pdf_bytes = (
+                    pdf_output.encode('latin1')
+                    if isinstance(pdf_output, str)
+                    else pdf_output
+                )
+                pdf_base64 = base64.b64encode(pdf_bytes).decode('ascii')
+                return jsonify({'pdf': pdf_base64, 'source': 'fallback'}), 200
+            return jsonify({'error': 'SIEG timeout and no local NFE available'}), 504
+
         if pdf_response.status_code != 200:
             return jsonify({'error': f'Error fetching DaNFe: {pdf_response.status_code} - {pdf_response.text}'}), pdf_response.status_code
         
