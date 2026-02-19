@@ -43,6 +43,7 @@ const EXPIRATION_PRESETS = [
   { value: 60 * 24 * 7, label: "7 dias" },
   { value: 60 * 24 * 30, label: "30 dias" },
   { value: 60 * 24 * 90, label: "90 dias" },
+  { value: 60 * 24 * 365, label: "1 ano" },
 ];
 
 const TokenManager = () => {

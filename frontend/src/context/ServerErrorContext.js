@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from "react";
 
-const BACKUP_URL = "https://jhub2.roxel.dev";
+const BACKUP_URL = process.env.REACT_APP_BACKUP_URL;
 
 const ServerErrorContext = createContext();
 
