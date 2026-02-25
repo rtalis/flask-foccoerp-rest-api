@@ -95,20 +95,20 @@ const NFESearch = () => {
 
   // Advanced filters
   const [searchByNumber, setSearchByNumber] = useState(
-    storedParams.searchByNumber
+    storedParams.searchByNumber,
   );
   const [searchByChave, setSearchByChave] = useState(
-    storedParams.searchByChave
+    storedParams.searchByChave,
   );
   const [searchByFornecedor, setSearchByFornecedor] = useState(
-    storedParams.searchByFornecedor
+    storedParams.searchByFornecedor,
   );
   const [searchByItem, setSearchByItem] = useState(storedParams.searchByItem);
   const [includeEstimated, setIncludeEstimated] = useState(
-    storedParams.includeEstimated
+    storedParams.includeEstimated,
   );
   const [exactTermSearch, setExactTermSearch] = useState(
-    storedParams.exactTermSearch
+    storedParams.exactTermSearch,
   );
 
   // Save search params to localStorage whenever they change
@@ -223,7 +223,7 @@ const NFESearch = () => {
     try {
       const response = await axios.get(
         `${process.env.REACT_APP_API_URL}/api/tracked_companies`,
-        { withCredentials: true }
+        { withCredentials: true },
       );
       setTrackedCompanies(response.data.companies || []);
     } catch (err) {
@@ -264,7 +264,7 @@ const NFESearch = () => {
 
       const response = await axios.get(
         `${process.env.REACT_APP_API_URL}/api/search_nfe`,
-        { params, withCredentials: true }
+        { params, withCredentials: true },
       );
 
       setResults(response.data);
@@ -286,31 +286,58 @@ const NFESearch = () => {
     setLoadingDanfe(nfeChave);
     try {
       if (nfeChave) {
-        const newWindow = window.open("", "_blank");
+        const newWindow = window.open("/danfe-loading.html", "_blank");
         if (!newWindow) {
-          alert("Pop-up bloqueado pelo navegador.");
+          alert(
+            "Pop-up bloqueado pelo navegador. Por favor, permita pop-ups para este site.",
+          );
           return;
         }
-        newWindow.document.write(
-          "<html><head><title>Carregando DANFE...</title></head>" +
-            "<body style='font-family: Arial; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0;'>" +
-            "<div>Carregando DANFE...</div></body></html>"
-        );
 
+        // First ensure the NFE data is stored in the database
+        await axios.get(`${process.env.REACT_APP_API_URL}/api/get_nfe_data`, {
+          params: { xmlKey: nfeChave },
+          withCredentials: true,
+        });
+
+        // Then get the PDF
         const pdfResponse = await axios.get(
           `${process.env.REACT_APP_API_URL}/api/get_danfe_pdf`,
           {
             params: { xmlKey: nfeChave },
             withCredentials: true,
-          }
+          },
         );
 
-        let pdfBase64 = pdfResponse.data;
-        if (typeof pdfResponse.data === "object") {
-          pdfBase64 =
-            pdfResponse.data.arquivo ||
-            pdfResponse.data.pdf ||
-            pdfResponse.data.content;
+        if (!pdfResponse.data) {
+          newWindow.document.body.innerHTML =
+            '<div style="color:red;">Erro ao carregar o PDF. Dados inválidos recebidos.</div>';
+          return;
+        }
+
+        let pdfBase64;
+        if (typeof pdfResponse.data === "string") {
+          pdfBase64 = pdfResponse.data;
+        } else if (pdfResponse.data.arquivo) {
+          pdfBase64 = pdfResponse.data.arquivo;
+        } else if (pdfResponse.data.pdf) {
+          pdfBase64 = pdfResponse.data.pdf;
+        } else if (pdfResponse.data.content) {
+          pdfBase64 = pdfResponse.data.content;
+        } else {
+          const possibleBase64 = Object.entries(pdfResponse.data)
+            .filter(
+              ([key, value]) => typeof value === "string" && value.length > 100,
+            )
+            .sort((a, b) => b[1].length - a[1].length)[0];
+
+          if (possibleBase64) {
+            pdfBase64 = possibleBase64[1];
+          } else {
+            newWindow.document.body.innerHTML =
+              '<div style="color:red;">Erro ao carregar o PDF. Formato de resposta não reconhecido.</div>';
+            return;
+          }
         }
 
         const byteCharacters = atob(pdfBase64);
@@ -326,7 +353,11 @@ const NFESearch = () => {
         const blob = new Blob(byteArrays, { type: "application/pdf" });
         const blobUrl = URL.createObjectURL(blob);
 
-        newWindow.location.href = blobUrl;
+        const number = nfe.numero || nfe.num_nf || nfe.number || nfe.numero_nf;
+        newWindow.postMessage(
+          { type: "pdfBlobUrl", url: blobUrl, number },
+          "*",
+        );
       } else {
         setError("DANFE não encontrada para NF " + nfe.numero);
       }
@@ -358,7 +389,7 @@ const NFESearch = () => {
     if (cleaned.length !== 14) return cnpj;
     return cleaned.replace(
       /^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,
-      "$1.$2.$3/$4-$5"
+      "$1.$2.$3/$4-$5",
     );
   };
 
@@ -797,7 +828,7 @@ const NFESearch = () => {
                   {results.purchase_orders?.filter(
                     (po) =>
                       po.match_type === "linked" ||
-                      po.match_type === "estimated"
+                      po.match_type === "estimated",
                   ).length > 0 && (
                     <Typography
                       component="span"
@@ -810,7 +841,7 @@ const NFESearch = () => {
                         results.purchase_orders.filter(
                           (po) =>
                             po.match_type === "linked" ||
-                            po.match_type === "estimated"
+                            po.match_type === "estimated",
                         ).length
                       }{" "}
                       pedidos vinculados
@@ -901,11 +932,10 @@ const NFESearch = () => {
                             <TableCell align="center">
                               {formatDate(nfe.data_emissao)}
                             </TableCell>
-                            <TableCell align="center">
+                            <TableCell>
                               <Tooltip title={nfe.fornecedor || "-"}>
                                 <Typography
                                   sx={{
-                                    maxWidth: 200,
                                     overflow: "hidden",
                                     textOverflow: "ellipsis",
                                     whiteSpace: "nowrap",
@@ -929,7 +959,7 @@ const NFESearch = () => {
                                 ];
                                 const uniqueOrders = [
                                   ...new Set(
-                                    allPurchases.map((p) => p.cod_pedc)
+                                    allPurchases.map((p) => p.cod_pedc),
                                   ),
                                 ];
                                 const hasEstimated =
@@ -1127,7 +1157,7 @@ const NFESearch = () => {
                                                         size="small"
                                                         onClick={() =>
                                                           togglePurchaseOrderExpanded(
-                                                            orderKey
+                                                            orderKey,
                                                           )
                                                         }
                                                       >
@@ -1172,7 +1202,7 @@ const NFESearch = () => {
                                                     <TableCell>
                                                       {order.dt_emis
                                                         ? formatDate(
-                                                            order.dt_emis
+                                                            order.dt_emis,
                                                           )
                                                         : "-"}
                                                     </TableCell>
@@ -1205,7 +1235,7 @@ const NFESearch = () => {
                                                     <TableCell align="right">
                                                       {order.total_pedido
                                                         ? formatCurrency(
-                                                            order.total_pedido
+                                                            order.total_pedido,
                                                           )
                                                         : "-"}
                                                     </TableCell>
@@ -1326,7 +1356,7 @@ const NFESearch = () => {
                                                                             title={`Match estimado (${
                                                                               item.match_score
                                                                                 ? Math.round(
-                                                                                    item.match_score
+                                                                                    item.match_score,
                                                                                   ) +
                                                                                   "%"
                                                                                 : ""
@@ -1370,7 +1400,7 @@ const NFESearch = () => {
                                                                       {item.quantidade !=
                                                                       null
                                                                         ? item.quantidade.toLocaleString(
-                                                                            "pt-BR"
+                                                                            "pt-BR",
                                                                           )
                                                                         : "-"}
                                                                     </TableCell>
@@ -1382,7 +1412,7 @@ const NFESearch = () => {
                                                                       {item.preco_unitario !=
                                                                       null
                                                                         ? formatCurrency(
-                                                                            item.preco_unitario
+                                                                            item.preco_unitario,
                                                                           )
                                                                         : "-"}
                                                                     </TableCell>
@@ -1390,7 +1420,7 @@ const NFESearch = () => {
                                                                       {item.total_item !=
                                                                       null
                                                                         ? formatCurrency(
-                                                                            item.total_item
+                                                                            item.total_item,
                                                                           )
                                                                         : "-"}
                                                                     </TableCell>
@@ -1398,7 +1428,7 @@ const NFESearch = () => {
                                                                       {item.qtde_atendida !=
                                                                       null
                                                                         ? item.qtde_atendida.toLocaleString(
-                                                                            "pt-BR"
+                                                                            "pt-BR",
                                                                           )
                                                                         : "-"}
                                                                     </TableCell>
@@ -1406,12 +1436,12 @@ const NFESearch = () => {
                                                                     <TableCell>
                                                                       {item.dt_entrega
                                                                         ? formatDate(
-                                                                            item.dt_entrega
+                                                                            item.dt_entrega,
                                                                           )
                                                                         : "-"}
                                                                     </TableCell>
                                                                   </TableRow>
-                                                                )
+                                                                ),
                                                               )}
                                                             </TableBody>
                                                           </Table>
@@ -1454,7 +1484,7 @@ const NFESearch = () => {
                     <Box sx={{ p: 2 }}>
                       {(() => {
                         const groupedUnlinked = groupPurchasesByOrder(
-                          results.unlinked_purchase_orders
+                          results.unlinked_purchase_orders,
                         );
                         return (
                           <>
@@ -1525,7 +1555,7 @@ const NFESearch = () => {
                                             size="small"
                                             onClick={() =>
                                               togglePurchaseOrderExpanded(
-                                                orderKey
+                                                orderKey,
                                               )
                                             }
                                           >
@@ -1698,7 +1728,7 @@ const NFESearch = () => {
                                                           {item.quantidade !=
                                                           null
                                                             ? item.quantidade.toLocaleString(
-                                                                "pt-BR"
+                                                                "pt-BR",
                                                               )
                                                             : "-"}
                                                         </TableCell>
@@ -1710,7 +1740,7 @@ const NFESearch = () => {
                                                           {item.preco_unitario !=
                                                           null
                                                             ? formatCurrency(
-                                                                item.preco_unitario
+                                                                item.preco_unitario,
                                                               )
                                                             : "-"}
                                                         </TableCell>
@@ -1718,7 +1748,7 @@ const NFESearch = () => {
                                                           {item.total_item !=
                                                           null
                                                             ? formatCurrency(
-                                                                item.total_item
+                                                                item.total_item,
                                                               )
                                                             : "-"}
                                                         </TableCell>
@@ -1726,7 +1756,7 @@ const NFESearch = () => {
                                                           {item.qtde_atendida !=
                                                           null
                                                             ? item.qtde_atendida.toLocaleString(
-                                                                "pt-BR"
+                                                                "pt-BR",
                                                               )
                                                             : "-"}
                                                         </TableCell>
@@ -1736,7 +1766,7 @@ const NFESearch = () => {
                                                             <Chip
                                                               size="small"
                                                               label={item.qtde_saldo.toLocaleString(
-                                                                "pt-BR"
+                                                                "pt-BR",
                                                               )}
                                                               color={
                                                                 item.qtde_saldo >
@@ -1753,12 +1783,12 @@ const NFESearch = () => {
                                                         <TableCell>
                                                           {item.dt_entrega
                                                             ? formatDate(
-                                                                item.dt_entrega
+                                                                item.dt_entrega,
                                                               )
                                                             : "-"}
                                                         </TableCell>
                                                       </TableRow>
-                                                    )
+                                                    ),
                                                   )}
                                                 </TableBody>
                                               </Table>
