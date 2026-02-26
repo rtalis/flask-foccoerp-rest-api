@@ -76,6 +76,10 @@
         try {
           const data = e.data || {};
 
+          if (data.number) {
+            document.title = "JHUB - DANFE " + data.number;
+          }
+
           // If PDF arrives, cancel timer and render it
           if (data.type === "pdfBlobUrl" && data.url) {
             clearTimeout(fallbackTimer);
@@ -84,10 +88,6 @@
               data.url +
               '" type="application/pdf" width="100%" height="100%">';
             return;
-          }
-
-          if (data.number) {
-            document.title = "JHUB - DANFE " + data.number;
           }
         } catch (err) {
           console.error(err);

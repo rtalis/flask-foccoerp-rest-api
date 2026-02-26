@@ -1930,7 +1930,9 @@ def get_danfe_pdf():
                 headers={'Accept': 'application/json'},
                 timeout=5,
             )
-        except requests.Timeout:
+            if pdf_response.status_code != 200:
+                raise Exception(f'SIEG API error: {pdf_response.status_code} - {pdf_response.text}')
+        except Exception as e:
             if existing_nfe:
                 from brazilfiscalreport.danfe import Danfe
                 danfe = Danfe(xml=existing_nfe.xml_content)
@@ -1942,10 +1944,9 @@ def get_danfe_pdf():
                 )
                 pdf_base64 = base64.b64encode(pdf_bytes).decode('ascii')
                 return jsonify({'pdf': pdf_base64, 'source': 'fallback'}), 200
-            return jsonify({'error': 'SIEG timeout and no local NFE available'}), 504
+            return jsonify({'error': f'SIEG timeout and no local NFE available: {str(e)}'}), 404
 
-        if pdf_response.status_code != 200:
-            return jsonify({'error': f'Error fetching DaNFe: {pdf_response.status_code} - {pdf_response.text}'}), pdf_response.status_code
+     
         
         return jsonify(pdf_response.json()), 200
     
