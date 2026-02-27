@@ -836,9 +836,8 @@ def search_advanced():
     if token_filters:
         base_query = base_query.filter(and_(*token_filters))
 
-    base_query = base_query.order_by(PurchaseOrder.dt_emis.desc(), PurchaseItem.id.desc())
     if score_cutoff < 100 and tokens:
-        items = base_query.all()
+        items = base_query.order_by(PurchaseOrder.dt_emis.desc(), PurchaseItem.id.desc()).all()
         items = fuzzy_search(' '.join(tokens), items, score_cutoff, 'descricao' in fields, 'observacao' in fields)
         purchases_payload = _build_purchase_payload(items)
         return jsonify({
@@ -848,14 +847,38 @@ def search_advanced():
             'total_results': len(items)
         }), 200
 
-    items_paginated = base_query.paginate(page=page, per_page=per_page, count=True)
-    purchases_payload = _build_purchase_payload(items_paginated.items)
+    order_ids_subquery = (
+        base_query
+        .with_entities(PurchaseItem.purchase_order_id)
+        .distinct()
+        .subquery()
+    )
+
+    orders_paginated = (
+        PurchaseOrder.query
+        .filter(PurchaseOrder.id.in_(
+            db.session.query(order_ids_subquery.c.purchase_order_id)
+        ))
+        .order_by(PurchaseOrder.dt_emis.desc(), PurchaseOrder.id.desc())
+        .paginate(page=page, per_page=per_page, count=True)
+    )
+
+    paginated_order_ids = [o.id for o in orders_paginated.items]
+
+    items = (
+        base_query
+        .filter(PurchaseItem.purchase_order_id.in_(paginated_order_ids))
+        .order_by(PurchaseOrder.dt_emis.desc(), PurchaseItem.id.desc())
+        .all()
+    )
+
+    purchases_payload = _build_purchase_payload(items)
 
     return jsonify({
         'purchases': purchases_payload,
-        'total_pages': items_paginated.pages,
-        'current_page': items_paginated.page,
-        'total_results': items_paginated.total
+        'total_pages': orders_paginated.pages,
+        'current_page': orders_paginated.page,
+        'total_results': orders_paginated.total
     }), 200
 
 

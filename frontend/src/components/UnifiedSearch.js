@@ -1164,6 +1164,7 @@ const UnifiedSearch = () => {
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState("");
   const [estimatedResults, setEstimatedResults] = useState(0);
+  const [searchTime, setSearchTime] = useState(null);
   const resultsRef = useRef(null);
   const activeRequestRef = useRef(null); // Tracks the latest in-flight search to avoid race conditions
   const [searchMode, setSearchMode] = useState(() => {
@@ -1466,10 +1467,12 @@ const UnifiedSearch = () => {
 
     setLoading(true);
     setResults([]); // Clear previous results while new search is loading
+    setSearchTime(null);
     if (!usingEnhanced) {
       await getEstimatedResults();
     }
 
+    const startTime = performance.now();
     try {
       let response;
 
@@ -1535,6 +1538,9 @@ const UnifiedSearch = () => {
       ) {
         return;
       }
+
+      const elapsed = (performance.now() - startTime) / 1000;
+      setSearchTime(elapsed);
 
       const purchases = response.data?.purchases || [];
       setResults(purchases);
@@ -2289,8 +2295,21 @@ const UnifiedSearch = () => {
             }}
           >
             <Typography variant="body2" color="text.secondary" ref={resultsRef}>
-              <strong>{noResults}</strong> resultados encontrados • Página{" "}
+              Mostrando <strong>{noResults}</strong> resultados • Página{" "}
               <strong>{currentPage}</strong> de <strong>{totalPages}</strong>
+              {searchTime != null && (
+                <>
+                  {" "}
+                  em{" "}
+                  <strong>
+                    {searchTime.toLocaleString("pt-BR", {
+                      minimumFractionDigits: 1,
+                      maximumFractionDigits: 1,
+                    })}
+                  </strong>{" "}
+                  segundos
+                </>
+              )}
             </Typography>
 
             <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>

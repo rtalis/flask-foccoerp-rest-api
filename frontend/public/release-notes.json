@@ -1,14 +1,5 @@
 [
   {
-    "version": "2.0.4",
-    "notes": [
-      "Ao ser detectado um erro no servidor ou conexão, o usuário pode ser redirecionado automaticamente para o servidor de backup.",
-      "Função adicionada: Agora o usuário pode alterar seus dados (Senha, Email, etc.) clicando em \"Conta\" no canto inferior esquerdo.",
-      "Adicionado: Retorna nota fiscal na busca mesmo se o nome/cnpj for diferente, mas tiver o mesmo número de série e for emitido dentro de 15 dias do pedido de compra",
-      "Adicionada validação de multiplas sessões de um mesmo usuário em dispositivos diferentes."
-    ]
-  },
-  {
     "version": "2.0.5",
     "notes": [
       "Melhoria no algoritmo de match para encontrar mais notas fiscais relacionadas a pedidos de compra.",
@@ -19,6 +10,12 @@
     "version": "2.0.6",
     "notes": [
       "Fallback local: o sistema irá gerar a DANFE com dados da base local caso o SIEG esteja indisponpivel."
+    ]
+  },
+  {
+    "version": "2.0.7",
+    "notes": [
+      "Paginação de resultados agora categoriza e conta corretamente o numero de resultados e de maneira mais rápida."
     ]
   }
 ]
