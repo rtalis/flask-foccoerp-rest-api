@@ -240,6 +240,7 @@ function PurchaseRow(props) {
       if (nfEntry.chave) {
         handleNfeClick({
           chave: nfEntry.chave,
+          numero: nfEntry.num_nf,
         });
       } else {
         const response = await axios.get(
