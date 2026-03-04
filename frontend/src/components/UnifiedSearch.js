@@ -415,7 +415,14 @@ function PurchaseRow(props) {
         <TableCell
           colSpan={9}
           align="center"
-          sx={{ fontWeight: "bold", fontSize: "1.05rem", color: "#ffffffe3" }}
+          sx={{
+            fontWeight: "bold",
+            fontSize: { xs: "0.85rem", sm: "1.05rem" },
+            color: "#ffffffe3",
+            wordBreak: "break-word",
+            whiteSpace: "normal",
+            px: { xs: 1, sm: 2 },
+          }}
         >
           Pedido de Compra: {purchase.order.cod_pedc}~{" "}
           {purchase.order.fornecedor_id}{" "}
@@ -439,8 +446,8 @@ function PurchaseRow(props) {
             timeout="auto"
             unmountOnExit
           >
-            <Box sx={{ margin: 1 }}>
-              <Table size="small" aria-label="items">
+            <Box sx={{ margin: 1, overflowX: "auto" }}>
+              <Table size="small" aria-label="items" sx={{ minWidth: 800 }}>
                 <TableHead>
                   <TableRow sx={{ backgroundColor: "#f5f7fa" }}>
                     <TableCell
@@ -1694,7 +1701,8 @@ const UnifiedSearch = () => {
               bgcolor: "rgba(255,255,255,0.15)",
               borderRadius: 2,
               border: "1px solid rgba(255,255,255,0.2)",
-              minWidth: 200,
+              minWidth: { xs: "auto", sm: 200 },
+              width: { xs: "100%", sm: "auto" },
             }}
           >
             <Box
@@ -1779,7 +1787,7 @@ const UnifiedSearch = () => {
             }}
           >
             <Autocomplete
-              sx={{ flexGrow: 1, minWidth: 300 }}
+              sx={{ flexGrow: 1, minWidth: { xs: "100%", sm: 300 } }}
               freeSolo
               options={showSuggestionsToggle ? suggestions : []}
               loading={showSuggestionsToggle && loadingSuggestions}
@@ -1920,7 +1928,7 @@ const UnifiedSearch = () => {
               }
               label={
                 <Tooltip title="Ativa a busca exata, retornando apenas resultados que correspondem exatamente ao termo pesquisado.">
-                  <Typography variant="body2">Busca exata</Typography>
+                  <Typography variant="body2">Busca por termo exato</Typography>
                 </Tooltip>
               }
             />
@@ -2342,6 +2350,7 @@ const UnifiedSearch = () => {
               border: "1px solid",
               borderColor: "divider",
               mb: 3,
+              overflowX: "auto",
             }}
           >
             <Table aria-label="collapsible table">
@@ -2372,12 +2381,18 @@ const UnifiedSearch = () => {
             sx={{
               marginLeft: "auto",
               display: "flex",
+              flexDirection: { xs: "column", sm: "row" },
               justifyContent: "center",
               alignItems: "center",
               gap: 1,
             }}
           >
-            <Box flex={1} display="flex" justifyContent="center">
+            <Box
+              flex={1}
+              display="flex"
+              justifyContent="center"
+              alignItems="center"
+            >
               <Button
                 variant="outlined"
                 size="small"
@@ -2387,7 +2402,7 @@ const UnifiedSearch = () => {
               >
                 Anterior
               </Button>
-              <Typography variant="body2" sx={{ mx: 2 }}>
+              <Typography variant="body2" sx={{ mx: 2, whiteSpace: "nowrap" }}>
                 Página {currentPage} de {totalPages}
               </Typography>
 
@@ -2410,7 +2425,6 @@ const UnifiedSearch = () => {
                 variant="contained"
                 endIcon={<FileDownloadIcon />}
                 sx={{
-                  marginLeft: "auto",
                   px: 3,
                   py: 1,
                   textTransform: "none",
@@ -2418,6 +2432,7 @@ const UnifiedSearch = () => {
                   fontWeight: 400,
                   bgcolor: "#1a1f2e",
                   "&:hover": { bgcolor: "#2d3548" },
+                  width: { xs: "100%", sm: "auto" },
                 }}
                 onClick={handleExportExcel}
                 disabled={results.length === 0}

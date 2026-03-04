@@ -291,3 +291,28 @@
   border-color: #007bff;
   box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
 }
+
+/* Mobile responsive */
+@media (max-width: 600px) {
+  .unified-search {
+    max-width: 100%;
+    padding: 10px;
+  }
+
+  .checkbox-group {
+    float: none;
+    width: 100%;
+    margin-right: 0;
+  }
+
+  .value-filter {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .results-table th,
+  .results-table td {
+    padding: 6px 4px;
+    font-size: 0.8rem;
+  }
+}
