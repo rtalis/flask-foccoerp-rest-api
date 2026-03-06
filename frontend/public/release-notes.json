@@ -1,12 +1,5 @@
 [
   {
-    "version": "2.0.5",
-    "notes": [
-      "Melhoria no algoritmo de match para encontrar mais notas fiscais relacionadas a pedidos de compra.",
-      "Correção ao abrir uma nota fiscal em match não abrindo por meio do pedido de compra."
-    ]
-  },
-  {
     "version": "2.0.6",
     "notes": [
       "Fallback local: o sistema irá gerar a DANFE com dados da base local caso o SIEG esteja indisponpivel."
@@ -16,6 +9,14 @@
     "version": "2.0.7",
     "notes": [
       "Paginação de resultados agora categoriza e conta corretamente o numero de resultados e de maneira mais rápida."
+    ]
+  },
+  {
+    "version": "2.0.8",
+    "notes": [
+      "Melhorias para a visualização do site em celulares e tablets.",
+      "Adicionada busca no banco de dados de notas local, quando um numero de nota fiscal não foi atribuido a um pedido de compra",
+      "Adicionada nova mensagem quando nenhum resultado é encontrado, mostrando os filtros que foram utilizados na busca."
     ]
   }
 ]
