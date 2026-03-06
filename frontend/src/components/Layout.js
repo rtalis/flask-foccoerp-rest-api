@@ -15,6 +15,7 @@ import {
   Divider,
   Avatar,
   Tooltip,
+  Badge,
   useMediaQuery,
   useTheme,
 } from "@mui/material";
@@ -46,6 +47,7 @@ const Layout = ({ onLogout }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showTrackedCompanies, setShowTrackedCompanies] = useState(false);
   const [userRole, setUserRole] = useState(null);
+  const [nfeBadge, setNfeBadge] = useState(false);
 
   const isAdmin = userRole === "admin";
 
@@ -109,6 +111,9 @@ const Layout = ({ onLogout }) => {
   ];
 
   const handleNavigate = (path) => {
+    if (path === "/nfe-search") {
+      setNfeBadge(false);
+    }
     navigate(path);
     if (isMobile) {
       setMobileOpen(false);
@@ -232,7 +237,25 @@ const Layout = ({ onLogout }) => {
                   color: "inherit",
                 }}
               >
-                {item.icon}
+                {item.path === "/nfe-search" && nfeBadge ? (
+                  <Badge
+                    variant="dot"
+                    color="error"
+                    overlap="circular"
+                    sx={{
+                      "& .MuiBadge-badge": {
+                        width: 10,
+                        height: 10,
+                        borderRadius: "50%",
+                        minWidth: 10,
+                      },
+                    }}
+                  >
+                    {item.icon}
+                  </Badge>
+                ) : (
+                  item.icon
+                )}
               </ListItemIcon>
               {sidebarOpen && (
                 <ListItemText
@@ -530,7 +553,7 @@ const Layout = ({ onLogout }) => {
         <Toolbar sx={{ display: { md: "none" } }} />
 
         {/* Page Content */}
-        <Outlet />
+        <Outlet context={{ nfeBadge, setNfeBadge }} />
       </Box>
 
       {/* Tracked Companies Dialog */}

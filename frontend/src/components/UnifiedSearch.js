@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
-import { Link } from "react-router-dom";
+import { Link, useOutletContext } from "react-router-dom";
 import ItemScreen from "./ItemScreen";
 import "./UnifiedSearch.css";
 
@@ -50,7 +50,9 @@ import Autocomplete from "@mui/material/Autocomplete";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import SearchIcon from "@mui/icons-material/Search";
+import SearchOffIcon from "@mui/icons-material/SearchOff";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
+import ManageSearchIcon from "@mui/icons-material/ManageSearch";
 import ReceiptIcon from "@mui/icons-material/Receipt";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import TuneIcon from "@mui/icons-material/Tune";
@@ -1108,6 +1110,7 @@ function PurchaseRow(props) {
 }
 
 const UnifiedSearch = () => {
+  const { setNfeBadge } = useOutletContext() || {};
   const SEARCH_MODE_STORAGE_KEY = "searchModePreference";
   const SEARCH_PARAMS_STORAGE_KEY = "searchParamsPreference";
   const SHOW_SUGGESTIONS_STORAGE_KEY = "showSuggestionsPreference";
@@ -1190,8 +1193,110 @@ const UnifiedSearch = () => {
     return stored === "true";
   });
   const [showFulfilled, setShowFulfilled] = useState(true);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [nfeFoundForTerm, setNfeFoundForTerm] = useState(null);
 
   const usingEnhanced = searchMode === "enhanced";
+
+  // Helper: get list of filters that differ from defaults
+  const getNonDefaultFilters = () => {
+    const diff = [];
+    if (
+      searchParams.selectedFuncName !== DEFAULT_SEARCH_PARAMS.selectedFuncName
+    ) {
+      diff.push({ label: "Comprador", value: searchParams.selectedFuncName });
+    }
+    if (
+      searchParams.selectedCodEmp1 !== DEFAULT_SEARCH_PARAMS.selectedCodEmp1
+    ) {
+      const company = codEmp1Options.find(
+        (c) => c.code === searchParams.selectedCodEmp1,
+      );
+      diff.push({
+        label: "Empresa",
+        value: company?.display || searchParams.selectedCodEmp1,
+      });
+    }
+    if (searchParams.min_value) {
+      diff.push({
+        label: "Valor mínimo",
+        value: `R$ ${searchParams.min_value}`,
+      });
+    }
+    if (searchParams.max_value) {
+      diff.push({
+        label: "Valor máximo",
+        value: `R$ ${searchParams.max_value}`,
+      });
+    }
+    if (searchParams.date_from) {
+      diff.push({ label: "Data início", value: searchParams.date_from });
+    }
+    if (searchParams.date_to) {
+      diff.push({ label: "Data fim", value: searchParams.date_to });
+    }
+    if (
+      searchParams.exactSearch !== DEFAULT_SEARCH_PARAMS.exactSearch &&
+      searchParams.exactSearch
+    ) {
+      diff.push({ label: "Busca exata", value: "Ativada" });
+    }
+    if (searchParams.hideCancelled) {
+      diff.push({ label: "Ocultar cancelados", value: "Ativado" });
+    }
+    // Search field differences
+    const fieldDefaults = {
+      searchByCodPedc: { label: "Cód. Pedido", def: true },
+      searchByFornecedor: { label: "Fornecedor", def: true },
+      searchByObservacao: { label: "Observação", def: true },
+      searchByItemId: { label: "Cód. Item", def: true },
+      searchByDescricao: { label: "Descrição", def: true },
+      searchByNumNF: { label: "Nº NF", def: true },
+    };
+    const disabledFields = Object.entries(fieldDefaults)
+      .filter(
+        ([key, info]) => searchParams[key] !== info.def && !searchParams[key],
+      )
+      .map(([, info]) => info.label);
+    if (disabledFields.length > 0) {
+      diff.push({
+        label: "Campos desativados",
+        value: disabledFields.join(", "),
+      });
+    }
+    return diff;
+  };
+
+  // Check if NFE exists for a numeric search term
+  const checkNfeForTerm = async (term) => {
+    try {
+      const response = await axios.get(
+        `${process.env.REACT_APP_API_URL}/api/search_nfe`,
+        {
+          params: {
+            query: term,
+            search_by_number: true,
+            search_by_chave: false,
+            search_by_fornecedor: false,
+            search_by_item: false,
+            exact_term_search: true,
+          },
+          withCredentials: true,
+        },
+      );
+      const nfes = response.data?.nfes || [];
+      if (nfes.length > 0) {
+        setNfeFoundForTerm(term);
+        setNfeBadge?.(true);
+      } else {
+        setNfeFoundForTerm(null);
+        setNfeBadge?.(false);
+      }
+    } catch {
+      setNfeFoundForTerm(null);
+    }
+  };
+
   // Export to Excel handler
   const handleExportExcel = () => {
     exportPurchaseOrdersToExcel(results);
@@ -1465,6 +1570,9 @@ const UnifiedSearch = () => {
   const handleSearch = async (page = 1, perPageOverride) => {
     const trimmedQuery = (searchParams.query || "").trim();
     const perPageToUse = perPageOverride ?? perPage;
+    setHasSearched(true);
+    setNfeFoundForTerm(null);
+    setNfeBadge?.(false);
 
     if (activeRequestRef.current) {
       activeRequestRef.current.abort();
@@ -1556,6 +1664,15 @@ const UnifiedSearch = () => {
 
       if (usingEnhanced) {
         setEstimatedResults(response.data?.total_results ?? purchases.length);
+      }
+
+      // If no results and query looks like a number, check if an NFE exists
+      if (
+        purchases.length === 0 &&
+        trimmedQuery &&
+        /^\d+$/.test(trimmedQuery)
+      ) {
+        checkNfeForTerm(trimmedQuery);
       }
     } catch (error) {
       if (controller.signal.aborted || error?.code === "ERR_CANCELED") {
@@ -2196,7 +2313,7 @@ const UnifiedSearch = () => {
         </Accordion>
 
         {/* Empty State - Show when no results and not loading */}
-        {results.length === 0 && !loading && (
+        {results.length === 0 && !loading && !hasSearched && (
           <Paper
             elevation={0}
             sx={{
@@ -2215,6 +2332,99 @@ const UnifiedSearch = () => {
             <Typography variant="body2" color="text.disabled">
               Pesquise por código, fornecedor, descrição de item ou nota fiscal
             </Typography>
+          </Paper>
+        )}
+
+        {/* No Results Found - Show after search returns empty */}
+        {results.length === 0 && !loading && hasSearched && (
+          <Paper
+            elevation={0}
+            sx={{
+              p: 5,
+              mb: 3,
+              borderRadius: 3,
+              border: "1px solid",
+              borderColor: "divider",
+              textAlign: "center",
+            }}
+          >
+            <SearchOffIcon
+              sx={{ fontSize: 56, color: "text.disabled", mb: 2 }}
+            />
+            <Typography variant="h6" color="text.secondary" gutterBottom>
+              Nenhum pedido de compra foi encontrado para o termo buscado com os
+              filtros selecionados
+            </Typography>
+
+            {/* Show search term */}
+            {searchParams.query?.trim() && (
+              <Typography variant="body1" color="text.secondary" sx={{ mt: 1 }}>
+                Termo pesquisado: <strong>"{searchParams.query.trim()}"</strong>
+              </Typography>
+            )}
+
+            {/* Show non-default filters */}
+            {getNonDefaultFilters().length > 0 && (
+              <Box sx={{ mt: 2, display: "inline-block", textAlign: "left" }}>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ mb: 1, fontWeight: 600 }}
+                >
+                  Filtros da pesquisa:
+                </Typography>
+                {getNonDefaultFilters().map((filter, idx) => (
+                  <Typography
+                    key={idx}
+                    variant="body2"
+                    color="text.disabled"
+                    sx={{ ml: 1 }}
+                  >
+                    • {filter.label}: <strong>{filter.value}</strong>
+                  </Typography>
+                ))}
+              </Box>
+            )}
+
+            {/* NFE found hint */}
+            {nfeFoundForTerm && (
+              <Paper
+                elevation={0}
+                sx={{
+                  mt: 3,
+                  mx: "auto",
+                  maxWidth: 520,
+                  p: 2.5,
+                  borderRadius: 2,
+                  bgcolor: "rgba(211, 47, 47, 0.06)",
+                  border: "1px solid rgba(211, 47, 47, 0.25)",
+                  textAlign: "left",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 1.5,
+                }}
+              >
+                <ManageSearchIcon
+                  sx={{ color: "error.main", fontSize: 28, mt: 0.25 }}
+                />
+                <Box>
+                  <Typography
+                    variant="body2"
+                    sx={{ fontWeight: 600, color: "error.dark" }}
+                  >
+                    Nota fiscal encontrada
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ mt: 0.5 }}
+                  >
+                    Entretanto foi encontrada uma nota fiscal com esse número,
+                    você pode buscá-la na busca de notas no menu lateral.
+                  </Typography>
+                </Box>
+              </Paper>
+            )}
           </Paper>
         )}
 

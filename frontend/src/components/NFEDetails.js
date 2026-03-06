@@ -54,7 +54,7 @@ const NFEDetails = ({ open, onClose, nfeChave, nfeNumero }) => {
         {
           params: { xmlKey: nfeChave },
           withCredentials: true,
-        }
+        },
       );
       setNfeData(response.data);
     } catch (err) {
@@ -84,7 +84,7 @@ const NFEDetails = ({ open, onClose, nfeChave, nfeNumero }) => {
     if (cleaned.length !== 14) return cnpj;
     return cleaned.replace(
       /^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,
-      "$1.$2.$3/$4-$5"
+      "$1.$2.$3/$4-$5",
     );
   };
 
@@ -549,7 +549,7 @@ const NFEDetails = ({ open, onClose, nfeChave, nfeNumero }) => {
                         <InfoRow
                           label="CNPJ"
                           value={formatCNPJ(
-                            nfeData.transporte?.transportadora?.cnpj
+                            nfeData.transporte?.transportadora?.cnpj,
                           )}
                         />
                         <InfoRow
@@ -651,7 +651,7 @@ const NFEDetails = ({ open, onClose, nfeChave, nfeNumero }) => {
                         <InfoRow
                           label="Valor do Frete"
                           value={formatCurrency(
-                            nfeData.transporte?.valor_frete
+                            nfeData.transporte?.valor_frete,
                           )}
                         />
                         <InfoRow
