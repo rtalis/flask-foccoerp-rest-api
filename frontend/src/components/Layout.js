@@ -31,6 +31,7 @@ import {
   ManageSearch as ManageSearchIcon,
   People as PeopleIcon,
   AccountCircle as AccountCircleIcon,
+  BarChart as BarChartIcon,
 } from "@mui/icons-material";
 import TrackedCompanies from "./TrackedCompanies";
 
@@ -378,6 +379,54 @@ const Layout = ({ onLogout }) => {
               </ListItemButton>
             </Tooltip>
           ))}
+
+        {/* Admin-only: Usage Report */}
+        {isAdmin && (
+          <Tooltip
+            title={!sidebarOpen ? "Relatório de Uso" : ""}
+            placement="right"
+            arrow
+          >
+            <ListItemButton
+              onClick={() => handleNavigate("/usage-report")}
+              selected={isActive("/usage-report")}
+              sx={{
+                borderRadius: 2,
+                mb: 0.5,
+                minHeight: 44,
+                px: sidebarOpen ? 2 : 1.5,
+                justifyContent: sidebarOpen ? "flex-start" : "center",
+                color: "rgba(255,255,255,0.7)",
+                "&:hover": {
+                  bgcolor: "rgba(255,255,255,0.08)",
+                  color: "#fff",
+                },
+                "&.Mui-selected": {
+                  bgcolor: "primary.main",
+                  color: "#fff",
+                  "&:hover": { bgcolor: "primary.dark" },
+                },
+              }}
+            >
+              <ListItemIcon
+                sx={{
+                  minWidth: 0,
+                  mr: sidebarOpen ? 2 : 0,
+                  justifyContent: "center",
+                  color: "inherit",
+                }}
+              >
+                <BarChartIcon />
+              </ListItemIcon>
+              {sidebarOpen && (
+                <ListItemText
+                  primary="Relatório de Uso"
+                  primaryTypographyProps={{ fontSize: "0.875rem" }}
+                />
+              )}
+            </ListItemButton>
+          </Tooltip>
+        )}
 
         {/* Account Button - visible to all users */}
         <Tooltip title={!sidebarOpen ? "Conta" : ""} placement="right" arrow>

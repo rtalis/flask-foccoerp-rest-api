@@ -9,7 +9,7 @@ from sqlalchemy import and_, or_, func, cast, tuple_
 from sqlalchemy.sql import exists
 from sqlalchemy.orm import joinedload
 from flask_login import login_user, logout_user, login_required, current_user
-from app.models import LoginHistory, NFEData, NFEDestinatario, NFEntry, PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch, Quotation, User
+from app.models import LoginHistory, NFEData, NFEDestinatario, NFEntry, PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch, Quotation, RequestLog, User
 from app.routes.auth import token_required
 from app.utils import  apply_adjustments, check_order_fulfillment, fuzzy_search, import_rcot0300, import_rfor0302, import_rpdc0250c, import_ruah,_parse_date
 from app import db
@@ -4529,3 +4529,104 @@ def sync_company_nfes_chunk(company_id):
             'chunk_start': chunk_start,
             'chunk_end': chunk_end,
         }), 200
+
+
+@bp.route('/usage_report', methods=['GET'])
+@login_required
+def usage_report():
+    if getattr(current_user, 'role', 'viewer') != 'admin':
+        return jsonify({'error': 'Forbidden'}), 403
+
+    days = request.args.get('days', 30, type=int)
+    if days < 1 or days > 365:
+        days = 30
+    cutoff = datetime.now() - __import__('datetime').timedelta(days=days)
+
+    # Logins per user
+    logins_query = (
+        db.session.query(
+            User.id,
+            User.username,
+            User.email,
+            func.count(LoginHistory.id).label('login_count')
+        )
+        .outerjoin(LoginHistory, and_(
+            LoginHistory.user_id == User.id,
+            LoginHistory.login_time >= cutoff
+        ))
+        .group_by(User.id, User.username, User.email)
+        .all()
+    )
+
+    # Requests per user
+    requests_query = (
+        db.session.query(
+            User.id,
+            User.username,
+            func.count(RequestLog.id).label('request_count')
+        )
+        .outerjoin(RequestLog, and_(
+            RequestLog.user_id == User.id,
+            RequestLog.timestamp >= cutoff
+        ))
+        .group_by(User.id, User.username)
+        .all()
+    )
+
+    # Daily logins over period
+    daily_logins = (
+        db.session.query(
+            func.date_trunc('day', LoginHistory.login_time).label('day'),
+            func.count(LoginHistory.id).label('count')
+        )
+        .filter(LoginHistory.login_time >= cutoff)
+        .group_by('day')
+        .order_by('day')
+        .all()
+    )
+
+    # Daily requests over period
+    daily_requests = (
+        db.session.query(
+            func.date_trunc('day', RequestLog.timestamp).label('day'),
+            func.count(RequestLog.id).label('count')
+        )
+        .filter(RequestLog.timestamp >= cutoff)
+        .group_by('day')
+        .order_by('day')
+        .all()
+    )
+
+    # Top endpoints
+    top_endpoints = (
+        db.session.query(
+            RequestLog.endpoint,
+            RequestLog.method,
+            func.count(RequestLog.id).label('count')
+        )
+        .filter(RequestLog.timestamp >= cutoff)
+        .group_by(RequestLog.endpoint, RequestLog.method)
+        .order_by(func.count(RequestLog.id).desc())
+        .limit(10)
+        .all()
+    )
+
+    requests_map = {r.id: r.request_count for r in requests_query}
+
+    users_data = []
+    for row in logins_query:
+        users_data.append({
+            'user_id': row.id,
+            'username': row.username,
+            'email': row.email,
+            'login_count': row.login_count,
+            'request_count': requests_map.get(row.id, 0),
+        })
+
+    return jsonify({
+        'users': users_data,
+        'daily_logins': [{'date': d.day.isoformat(), 'count': d.count} for d in daily_logins],
+        'daily_requests': [{'date': d.day.isoformat(), 'count': d.count} for d in daily_requests],
+        'top_endpoints': [{'endpoint': e.endpoint, 'method': e.method, 'count': e.count} for e in top_endpoints],
+        'period_days': days,
+    }), 200

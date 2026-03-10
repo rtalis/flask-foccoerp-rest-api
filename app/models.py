@@ -493,3 +493,17 @@ class PurchaseItemNFEMatch(db.Model):
         db.UniqueConstraint('cod_pedc', 'cod_emp1', 'item_seq', 'nfe_item_id', name='uq_purchase_item_nfe_match'),
         db.Index('ix_purchase_item_nfe_match_score', 'cod_pedc', 'cod_emp1', 'match_score'),
     )
+
+
+class RequestLog(db.Model):
+    __tablename__ = 'request_logs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    endpoint = db.Column(db.String(255), nullable=False)
+    method = db.Column(db.String(10), nullable=False)
+    status_code = db.Column(db.Integer, nullable=True)
+    duration_ms = db.Column(db.Float, nullable=True)
+    timestamp = db.Column(db.DateTime, default=datetime.now, index=True)
+
+    user = db.relationship('User', backref=db.backref('request_logs', lazy='dynamic'))

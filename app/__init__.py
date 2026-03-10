@@ -9,6 +9,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from config import Config
 import os
 import jwt
+import time
 from flask_mail import Mail
 from datetime import date, datetime
 from flask.json.provider import DefaultJSONProvider
@@ -56,6 +57,32 @@ def create_app():
         app.register_blueprint(auth.auth_bp, url_prefix='/auth')
 
         db.create_all()
+
+    @app.before_request
+    def log_request_start():
+        request._start_time = time.time()
+
+    @app.after_request
+    def log_request(response):
+        if current_user.is_authenticated and hasattr(request, '_start_time'):
+            # Skip logging for static files
+            if request.path.startswith('/static'):
+                return response
+            try:
+                from app.models import RequestLog
+                duration = (time.time() - request._start_time) * 1000
+                log = RequestLog(
+                    user_id=current_user.id,
+                    endpoint=request.path,
+                    method=request.method,
+                    status_code=response.status_code,
+                    duration_ms=round(duration, 2),
+                )
+                db.session.add(log)
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+        return response
 
     @app.before_request
     def validate_session_token():

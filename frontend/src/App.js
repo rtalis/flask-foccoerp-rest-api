@@ -23,6 +23,7 @@ import NFESearch from "./components/NFESearch";
 import ReleaseNotes from "./components/ReleaseNotes";
 import ServerErrorPopup from "./components/ServerErrorPopup";
 import Account from "./components/Account";
+import UsageReport from "./components/UsageReport";
 
 const AppContent = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -206,6 +207,7 @@ const AppContent = () => {
             <Route path="/import" element={<ImportFile />} />
             <Route path="/register" element={<Register />} />
             <Route path="/token-manager" element={<TokenManager />} />
+            <Route path="/usage-report" element={<UsageReport />} />
             <Route path="/account" element={<Account />} />
           </Route>
 
