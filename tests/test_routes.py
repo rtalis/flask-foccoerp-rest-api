@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 from flask import Flask
 from flask.testing import FlaskClient
 from app import create_app, db
-from app.models import PurchaseOrder, PurchaseItem, User, LoginHistory, NFEntry, Quotation
+from app.models import PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch, NFEData, User, LoginHistory, NFEntry, Quotation
 from app.utils import check_order_fulfillment
 from werkzeug.security import generate_password_hash
 
@@ -183,6 +183,69 @@ def test_search_combined_matches_description(auth_client: FlaskClient):
     assert payload['purchases'][0]['order']['cod_pedc'] == 'PO-ALPHA-001'
     assert payload['purchases'][0]['items'][0]['descricao'] == 'Bomba Hidraulica industrial'
 
+
+def test_search_combined_matches_num_nf_from_nfe_match(auth_client: FlaskClient):
+    with auth_client.application.app_context():
+        order = PurchaseOrder(
+            cod_pedc='PO-MATCH-001',
+            dt_emis=date(2024, 5, 20),
+            fornecedor_id=33,
+            fornecedor_descricao='Fornecedor Match',
+            cod_emp1='1'
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        item = PurchaseItem(
+            purchase_order_id=order.id,
+            item_id='MATCH-ITEM',
+            dt_emis=date(2024, 5, 20),
+            cod_pedc='PO-MATCH-001',
+            cod_emp1='1',
+            linha=1,
+            descricao='Item com correspondencia por NFE match',
+            quantidade=1,
+            preco_unitario=100,
+            total=100
+        )
+        db.session.add(item)
+        db.session.flush()
+
+        nfe_data = NFEData(
+            chave='12345678901234567890123456789012345678901234',
+            xml_content='<xml />',
+            numero='55555'
+        )
+        db.session.add(nfe_data)
+        db.session.flush()
+
+        match = PurchaseItemNFEMatch(
+            purchase_item_id=item.id,
+            cod_pedc='PO-MATCH-001',
+            cod_emp1='1',
+            item_seq=1,
+            nfe_id=nfe_data.id,
+            nfe_chave=nfe_data.chave,
+            nfe_numero='55555',
+            match_score=95
+        )
+        db.session.add(match)
+        db.session.commit()
+
+    response = auth_client.get('/api/search_combined', query_string={
+        'query': '55555',
+        'page': 1,
+        'per_page': 10,
+        'score_cutoff': 100,
+        'searchByNumNF': True,
+        'selectedFuncName': 'todos'
+    })
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload['purchases']
+    assert payload['purchases'][0]['order']['cod_pedc'] == 'PO-MATCH-001'
+
 def test_get_last_update(auth_client: FlaskClient):
     with auth_client.application.app_context():
         order = PurchaseOrder(
@@ -266,6 +329,68 @@ def test_dashboard_summary_includes_daily_usage(auth_client: FlaskClient):
 def test_search_advanced_allows_empty_query(auth_client: FlaskClient):
     response = auth_client.get('/api/search_advanced')
     assert response.status_code == 200
+
+
+def test_search_advanced_matches_num_nf_from_nfe_match(auth_client: FlaskClient):
+    with auth_client.application.app_context():
+        order = PurchaseOrder(
+            cod_pedc='PO-ADV-MATCH-001',
+            dt_emis=date(2024, 6, 10),
+            fornecedor_id=44,
+            fornecedor_descricao='Fornecedor Advanced Match',
+            cod_emp1='1'
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        item = PurchaseItem(
+            purchase_order_id=order.id,
+            item_id='ADV-MATCH-ITEM',
+            dt_emis=date(2024, 6, 10),
+            cod_pedc='PO-ADV-MATCH-001',
+            cod_emp1='1',
+            linha=1,
+            descricao='Item para busca avancada por match de NFE',
+            quantidade=2,
+            preco_unitario=200,
+            total=400
+        )
+        db.session.add(item)
+        db.session.flush()
+
+        nfe_data = NFEData(
+            chave='22345678901234567890123456789012345678901234',
+            xml_content='<xml />',
+            numero='55555'
+        )
+        db.session.add(nfe_data)
+        db.session.flush()
+
+        match = PurchaseItemNFEMatch(
+            purchase_item_id=item.id,
+            cod_pedc='PO-ADV-MATCH-001',
+            cod_emp1='1',
+            item_seq=1,
+            nfe_id=nfe_data.id,
+            nfe_chave=nfe_data.chave,
+            nfe_numero='55555',
+            match_score=90
+        )
+        db.session.add(match)
+        db.session.commit()
+
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': '55555',
+        'fields': 'num_nf',
+        'page': 1,
+        'per_page': 20,
+        'selectedFuncName': 'todos'
+    })
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload['purchases']
+    assert payload['purchases'][0]['order']['cod_pedc'] == 'PO-ADV-MATCH-001'
 
 
 def test_search_advanced_multiterm(auth_client: FlaskClient):

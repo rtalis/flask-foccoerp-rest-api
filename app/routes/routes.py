@@ -831,6 +831,13 @@ def search_advanced():
             ))
             term_clauses.append(nf_clause)
 
+            nfe_match_clause = exists().where(and_(
+                PurchaseItemNFEMatch.cod_emp1 == PurchaseItem.cod_emp1,
+                PurchaseItemNFEMatch.cod_pedc == PurchaseItem.cod_pedc,
+                apply_ilike(PurchaseItemNFEMatch.nfe_numero, pattern)
+            ))
+            term_clauses.append(nfe_match_clause)
+
         token_filters.append(or_(*term_clauses))
 
     if token_filters:
@@ -1004,16 +1011,28 @@ def search_combined():
         if search_by_descricao:
             filters.append(PurchaseItem.descricao.ilike(f'%{query}%'))
         if search_by_num_nf:
+            nf_filters = []
+
             nf_entries = NFEntry.query.filter(NFEntry.num_nf.ilike(f'%{query}%')).all()
             if nf_entries:
-                nf_filters = []
                 for nf in nf_entries:
                     nf_filters.append(and_(
                         PurchaseItem.cod_pedc == nf.cod_pedc,
                         PurchaseItem.cod_emp1 == nf.cod_emp1
                     ))
-                if nf_filters:
-                    filters.append(or_(*nf_filters))
+
+            nfe_matches = PurchaseItemNFEMatch.query.filter(
+                PurchaseItemNFEMatch.nfe_numero.ilike(f'%{query}%')
+            ).all()
+            if nfe_matches:
+                for match in nfe_matches:
+                    nf_filters.append(and_(
+                        PurchaseItem.cod_pedc == match.cod_pedc,
+                        PurchaseItem.cod_emp1 == match.cod_emp1
+                    ))
+
+            if nf_filters:
+                filters.append(or_(*nf_filters))
 
         if not any([search_by_cod_pedc, search_by_fornecedor, search_by_observacao, search_by_item_id, search_by_descricao, search_by_num_nf]):
             filters.append(or_(
