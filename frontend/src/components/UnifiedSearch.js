@@ -1131,6 +1131,7 @@ const UnifiedSearch = () => {
     selectedCodEmp1: "todos",
     searchByCodPedc: true,
     searchByFornecedor: true,
+    searchByCnpjFornecedor: false,
     searchByObservacao: true,
     searchByItemId: true,
     searchByDescricao: true,
@@ -1248,6 +1249,7 @@ const UnifiedSearch = () => {
     const fieldDefaults = {
       searchByCodPedc: { label: "Cód. Pedido", def: true },
       searchByFornecedor: { label: "Fornecedor", def: true },
+      searchByCnpjFornecedor: { label: "CNPJ Fornecedor", def: false },
       searchByObservacao: { label: "Observação", def: true },
       searchByItemId: { label: "Cód. Item", def: true },
       searchByDescricao: { label: "Descrição", def: true },
@@ -1530,6 +1532,7 @@ const UnifiedSearch = () => {
     if (searchParams.searchByItemId) selected.push("item_id");
     if (searchParams.searchByCodPedc) selected.push("cod_pedc");
     if (searchParams.searchByFornecedor) selected.push("fornecedor");
+    if (searchParams.searchByCnpjFornecedor) selected.push("cnpj_fornecedor");
     if (searchParams.searchByObservacao) selected.push("observacao");
     if (searchParams.searchByNumNF) selected.push("num_nf");
     return selected.length ? selected : DEFAULT_ENHANCED_FIELDS;
@@ -1549,6 +1552,7 @@ const UnifiedSearch = () => {
             score_cutoff: searchParams.score_cutoff,
             searchByCodPedc: searchParams.searchByCodPedc,
             searchByFornecedor: searchParams.searchByFornecedor,
+            searchByCnpjFornecedor: searchParams.searchByCnpjFornecedor,
             searchByObservacao: searchParams.searchByObservacao,
             searchByItemId: searchParams.searchByItemId,
             searchByNumNF: searchParams.searchByNumNF,
@@ -1626,6 +1630,7 @@ const UnifiedSearch = () => {
               score_cutoff: searchParams.score_cutoff,
               searchByCodPedc: searchParams.searchByCodPedc,
               searchByFornecedor: searchParams.searchByFornecedor,
+              searchByCnpjFornecedor: searchParams.searchByCnpjFornecedor,
               searchByObservacao: searchParams.searchByObservacao,
               searchByItemId: searchParams.searchByItemId,
               searchByDescricao: searchParams.searchByDescricao,
@@ -1745,6 +1750,11 @@ const UnifiedSearch = () => {
         name: "searchByFornecedor",
         label: "Nome do Fornecedor",
         disabled: searchParams.searchPrecision !== "precisa",
+      },
+      {
+        name: "searchByCnpjFornecedor",
+        label: "CNPJ do Fornecedor",
+        disabled: false,
       },
     ],
     [

@@ -429,6 +429,110 @@ def test_search_advanced_multiterm(auth_client: FlaskClient):
     assert response.json['purchases']
     assert response.json['purchases'][0]['order']['cod_pedc'] == 'PO-900'
 
+
+def test_search_combined_matches_supplier_cnpj_with_or_without_punctuation(auth_client: FlaskClient):
+    with auth_client.application.app_context():
+        order = PurchaseOrder(
+            cod_pedc='PO-CNPJ-001',
+            dt_emis=date(2024, 7, 1),
+            fornecedor_id='12.345.678/0001-95',
+            fornecedor_descricao='Fornecedor CNPJ'
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        item = PurchaseItem(
+            purchase_order_id=order.id,
+            item_id='CNPJ-ITEM',
+            dt_emis=date(2024, 7, 1),
+            cod_pedc='PO-CNPJ-001',
+            descricao='Item com CNPJ',
+            quantidade=1,
+            preco_unitario=100,
+            total=100
+        )
+        db.session.add(item)
+        db.session.commit()
+
+    response_digits = auth_client.get('/api/search_combined', query_string={
+        'query': '12345678000195',
+        'page': 1,
+        'per_page': 10,
+        'score_cutoff': 100,
+        'searchByCnpjFornecedor': True,
+        'selectedFuncName': 'todos'
+    })
+
+    assert response_digits.status_code == 200
+    payload_digits = response_digits.get_json()
+    assert payload_digits['purchases']
+    assert payload_digits['purchases'][0]['order']['cod_pedc'] == 'PO-CNPJ-001'
+
+    response_masked = auth_client.get('/api/search_combined', query_string={
+        'query': '12.345.678/0001-95',
+        'page': 1,
+        'per_page': 10,
+        'score_cutoff': 100,
+        'searchByCnpjFornecedor': True,
+        'selectedFuncName': 'todos'
+    })
+
+    assert response_masked.status_code == 200
+    payload_masked = response_masked.get_json()
+    assert payload_masked['purchases']
+    assert payload_masked['purchases'][0]['order']['cod_pedc'] == 'PO-CNPJ-001'
+
+
+def test_search_advanced_matches_supplier_cnpj_with_or_without_punctuation(auth_client: FlaskClient):
+    with auth_client.application.app_context():
+        order = PurchaseOrder(
+            cod_pedc='PO-ADV-CNPJ-001',
+            dt_emis=date(2024, 7, 2),
+            fornecedor_id='98765432000110',
+            fornecedor_descricao='Fornecedor Advanced CNPJ'
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        item = PurchaseItem(
+            purchase_order_id=order.id,
+            item_id='ADV-CNPJ-ITEM',
+            dt_emis=date(2024, 7, 2),
+            cod_pedc='PO-ADV-CNPJ-001',
+            descricao='Item advanced CNPJ',
+            quantidade=1,
+            preco_unitario=250,
+            total=250
+        )
+        db.session.add(item)
+        db.session.commit()
+
+    response_digits = auth_client.get('/api/search_advanced', query_string={
+        'query': '98765432000110',
+        'fields': 'cnpj_fornecedor',
+        'page': 1,
+        'per_page': 20,
+        'selectedFuncName': 'todos'
+    })
+
+    assert response_digits.status_code == 200
+    payload_digits = response_digits.get_json()
+    assert payload_digits['purchases']
+    assert payload_digits['purchases'][0]['order']['cod_pedc'] == 'PO-ADV-CNPJ-001'
+
+    response_masked = auth_client.get('/api/search_advanced', query_string={
+        'query': '98.765.432/0001-10',
+        'fields': 'cnpj_fornecedor',
+        'page': 1,
+        'per_page': 20,
+        'selectedFuncName': 'todos'
+    })
+
+    assert response_masked.status_code == 200
+    payload_masked = response_masked.get_json()
+    assert payload_masked['purchases']
+    assert payload_masked['purchases'][0]['order']['cod_pedc'] == 'PO-ADV-CNPJ-001'
+
     def test_search_advanced_respects_min_value(auth_client: FlaskClient):
         with auth_client.application.app_context():
             low_order = PurchaseOrder(
