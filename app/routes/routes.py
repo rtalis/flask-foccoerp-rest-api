@@ -3023,7 +3023,7 @@ def manual_match_nfe():
         
         # Find the specific match for this NFE
         nfe_matches = [m for m in match_result.get('matches', []) 
-                      if m.get('nfe_id') == nfe_id]
+                      if m.get('nfe_id') == nfe.id]
         
         if not nfe_matches:
             # If no auto-match found, create a basic match record
@@ -3044,7 +3044,7 @@ def manual_match_nfe():
             cod_pedc=cod_pedc,
             cod_emp1=cod_emp1,
             item_seq=purchase_order.purchase_items[0].linha if purchase_order.purchase_items else None,
-            nfe_id=nfe_id,
+            nfe_id=nfe.id,
             nfe_chave=nfe.chave,
             nfe_numero=nfe.numero,
             match_score=match_data.get('match_score', 75),
@@ -3061,7 +3061,7 @@ def manual_match_nfe():
         existing_match = PurchaseItemNFEMatch.query.filter_by(
             cod_pedc=cod_pedc,
             cod_emp1=cod_emp1,
-            nfe_id=nfe_id
+            nfe_id=nfe.id
         ).first()
         
         if existing_match:

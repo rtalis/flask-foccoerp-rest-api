@@ -18,7 +18,7 @@
       "Adicionada busca no banco de dados de notas local, quando um numero de nota fiscal não foi atribuido a um pedido de compra",
       "Adicionada nova mensagem quando nenhum resultado é encontrado, mostrando os filtros que foram utilizados na busca."
     ]
-  }
+  },
   {
     "version": "2.0.9",
     "notes": [
