@@ -1808,8 +1808,9 @@ def get_nfe_by_purchase():
 
     fornecedor_cnpj = ''.join(filter(str.isdigit, str(fornecedor_cnpj)))
     
-    start_date = purchase_order.dt_emis
-    end_date = datetime.now()
+    start_date = purchase_order.dt_emis - relativedelta(days=30)  # Search for NFEs issued within 1 month before the purchase order date, to cover cases where NFE is issued before receive order generation
+    #end_date = start_date + timedelta(days=120)  # Search for NFEs issued within 120 days after the purchase order date
+    end_date = datetime.now() 
     
     start_date_str = start_date.strftime('%Y-%m-%dT00:00:00.000Z')
     end_date_str = end_date.strftime('%Y-%m-%dT23:59:59.999Z')
