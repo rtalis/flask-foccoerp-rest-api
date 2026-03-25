@@ -19,11 +19,4 @@
       "Adicionada nova mensagem quando nenhum resultado é encontrado, mostrando os filtros que foram utilizados na busca."
     ]
   }
-  {
-    "version": "2.0.9",
-    "notes": [
-      "Adicionada busca por CNPJ - Quando um numero completo de CNPJ é inserido, o sistema irá buscar pelos pedidos correspondentes.",
-      "Consertado erro quando o sistema tentava buscar uma nota inexistente na base e a data de emissão era anterior a data do pedido de compra."
-    ]
-  }
 ]
