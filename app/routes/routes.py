@@ -9,7 +9,7 @@ from sqlalchemy import and_, or_, func, cast, tuple_
 from sqlalchemy.sql import exists
 from sqlalchemy.orm import joinedload
 from flask_login import login_user, logout_user, login_required, current_user
-from app.models import LoginHistory, NFEData, NFEDestinatario, NFEntry, PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch, Quotation, RequestLog, User
+from app.models import LoginHistory, NFEData, NFEDestinatario, NFEntry, PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch, Quotation, RequestLog, Supplier, User
 from app.routes.auth import token_required
 from app.utils import  apply_adjustments, check_order_fulfillment, fuzzy_search, import_rcot0300, import_rfor0302, import_rpdc0250c, import_ruah,_parse_date
 from app import db
@@ -757,6 +757,7 @@ def search_advanced():
     }
 
     include_nf = 'num_nf' in fields
+    include_cnpj_fornecedor = 'cnpj_fornecedor' in fields
     search_columns = [column_map[key] for key in fields if key in column_map]
     if not search_columns and not include_nf:
         search_columns = [PurchaseItem.descricao]
@@ -781,6 +782,23 @@ def search_advanced():
             return col_expr.ilike(search_term)
         else:
             return column.ilike(pattern)
+
+    def normalize_cnpj_expr(column):
+        normalized = func.coalesce(cast(column, db.String), '')
+        for char in ('.', '/', '-', ' '):
+            normalized = func.replace(normalized, char, '')
+        return normalized
+
+    def is_cnpj_like(token: str) -> bool:
+        """Check if token looks like a CNPJ or CPF (contains mostly digits, dots, slashes, dashes)."""
+        cleaned = re.sub(r'[^0-9]', '', token)
+        # CNPJ has 14 digits, CPF has 11 digits
+        return len(cleaned) in (11, 14) or (len(cleaned) > 8 and re.search(r'\d{8,}', token))
+
+    # Auto-detect CNPJ/CPF tokens and enable CNPJ search
+    has_cnpj_like_token = any(is_cnpj_like(token) for token in tokens)
+    if has_cnpj_like_token:
+        include_cnpj_fornecedor = True
 
     base_query = (
         PurchaseItem.query
@@ -815,12 +833,18 @@ def search_advanced():
 
     if hide_cancelled:
         base_query = base_query.filter(PurchaseItem.quantidade > PurchaseItem.qtde_canc)
+    
     token_filters = []
     for token in tokens:
         pattern = build_like_pattern(token)
-        term_clauses = [apply_ilike(column, pattern) for column in search_columns]
+        
+        # For CNPJ-like tokens, skip regular text columns but still create term_clauses with CNPJ search
+        if is_cnpj_like(token):
+            term_clauses = []  # Will only use CNPJ search for this token
+        else:
+            term_clauses = [apply_ilike(column, pattern) for column in search_columns]
 
-        if include_nf:
+        if include_nf and not is_cnpj_like(token):
             nf_column = NFEntry.num_nf
             nf_expr = remove_accents(nf_column) if remove_accents else nf_column
             nf_clause = exists().where(and_(
@@ -838,7 +862,23 @@ def search_advanced():
             ))
             term_clauses.append(nfe_match_clause)
 
-        token_filters.append(or_(*term_clauses))
+        # Handle CNPJ search for both explicit requests and auto-detected CNPJ tokens
+        if include_cnpj_fornecedor or is_cnpj_like(token):
+            cnpj_token = re.sub(r'[^0-9*]', '', token)
+            if cnpj_token:
+                cnpj_pattern = build_like_pattern(cnpj_token)
+                cnpj_clause = exists().where(and_(
+                    or_(
+                        Supplier.id_for == PurchaseOrder.fornecedor_id,
+                        Supplier.cod_for == cast(PurchaseOrder.fornecedor_id, db.String),
+                        func.ltrim(Supplier.cod_for, '0') == func.ltrim(cast(PurchaseOrder.fornecedor_id, db.String), '0')
+                    ),
+                    normalize_cnpj_expr(Supplier.nvl_forn_cnpj_forn_cpf).ilike(cnpj_pattern)
+                ))
+                term_clauses.append(cnpj_clause)
+
+        if term_clauses:
+            token_filters.append(or_(*term_clauses))
 
     if token_filters:
         base_query = base_query.filter(and_(*token_filters))
@@ -954,6 +994,7 @@ def search_combined():
     score_cutoff = int(request.args.get('score_cutoff', 80))
     search_by_cod_pedc = request.args.get('searchByCodPedc', 'false').lower() == 'true'
     search_by_fornecedor = request.args.get('searchByFornecedor', 'false').lower() == 'true'
+    search_by_cnpj_fornecedor = request.args.get('searchByCnpjFornecedor', 'false').lower() == 'true'
     search_by_observacao = request.args.get('searchByObservacao', 'false').lower() == 'true'
     search_by_item_id = request.args.get('searchByItemId', 'false').lower() == 'true'
     search_by_descricao = request.args.get('searchByDescricao', 'false').lower() == 'true'
@@ -1004,6 +1045,23 @@ def search_combined():
             filters.append(PurchaseOrder.cod_pedc.ilike(f'%{query}%'))
         if search_by_fornecedor:
             filters.append(PurchaseOrder.fornecedor_descricao.ilike(f'%{query}%'))
+        if search_by_cnpj_fornecedor:
+            cnpj_pattern = re.sub(r'[^0-9*]', '', query)
+            if cnpj_pattern:
+                cnpj_pattern = cnpj_pattern.replace('*', '%')
+                if '%' not in cnpj_pattern:
+                    cnpj_pattern = f'%{cnpj_pattern}%'
+                normalized_supplier_cnpj = func.coalesce(cast(Supplier.nvl_forn_cnpj_forn_cpf, db.String), '')
+                for char in ('.', '/', '-', ' '):
+                    normalized_supplier_cnpj = func.replace(normalized_supplier_cnpj, char, '')
+                filters.append(exists().where(and_(
+                    or_(
+                        Supplier.id_for == PurchaseOrder.fornecedor_id,
+                        Supplier.cod_for == cast(PurchaseOrder.fornecedor_id, db.String),
+                        func.ltrim(Supplier.cod_for, '0') == func.ltrim(cast(PurchaseOrder.fornecedor_id, db.String), '0')
+                    ),
+                    normalized_supplier_cnpj.ilike(cnpj_pattern)
+                )))
         if search_by_observacao:
             filters.append(PurchaseOrder.observacao.ilike(f'%{query}%'))
         if search_by_item_id:
@@ -1034,7 +1092,7 @@ def search_combined():
             if nf_filters:
                 filters.append(or_(*nf_filters))
 
-        if not any([search_by_cod_pedc, search_by_fornecedor, search_by_observacao, search_by_item_id, search_by_descricao, search_by_num_nf]):
+        if not any([search_by_cod_pedc, search_by_fornecedor, search_by_cnpj_fornecedor, search_by_observacao, search_by_item_id, search_by_descricao, search_by_num_nf]):
             filters.append(or_(
                 PurchaseItem.descricao.ilike(f'%{query}%'),
                 PurchaseItem.item_id.ilike(f'%{query}%'),
@@ -1116,6 +1174,7 @@ def count_results():
     score_cutoff = int(request.args.get('score_cutoff', 80))
     search_by_cod_pedc = request.args.get('searchByCodPedc', 'false').lower() == 'true'
     search_by_fornecedor = request.args.get('searchByFornecedor', 'false').lower() == 'true'
+    search_by_cnpj_fornecedor = request.args.get('searchByCnpjFornecedor', 'false').lower() == 'true'
     search_by_observacao = request.args.get('searchByObservacao', 'false').lower() == 'true'
     search_by_item_id = request.args.get('searchByItemId', 'false').lower() == 'true'
     search_by_descricao = request.args.get('searchByDescricao', 'false').lower() == 'true'
@@ -1147,6 +1206,7 @@ def count_results():
     multiplier = sum([
         search_by_cod_pedc,
         search_by_fornecedor,
+        search_by_cnpj_fornecedor,
         search_by_observacao,
         search_by_item_id,
         search_by_descricao,
@@ -1154,7 +1214,7 @@ def count_results():
     ])
     
     if multiplier == 0:
-        multiplier = 6
+        multiplier = 7
 
     estimated_count = base_count * multiplier
 
