@@ -1,8 +1,9 @@
-from flask import Blueprint, request, jsonify, make_response, current_app
+from flask import Blueprint, request, jsonify, make_response, current_app, session
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 import jwt
 import secrets
+import time
 from app.models import User, LoginHistory, UserToken
 from app import db, login_manager
 
@@ -91,6 +92,10 @@ def login():
         db.session.commit()
         
         login_user(user)
+        session.permanent = True
+        session['last_action_time'] = time.time()
+        session['login_time'] = time.time()
+        
         login_history = _record_login_event(user, request, method='password')
         send_login_notification_email(user, login_history.login_ip)
 

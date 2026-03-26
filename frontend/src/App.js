@@ -41,10 +41,13 @@ const AppContent = () => {
         });
         if (response.status === 200) {
           setIsAuthenticated(true);
-
-          // Automatically log out after 1 hour
-          const logoutTimer = setTimeout(handleLogout, 3600000);
-          return () => clearTimeout(logoutTimer);
+          
+          if (!localStorage.getItem('loginTime')) {
+            localStorage.setItem('loginTime', Date.now().toString());
+          }
+          if (!localStorage.getItem('lastActionTime')) {
+            localStorage.setItem('lastActionTime', Date.now().toString());
+          }
         }
       } catch (error) {
         setIsAuthenticated(false);
@@ -53,6 +56,57 @@ const AppContent = () => {
 
     checkAuth();
   }, [apiUrl]);
+
+  // Session activity tracker and expiration manager
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const updateActionTime = () => {
+      localStorage.setItem('lastActionTime', Date.now().toString());
+    };
+
+    let timeoutId;
+    const handleUserActivity = () => {
+      if (timeoutId) return;
+      timeoutId = setTimeout(() => {
+        updateActionTime();
+        timeoutId = null;
+      }, 5000); // Throttle activity updates to every 5 seconds
+    };
+
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+    events.forEach(event => window.addEventListener(event, handleUserActivity, { passive: true }));
+
+    // Check expiration every 30 seconds
+    const intervalId = setInterval(() => {
+      const loginTime = parseInt(localStorage.getItem('loginTime'), 10);
+      const lastActionTime = parseInt(localStorage.getItem('lastActionTime'), 10);
+      const now = Date.now();
+      
+      if (!loginTime || !lastActionTime) return;
+
+      const idleTimeoutMs = 15 * 60 * 1000;
+      const absoluteTimeoutMs = 60 * 60 * 1000;
+
+      const expirationTime = Math.max(
+        loginTime + absoluteTimeoutMs,
+        lastActionTime + idleTimeoutMs
+      );
+
+      if (now > expirationTime) {
+        handleLogout();
+        showSessionError({
+          message: "Sua sessão expirou por inatividade ou tempo limite."
+        });
+      }
+    }, 30000);
+
+    return () => {
+      events.forEach(event => window.removeEventListener(event, handleUserActivity));
+      if (timeoutId) clearTimeout(timeoutId);
+      clearInterval(intervalId);
+    };
+  }, [isAuthenticated, showSessionError]);
 
   // Interceptor for 401 (auth) errors and session invalidation
   useEffect(() => {
@@ -134,7 +188,8 @@ const AppContent = () => {
 
   const handleLogin = () => {
     setIsAuthenticated(true);
-    setTimeout(handleLogout, 3600000);
+    localStorage.setItem('loginTime', Date.now().toString());
+    localStorage.setItem('lastActionTime', Date.now().toString());
 
     fetch("/release-notes.json")
       .then((res) => res.json())

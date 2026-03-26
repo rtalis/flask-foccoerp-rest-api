@@ -82,6 +82,7 @@ class User(UserMixin, db.Model):
     system_name = db.Column(db.String(150), nullable= True)
     session_token = db.Column(db.String(64), nullable=True)  # Token to enforce single-device login
     session_token_created_at = db.Column(db.DateTime, nullable=True)  # When the session token was created
+    last_action_time = db.Column(db.DateTime, nullable=True)  # Last user activity time
 
 class Company(db.Model):
     __tablename__ = 'companies'
