@@ -1142,11 +1142,7 @@ const UnifiedSearch = () => {
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
-        if (parsed.length === 0) {
-           setUserCapabilities(['view_financials', 'view_nfes']); // Admin or grandfathered legacy state.
-        } else {
-           setUserCapabilities(parsed);
-        }
+        setUserCapabilities(parsed);
       } catch (error) {
         setUserCapabilities(['view_financials', 'view_nfes']);
       }

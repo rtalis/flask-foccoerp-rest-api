@@ -155,6 +155,22 @@ const NFESearch = () => {
   const [showTrackedCompanies, setShowTrackedCompanies] = useState(false);
   const [selectedNfe, setSelectedNfe] = useState(null);
   const [showNfeDetails, setShowNfeDetails] = useState(false);
+
+  const [userCapabilities, setUserCapabilities] = useState([]);
+  const canViewFinancials = userCapabilities.includes('view_financials');
+
+  useEffect(() => {
+    const stored = localStorage.getItem('userCapabilities');
+    if (stored) {
+      try {
+        setUserCapabilities(JSON.parse(stored));
+      } catch (error) {
+        setUserCapabilities(['view_financials', 'view_nfes']);
+      }
+    } else {
+      setUserCapabilities(['view_financials', 'view_nfes']);
+    }
+  }, []);
   const groupPurchasesByOrder = (purchases) => {
     const grouped = {};
     purchases.forEach((purchase) => {
@@ -1314,12 +1330,16 @@ const NFESearch = () => {
                                                                 <TableCell align="center">
                                                                   UN
                                                                 </TableCell>
-                                                                <TableCell align="right">
-                                                                  Preço Unit.
-                                                                </TableCell>
-                                                                <TableCell align="right">
-                                                                  Total
-                                                                </TableCell>
+                                                                {canViewFinancials && (
+                                                                  <>
+                                                                    <TableCell align="right">
+                                                                      Preço Unit.
+                                                                    </TableCell>
+                                                                    <TableCell align="right">
+                                                                      Total
+                                                                    </TableCell>
+                                                                  </>
+                                                                )}
                                                                 <TableCell align="right">
                                                                   Atendida
                                                                 </TableCell>
@@ -1408,22 +1428,26 @@ const NFESearch = () => {
                                                                       {item.unidade_medida ||
                                                                         "-"}
                                                                     </TableCell>
-                                                                    <TableCell align="right">
-                                                                      {item.preco_unitario !=
-                                                                      null
-                                                                        ? formatCurrency(
-                                                                            item.preco_unitario,
-                                                                          )
-                                                                        : "-"}
-                                                                    </TableCell>
-                                                                    <TableCell align="right">
-                                                                      {item.total_item !=
-                                                                      null
-                                                                        ? formatCurrency(
-                                                                            item.total_item,
-                                                                          )
-                                                                        : "-"}
-                                                                    </TableCell>
+                                                                    {canViewFinancials && (
+                                                                      <>
+                                                                        <TableCell align="right">
+                                                                          {item.preco_unitario !=
+                                                                          null
+                                                                            ? formatCurrency(
+                                                                                item.preco_unitario,
+                                                                              )
+                                                                            : "-"}
+                                                                        </TableCell>
+                                                                        <TableCell align="right">
+                                                                          {item.total_item !=
+                                                                          null
+                                                                            ? formatCurrency(
+                                                                                item.total_item,
+                                                                              )
+                                                                            : "-"}
+                                                                        </TableCell>
+                                                                      </>
+                                                                    )}
                                                                     <TableCell align="right">
                                                                       {item.qtde_atendida !=
                                                                       null
@@ -1675,12 +1699,16 @@ const NFESearch = () => {
                                                     <TableCell align="center">
                                                       UN
                                                     </TableCell>
-                                                    <TableCell align="right">
-                                                      Preço Unit.
-                                                    </TableCell>
-                                                    <TableCell align="right">
-                                                      Total
-                                                    </TableCell>
+                                                    {canViewFinancials && (
+                                                      <>
+                                                        <TableCell align="right">
+                                                          Preço Unit.
+                                                        </TableCell>
+                                                        <TableCell align="right">
+                                                          Total
+                                                        </TableCell>
+                                                      </>
+                                                    )}
                                                     <TableCell align="right">
                                                       Atendida
                                                     </TableCell>
@@ -1736,22 +1764,26 @@ const NFESearch = () => {
                                                           {item.unidade_medida ||
                                                             "-"}
                                                         </TableCell>
-                                                        <TableCell align="right">
-                                                          {item.preco_unitario !=
-                                                          null
-                                                            ? formatCurrency(
-                                                                item.preco_unitario,
-                                                              )
-                                                            : "-"}
-                                                        </TableCell>
-                                                        <TableCell align="right">
-                                                          {item.total_item !=
-                                                          null
-                                                            ? formatCurrency(
-                                                                item.total_item,
-                                                              )
-                                                            : "-"}
-                                                        </TableCell>
+                                                        {canViewFinancials && (
+                                                          <>
+                                                            <TableCell align="right">
+                                                              {item.preco_unitario !=
+                                                              null
+                                                                ? formatCurrency(
+                                                                    item.preco_unitario,
+                                                                  )
+                                                                : "-"}
+                                                            </TableCell>
+                                                            <TableCell align="right">
+                                                              {item.total_item !=
+                                                              null
+                                                                ? formatCurrency(
+                                                                    item.total_item,
+                                                                  )
+                                                                : "-"}
+                                                            </TableCell>
+                                                          </>
+                                                        )}
                                                         <TableCell align="right">
                                                           {item.qtde_atendida !=
                                                           null

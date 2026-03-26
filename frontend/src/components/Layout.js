@@ -123,6 +123,9 @@ const Layout = ({ onLogout }) => {
     if (item.path === '/nfe-search' && !capabilities.includes('view_nfes') && !isAdmin) {
       return false;
     }
+    if (item.path === '/quotation-analyzer' && !capabilities.includes('view_financials') && !isAdmin) {
+      return false;
+    }
     return true;
   });
 

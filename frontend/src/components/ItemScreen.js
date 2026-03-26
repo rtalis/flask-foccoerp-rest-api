@@ -14,6 +14,23 @@ const ItemScreen = ({ itemId, onClose }) => {
   const chartRef = useRef(null);
   const chartInstanceRef = useRef(null);
 
+  const [userCapabilities, setUserCapabilities] = useState([]);
+  const canViewFinancials = userCapabilities.includes('view_financials');
+
+  useEffect(() => {
+    const stored = localStorage.getItem('userCapabilities');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        setUserCapabilities(parsed);
+      } catch (error) {
+        setUserCapabilities(['view_financials', 'view_nfes']);
+      }
+    } else {
+      setUserCapabilities(['view_financials', 'view_nfes']);
+    }
+  }, []);
+
 
   useEffect(() => {
     fetchItemDetails();
@@ -168,11 +185,15 @@ const ItemScreen = ({ itemId, onClose }) => {
           <p><strong>Descrição:</strong> {itemDetails.descricao}</p>
           <p><strong>Fornecedor:</strong> {itemDetails.fornecedor_descricao}</p>
           <p><strong>Quantidade:</strong> {itemDetails.quantidade}</p>
-          <p><strong>Preço Unitário:</strong> R$ {itemDetails.preco_unitario}</p>
-          <p><strong>Total:</strong> R$ {itemDetails.total}</p>
+          {canViewFinancials && (
+            <>
+              <p><strong>Preço Unitário:</strong> R$ {itemDetails.preco_unitario}</p>
+              <p><strong>Total:</strong> R$ {itemDetails.total}</p>
 
-          <h3>Histórico de Preços</h3>
-          <canvas ref={chartRef}></canvas>
+              <h3>Histórico de Preços</h3>
+              <canvas ref={chartRef}></canvas>
+            </>
+          )}
           <button onClick={fetchQuotations}>Show Older Quotations</button>
         </div>
       )}
