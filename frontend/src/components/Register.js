@@ -41,6 +41,58 @@ import {
   ExpandLess as ExpandLessIcon,
 } from "@mui/icons-material";
 
+const USER_TYPE_PRESETS = {
+  "Visualizador básico": {
+    role: "viewer",
+    initial_screen: "/dashboard",
+    allowed_screens: ["/dashboard"],
+    capabilities: [],
+    data_filters_observacao: "",
+  },
+  "Visualizador": {
+    role: "viewer",
+    initial_screen: "/dashboard",
+    allowed_screens: ["/dashboard", "/search"],
+    capabilities: [],
+    data_filters_observacao: "",
+  },
+  "Fiscal": {
+    role: "viewer",
+    initial_screen: "/nfe-search",
+    allowed_screens: ["/dashboard", "/search", "/nfe-search"],
+    capabilities: ["view_nfes"],
+    data_filters_observacao: "",
+  },
+  "Financeiro": {
+    role: "viewer",
+    initial_screen: "/dashboard",
+    allowed_screens: ["/dashboard", "/search", "/nfe-search", "/quotation-analyzer"],
+    capabilities: ["view_financials", "view_nfes"],
+    data_filters_observacao: "",
+  },
+  "Comprador": {
+    role: "viewer",
+    initial_screen: "/search",
+    allowed_screens: ["/dashboard", "/search", "/nfe-search", "/quotation-analyzer"],
+    capabilities: ["view_financials", "view_nfes"],
+    data_filters_observacao: "",
+  },
+  "Conferente": {
+    role: "viewer",
+    initial_screen: "/search",
+    allowed_screens: ["/dashboard", "/search", "/nfe-search"],
+    capabilities: ["view_nfes"],
+    data_filters_observacao: "",
+  },
+  "Administrador": {
+    role: "admin",
+    initial_screen: "/dashboard",
+    allowed_screens: ["/dashboard", "/search", "/nfe-search", "/quotation-analyzer", "/import"],
+    capabilities: ["view_financials", "view_nfes"],
+    data_filters_observacao: "",
+  },
+};
+
 const Register = () => {
   const navigate = useNavigate();
 
@@ -49,12 +101,13 @@ const Register = () => {
     username: "",
     email: "",
     password: "",
+    user_type: "Visualizador básico",
     role: "viewer",
     purchaser_name: "",
     system_name: "",
     initial_screen: "/dashboard",
     allowed_screens: ["/dashboard"],
-    capabilities: ["view_financials", "view_nfes"],
+    capabilities: [],
     data_filters: {},
     data_filters_observacao: "",
   });
@@ -78,6 +131,7 @@ const Register = () => {
   const availableScreens = [
     { path: "/dashboard", label: "Dashboard" },
     { path: "/search", label: "Buscar Pedidos" },
+    { path: "/nfe-search", label: "Notas Fiscais" },
     { path: "/quotation-analyzer", label: "Analisar Cotações" },
     { path: "/import", label: "Importar Dados" },
   ];
@@ -137,6 +191,21 @@ const Register = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+
+    if (name === "user_type" && USER_TYPE_PRESETS[value]) {
+       const preset = USER_TYPE_PRESETS[value];
+       setFormData((prev) => ({
+         ...prev,
+         user_type: value,
+         role: preset.role,
+         initial_screen: preset.initial_screen,
+         allowed_screens: preset.allowed_screens,
+         capabilities: preset.capabilities,
+         data_filters_observacao: preset.data_filters_observacao,
+       }));
+       return;
+    }
+
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -176,6 +245,21 @@ const Register = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Custom restrictions alert
+    if (formData.user_type && USER_TYPE_PRESETS[formData.user_type] && formData.user_type !== "Administrador" && formData.user_type !== "Personalizado") {
+      const preset = USER_TYPE_PRESETS[formData.user_type];
+      const hasCustomCap = JSON.stringify([...(formData.capabilities || [])].sort()) !== JSON.stringify([...preset.capabilities].sort());
+      const hasCustomScreens = JSON.stringify([...(formData.allowed_screens || [])].sort()) !== JSON.stringify([...preset.allowed_screens].sort());
+      const hasCustomFilters = formData.data_filters_observacao !== preset.data_filters_observacao;
+
+      if (hasCustomCap || hasCustomScreens || hasCustomFilters) {
+        if (!window.confirm("Você alterou algumas permissões ou telas do tipo padrão selecionado. Tem certeza de que deseja salvar com essas restrições personalizadas?")) {
+          return;
+        }
+      }
+    }
+
     try {
       // Process data filters string to array before submission
       const submitData = { ...formData };
@@ -246,6 +330,7 @@ const Register = () => {
       username: user.username,
       email: user.email,
       password: "",
+      user_type: user.user_type || "Personalizado",
       role: user.role || "viewer",
       purchaser_name: user.purchaser_name || "",
       system_name: user.system_name || "",
@@ -284,12 +369,13 @@ const Register = () => {
       username: "",
       email: "",
       password: "",
+      user_type: "Visualizador básico",
       role: "viewer",
       purchaser_name: "",
       system_name: "",
       initial_screen: "/dashboard",
       allowed_screens: ["/dashboard"],
-      capabilities: ["view_financials", "view_nfes"],
+      capabilities: [],
       data_filters: {},
       data_filters_observacao: "",
     });
@@ -418,15 +504,39 @@ const Register = () => {
               />
             </Stack>
 
-            {/* Row 2: Role + System Name */}
+            {/* Row 1.5: User Type + Role */}
             <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+              <FormControl size="small" sx={{ minWidth: 200 }}>
+                <InputLabel>Perfil de Acesso</InputLabel>
+                <Select
+                  name="user_type"
+                  label="Perfil de Acesso"
+                  value={formData.user_type}
+                  onChange={handleInputChange}
+                >
+                  {Object.keys(USER_TYPE_PRESETS).map((t) => (
+                    <MenuItem key={t} value={t}>{t}</MenuItem>
+                  ))}
+                  <MenuItem value="Personalizado">Personalizado</MenuItem>
+                </Select>
+              </FormControl>
+
               <FormControl size="small" sx={{ minWidth: 150 }}>
-                <InputLabel>Tipo</InputLabel>
+                <InputLabel>Regra do Sistema</InputLabel>
                 <Select
                   name="role"
-                  label="Tipo"
+                  label="Regra do Sistema"
                   value={formData.role}
                   onChange={handleInputChange}
+                >
+                  <MenuItem value="viewer">Viewer</MenuItem>
+                  <MenuItem value="admin">Admin</MenuItem>
+                </Select>
+              </FormControl>
+            </Stack>
+
+            {/* Row 2: System Name */}
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                 >
                   <MenuItem value="admin">Admin</MenuItem>
                   <MenuItem value="purchaser">Comprador</MenuItem>

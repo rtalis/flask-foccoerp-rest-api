@@ -1134,14 +1134,15 @@ function PurchaseRow(props) {
 const UnifiedSearch = () => {
   const { setNfeBadge } = useOutletContext() || {};
   const [userCapabilities, setUserCapabilities] = useState([]);
+  const [userDataFilters, setUserDataFilters] = useState({});
   const canViewFinancials = userCapabilities.includes('view_financials');
   const canViewNfes = userCapabilities.includes('view_nfes');
 
   useEffect(() => {
-    const stored = localStorage.getItem('userCapabilities');
-    if (stored) {
+    const storedCaps = localStorage.getItem('userCapabilities');
+    if (storedCaps) {
       try {
-        const parsed = JSON.parse(stored);
+        const parsed = JSON.parse(storedCaps);
         setUserCapabilities(parsed);
       } catch (error) {
         setUserCapabilities(['view_financials', 'view_nfes']);
@@ -1149,7 +1150,18 @@ const UnifiedSearch = () => {
     } else {
         setUserCapabilities(['view_financials', 'view_nfes']); // Fallback to all if not set yet
     }
+    
+    const storedFilters = localStorage.getItem('userDataFilters');
+    if (storedFilters) {
+      try {
+        setUserDataFilters(JSON.parse(storedFilters));
+      } catch (error) {
+        setUserDataFilters({});
+      }
+    }
   }, []);
+
+  const hasDataLimitations = Object.keys(userDataFilters).length > 0;
 
   const SEARCH_MODE_STORAGE_KEY = "searchModePreference";
   const SEARCH_PARAMS_STORAGE_KEY = "searchParamsPreference";
@@ -2565,6 +2577,7 @@ const UnifiedSearch = () => {
             <Typography variant="body2" color="text.secondary" ref={resultsRef}>
               Mostrando <strong>{noResults}</strong> resultados • Página{" "}
               <strong>{currentPage}</strong> de <strong>{totalPages}</strong>
+              {hasDataLimitations && " - Há limitações de resultados para este usuário"}
               {searchTime != null && (
                 <>
                   {" "}

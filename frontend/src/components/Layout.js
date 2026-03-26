@@ -50,6 +50,7 @@ const Layout = ({ onLogout }) => {
   const [userRole, setUserRole] = useState(null);
   const [allowedScreens, setAllowedScreens] = useState([]);
   const [capabilities, setCapabilities] = useState([]);
+  const [dataFilters, setDataFilters] = useState({});
   const [nfeBadge, setNfeBadge] = useState(false);
 
   const isAdmin = userRole === "admin";
@@ -57,7 +58,8 @@ const Layout = ({ onLogout }) => {
   // Expose these via context or session storage if needed deeper down
   useEffect(() => {
     localStorage.setItem('userCapabilities', JSON.stringify(capabilities));
-  }, [capabilities]);
+    localStorage.setItem('userDataFilters', JSON.stringify(dataFilters));
+  }, [capabilities, dataFilters]);
 
   useEffect(() => {
     const fetchUserContext = async () => {
@@ -69,6 +71,7 @@ const Layout = ({ onLogout }) => {
         setUserRole(response.data.role);
         setAllowedScreens(response.data.allowed_screens || []);
         setCapabilities(response.data.capabilities || []);
+        setDataFilters(response.data.data_filters || {});
       } catch (error) {
         console.error("Error fetching user data:", error);
       }

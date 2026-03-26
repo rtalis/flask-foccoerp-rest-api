@@ -110,7 +110,8 @@ def login():
                 'initial_screen': user.initial_screen,
                 'allowed_screens': user.allowed_screens or [],
                 'capabilities': user.capabilities or [],
-                'data_filters': user.data_filters or {}
+                'data_filters': user.data_filters or {},
+                'user_type': user.user_type
             }
         }), 200)
         session_lifetime = int(current_app.config['PERMANENT_SESSION_LIFETIME'].total_seconds())
@@ -134,7 +135,8 @@ def me():
         'initial_screen': u.initial_screen,
         'allowed_screens': u.allowed_screens or [],
         'capabilities': u.capabilities or [],
-        'data_filters': u.data_filters or {}
+        'data_filters': u.data_filters or {},
+        'user_type': u.user_type
     }), 200
 
 @auth_bp.route('/register', methods=['POST'])
@@ -156,6 +158,7 @@ def register():
     capabilities = data.get('capabilities', ['view_financials', 'view_nfes'])
     data_filters = data.get('data_filters', {})
     system_name = data.get('system_name', '')
+    user_type = data.get('user_type', 'Visualizador básico')
 
     if not username or not email or not password:
         return jsonify({'error': 'Missing fields'}), 400
@@ -173,7 +176,8 @@ def register():
         allowed_screens=allowed_screens,
         capabilities=capabilities,
         data_filters=data_filters,
-        system_name=system_name
+        system_name=system_name,
+        user_type=user_type
     )
     db.session.add(new_user)
     db.session.commit()
@@ -431,7 +435,8 @@ def get_users():
         'initial_screen': user.initial_screen,
         'allowed_screens': user.allowed_screens,
         'capabilities': user.capabilities or [],
-        'data_filters': user.data_filters or {}
+        'data_filters': user.data_filters or {},
+                'user_type': user.user_type
     } for user in users]
     
     return jsonify(result), 200
@@ -490,6 +495,9 @@ def update_user(user_id):
 
     if 'system_name' in data:
         user.system_name = data['system_name']
+
+    if 'user_type' in data:
+        user.user_type = data['user_type']
 
     db.session.commit()
     return jsonify({'message': 'User updated successfully'}), 200
