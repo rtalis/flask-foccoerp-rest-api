@@ -4736,3 +4736,10 @@ def usage_report():
         'top_endpoints': [{'endpoint': e.endpoint, 'method': e.method, 'count': e.count} for e in top_endpoints],
         'period_days': days,
     }), 200
+
+
+@bp.route('/config/admin-email', methods=['GET'])
+def get_admin_email():
+    """Return the admin email address for frontend use."""
+    admin_email = current_app.config.get('ADMIN_EMAIL', '')
+    return jsonify({'email': admin_email}), 200

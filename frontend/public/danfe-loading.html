@@ -9,17 +9,27 @@
       body {
         height: 100%;
         margin: 0;
+        padding: 0;
         font-family: Arial, sans-serif;
         background: #f6f8fb;
       }
       .wrap {
-        height: 100%;
+        height: 100vh;
         display: flex;
         align-items: center;
         justify-content: center;
         flex-direction: column;
-        gap: 18px;
+        gap: 16px;
         color: #222;
+      }
+      #loading-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        width: min(92vw, 560px);
+        margin: 0 auto;
       }
       .spinner {
         width: 64px;
@@ -29,6 +39,7 @@
         border-radius: 50%;
         animation: spin 1s linear infinite;
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+        margin-bottom: 12px;
       }
       @keyframes spin {
         to {
@@ -45,32 +56,178 @@
         color: #5b6670;
         margin-top: 4px;
       }
+      .error-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+      }
+      .error-container {
+        display: none;
+        padding: 28px;
+        background: white;
+        border-radius: 8px;
+        max-width: 380px;
+        text-align: center;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 1001;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+      }
+      .error-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #1976d2;
+        margin-bottom: 12px;
+      }
+      .error-message {
+        font-size: 13px;
+        color: #666;
+        line-height: 1.5;
+        margin-bottom: 4px;
+      }
+      .error-details {
+        font-size: 12px;
+        color: #999;
+        margin: 12px 0 16px 0;
+        font-family: 'Courier New', monospace;
+        background: #f9f9f9;
+        padding: 8px;
+        border-radius: 4px;
+        text-align: left;
+        max-height: 80px;
+        overflow-y: auto;
+      }
+      .error-buttons {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+      }
+      .error-btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        font-size: 13px;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      .close-btn {
+        background: #1976d2;
+        color: white;
+      }
+      .close-btn:hover {
+        background: #1565c0;
+      }
+      .contact-btn {
+        background: #f5f5f5;
+        color: #333;
+        border: 1px solid #ddd;
+      }
+      .contact-btn:hover {
+        background: #eeeeee;
+      }
     </style>
   </head>
   <body>
     <div class="wrap" role="status" aria-live="polite">
-      <div class="spinner" aria-hidden="true"></div>
-      <div class="message">Acessando o documento PDF via SIEG</div>
-      <div class="hint">
-        Por favor, aguarde — estamos consultando o SIEG para recuperar o
-        documento.
+      <div id="loading-container">
+        <div class="spinner" aria-hidden="true"></div>
+        <div class="message">Acessando o documento PDF</div>
+        <div class="hint">
+          Por favor, aguarde — estamos consultando o SIEG para recuperar o
+          documento.
+        </div>
+        <div
+          id="fallback-hint"
+          class="hint"
+          style="display: none; margin-top: 8px; font-weight: 600; color: #b04a00"
+        >
+          Se a consulta ao SIEG demorar, iremos tentar gerar o DANFE a partir da
+          NFE disponível em nosso banco local.
+        </div>
       </div>
-      <div
-        id="fallback-hint"
-        class="hint"
-        style="display: none; margin-top: 8px; font-weight: 600; color: #b04a00"
-      >
-        Se a consulta ao SIEG demorar, iremos tentar gerar o DANFE a partir da
-        NFE disponível em nosso banco local.
+      <div id="error-overlay" class="error-overlay"></div>
+      <div id="error-container" class="error-container">
+        <div class="error-title">Consulta em andamento</div>
+        <div class="error-message">
+          A consulta está demorando mais que o esperado. Você pode fechar essa aba e tentar novamente ou reportar esse erro ao administrador.
+        </div>
+        <div class="error-details" id="error-details"></div>
+        <div class="error-buttons">
+          <button class="error-btn close-btn" onclick="closeErrorModal()">
+            Fechar
+          </button>
+          <button class="error-btn contact-btn" id="report-btn" onclick="reportError()">
+            Reportar
+          </button>
+        </div>
       </div>
     </div>
 
     <script>
+      let adminEmail = 'admin@roxel.dev';
+      let errorData = {};
+
+      // Fetch admin email from API
+      async function loadAdminEmail() {
+        try {
+          const response = await fetch('/api/config/admin-email');
+          if (response && response.ok) {
+            const data = await response.json();
+            adminEmail = data.email || 'admin@roxel.dev';
+          }
+        } catch (err) {
+          console.warn('Could not fetch admin email:', err);
+        }
+      }
+
+      function captureErrorData() {
+        errorData = {
+          timestamp: new Date().toISOString(),
+          url: window.location.href,
+          userAgent: navigator.userAgent,
+          timeout: '15 seconds',
+        };
+        document.getElementById('error-details').textContent = 
+          `Timeout: 15s\nTempo: ${new Date().toLocaleTimeString('pt-BR')}`;
+      }
+
+      function reportError() {
+        const subject = 'Relatório de erro - DANFE Loading Timeout';
+        const body = `Olá,\n\nEstou encontrando um problema ao tentar acessar um documento DANFE.\n\nDetalhes do erro:\n- URL: ${errorData.url}\n- Horário: ${errorData.timestamp}\n- Tipo: Timeout (${errorData.timeout})\n\nPor favor, investigar.\n\nObrigado.`;
+        window.location.href = `mailto:${adminEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      }
+
+      function closeErrorModal() {
+        const errorOverlay = document.getElementById("error-overlay");
+        const errorContainer = document.getElementById("error-container");
+        if (errorOverlay) errorOverlay.style.display = "none";
+        if (errorContainer) errorContainer.style.display = "none";
+      }
+
       // Show fallback hint after 4 seconds; cancel if PDF arrives
       let fallbackTimer = setTimeout(() => {
         const fb = document.getElementById("fallback-hint");
         if (fb) fb.style.display = "block";
-      }, 3000);
+      }, 4000);
+
+      // Show error message after 15 seconds
+      let errorTimer = setTimeout(() => {
+        captureErrorData();
+        const errorOverlay = document.getElementById("error-overlay");
+        const errorContainer = document.getElementById("error-container");
+        if (errorOverlay) errorOverlay.style.display = "block";
+        if (errorContainer) errorContainer.style.display = "block";
+      }, 15000);
+
+      // Load admin email on page load
+      loadAdminEmail();
 
       window.addEventListener("message", (e) => {
         try {
@@ -80,9 +237,14 @@
             document.title = "JHUB - DANFE " + data.number;
           }
 
-          // If PDF arrives, cancel timer and render it
+          // If PDF arrives, cancel timers and render it
           if (data.type === "pdfBlobUrl" && data.url) {
             clearTimeout(fallbackTimer);
+            clearTimeout(errorTimer);
+            const overlay = document.getElementById("error-overlay");
+            const errorContainer = document.getElementById("error-container");
+            if (overlay) overlay.style.display = "none";
+            if (errorContainer) errorContainer.style.display = "none";
             document.body.innerHTML =
               '<embed src="' +
               data.url +
