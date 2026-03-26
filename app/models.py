@@ -83,6 +83,8 @@ class User(UserMixin, db.Model):
     session_token = db.Column(db.String(64), nullable=True)  # Token to enforce single-device login
     session_token_created_at = db.Column(db.DateTime, nullable=True)  # When the session token was created
     last_action_time = db.Column(db.DateTime, nullable=True)  # Last user activity time
+    capabilities = db.Column(db.JSON, nullable=True, default=list) # E.g., ['view_financials', 'view_nfes']
+    data_filters = db.Column(db.JSON, nullable=True, default=dict) # E.g., {'observacao_contains': ['manutenção']}
 
 class Company(db.Model):
     __tablename__ = 'companies'

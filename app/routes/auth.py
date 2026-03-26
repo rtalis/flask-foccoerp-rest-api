@@ -108,7 +108,9 @@ def login():
                 'role': user.role,
                 'purchaser_name': user.purchaser_name,
                 'initial_screen': user.initial_screen,
-                'allowed_screens': user.allowed_screens or []
+                'allowed_screens': user.allowed_screens or [],
+                'capabilities': user.capabilities or [],
+                'data_filters': user.data_filters or {}
             }
         }), 200)
         session_lifetime = int(current_app.config['PERMANENT_SESSION_LIFETIME'].total_seconds())
@@ -130,7 +132,9 @@ def me():
         'role': u.role,
         'purchaser_name': u.purchaser_name,
         'initial_screen': u.initial_screen,
-        'allowed_screens': u.allowed_screens or []
+        'allowed_screens': u.allowed_screens or [],
+        'capabilities': u.capabilities or [],
+        'data_filters': u.data_filters or {}
     }), 200
 
 @auth_bp.route('/register', methods=['POST'])
@@ -149,6 +153,8 @@ def register():
     role = data.get('role', 'viewer')
     initial_screen = data.get('initial_screen', '/dashboard')
     allowed_screens = data.get('allowed_screens', ['/dashboard'])
+    capabilities = data.get('capabilities', ['view_financials', 'view_nfes'])
+    data_filters = data.get('data_filters', {})
     system_name = data.get('system_name', '')
 
     if not username or not email or not password:
@@ -165,6 +171,8 @@ def register():
         purchaser_name=purchaser_name,
         initial_screen=initial_screen,
         allowed_screens=allowed_screens,
+        capabilities=capabilities,
+        data_filters=data_filters,
         system_name=system_name
     )
     db.session.add(new_user)
@@ -421,7 +429,9 @@ def get_users():
         'purchaser_name': user.purchaser_name,
         'system_name': user.system_name,
         'initial_screen': user.initial_screen,
-        'allowed_screens': user.allowed_screens
+        'allowed_screens': user.allowed_screens,
+        'capabilities': user.capabilities or [],
+        'data_filters': user.data_filters or {}
     } for user in users]
     
     return jsonify(result), 200
@@ -471,6 +481,12 @@ def update_user(user_id):
         
     if 'allowed_screens' in data:
         user.allowed_screens = data['allowed_screens']
+
+    if 'capabilities' in data:
+        user.capabilities = data['capabilities']
+
+    if 'data_filters' in data:
+        user.data_filters = data['data_filters']
 
     if 'system_name' in data:
         user.system_name = data['system_name']

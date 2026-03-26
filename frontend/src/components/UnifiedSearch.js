@@ -70,6 +70,8 @@ function PurchaseRow(props) {
     handleItemClick,
     hideFulfilledItems = false,
     codEmp1Options = [],
+    canViewFinancials = true,
+    canViewNfes = true,
   } = props;
 
   const formatCompanyShort = (codEmp1) => {
@@ -428,8 +430,14 @@ function PurchaseRow(props) {
         >
           Pedido de Compra: {purchase.order.cod_pedc}~{" "}
           {purchase.order.fornecedor_id}{" "}
-          {getFirstWords(purchase.order.fornecedor_descricao, 4)} -{" "}
-          {formatCurrency(purchase.order.adjusted_total)} ~ Comprador:{" "}
+          {getFirstWords(purchase.order.fornecedor_descricao, 4)}
+          {canViewFinancials && (
+            <>
+              {" - "}
+              {formatCurrency(purchase.order.adjusted_total)}
+            </>
+          )}{" "}
+          ~ Comprador:{" "}
           {purchase.order.func_nome}. Empresa:{" "}
           {formatCompanyShort(purchase.order.cod_emp1)}
           {purchase.order.is_fulfilled && (
@@ -476,24 +484,28 @@ function PurchaseRow(props) {
                     >
                       Quantidade
                     </TableCell>
-                    <TableCell
-                      align="center"
-                      sx={{ fontWeight: 600, color: "#1a1f2e" }}
-                    >
-                      Preço Unitário
-                    </TableCell>
-                    <TableCell
-                      align="center"
-                      sx={{ fontWeight: 600, color: "#1a1f2e" }}
-                    >
-                      IPI
-                    </TableCell>
-                    <TableCell
-                      align="center"
-                      sx={{ fontWeight: 600, color: "#1a1f2e" }}
-                    >
-                      Total
-                    </TableCell>
+                    {canViewFinancials && (
+                      <>
+                        <TableCell
+                          align="center"
+                          sx={{ fontWeight: 600, color: "#1a1f2e" }}
+                        >
+                          Preço Unitário
+                        </TableCell>
+                        <TableCell
+                          align="center"
+                          sx={{ fontWeight: 600, color: "#1a1f2e" }}
+                        >
+                          IPI
+                        </TableCell>
+                        <TableCell
+                          align="center"
+                          sx={{ fontWeight: 600, color: "#1a1f2e" }}
+                        >
+                          Total
+                        </TableCell>
+                      </>
+                    )}
                     <TableCell
                       align="center"
                       sx={{ fontWeight: 600, color: "#1a1f2e" }}
@@ -506,12 +518,14 @@ function PurchaseRow(props) {
                     >
                       Dt Entrada
                     </TableCell>
-                    <TableCell
-                      align="center"
-                      sx={{ fontWeight: 600, color: "#1a1f2e" }}
-                    >
-                      NFEs
-                    </TableCell>
+                    {canViewNfes && (
+                      <TableCell
+                        align="center"
+                        sx={{ fontWeight: 600, color: "#1a1f2e" }}
+                      >
+                        NFEs
+                      </TableCell>
+                    )}
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -617,47 +631,51 @@ function PurchaseRow(props) {
                         >
                           {formatNumber(qty)} {item.unidade_medida}
                         </TableCell>
-                        <TableCell
-                          align="center"
-                          sx={
-                            isFullyCanceled
-                              ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
-                              : {}
-                          }
-                        >
-                          R$ {formatNumber(unitPrice)}
-                        </TableCell>
-                        <TableCell
-                          align="center"
-                          sx={
-                            isFullyCanceled
-                              ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
-                              : {}
-                          }
-                        >
-                          {percIpi !== undefined
-                            ? `${formatNumber(percIpi)}%`
-                            : "0%"}
-                        </TableCell>
-                        <TableCell
-                          align="center"
-                          sx={
-                            isFullyCanceled
-                              ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
-                              : {}
-                          }
-                        >
-                          R$ {formatNumber(total)}
-                        </TableCell>
+                        {canViewFinancials && (
+                          <>
+                            <TableCell
+                              align="center"
+                              sx={
+                                isFullyCanceled
+                                  ? {
+                                      textDecoration: "line-through",
+                                      color: "#9e9e9e",
+                                    }
+                                  : {}
+                              }
+                            >
+                              R$ {formatNumber(unitPrice)}
+                            </TableCell>
+                            <TableCell
+                              align="center"
+                              sx={
+                                isFullyCanceled
+                                  ? {
+                                      textDecoration: "line-through",
+                                      color: "#9e9e9e",
+                                    }
+                                  : {}
+                              }
+                            >
+                              {percIpi !== undefined
+                                ? `${formatNumber(percIpi)}%`
+                                : "0%"}
+                            </TableCell>
+                            <TableCell
+                              align="center"
+                              sx={
+                                isFullyCanceled
+                                  ? {
+                                      textDecoration: "line-through",
+                                      color: "#9e9e9e",
+                                    }
+                                  : {}
+                              }
+                            >
+                              R$ {formatNumber(total)}
+                            </TableCell>
+                          </>
+                        )}
                         <TableCell
                           align="center"
                           sx={
@@ -697,198 +715,200 @@ function PurchaseRow(props) {
                             </div>
                           ))}
                         </TableCell>
-                        <TableCell
-                          align="center"
-                          sx={
-                            isFullyCanceled
-                              ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
-                              : {}
-                          }
-                        >
-                          {(() => {
-                            const actualNfes = purchase.order.nfes.filter(
-                              (nf) => nf.linha == item.linha && nf.num_nf,
-                            );
-                            if (actualNfes.length > 0) {
-                              return (
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    alignItems: "center",
-                                    gap: "4px",
-                                  }}
-                                >
-                                  {actualNfes.map((nf) => (
-                                    <div
-                                      key={nf.id}
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: "4px",
-                                      }}
-                                    >
-                                      <span>{nf.num_nf}</span>
-                                      <Tooltip
-                                        title={
-                                          loadingDanfeNf === nf.num_nf
-                                            ? "Carregando..."
-                                            : "Visualizar DANFE"
-                                        }
-                                      >
-                                        <span>
-                                          <IconButton
-                                            size="small"
-                                            color="primary"
-                                            onClick={() =>
-                                              handleDanfeIconClick(nf)
-                                            }
-                                            disabled={
-                                              loadingDanfeNf === nf.num_nf
-                                            }
-                                            sx={{ padding: "2px" }}
-                                          >
-                                            {loadingDanfeNf === nf.num_nf ? (
-                                              <CircularProgress size={16} />
-                                            ) : (
-                                              <PictureAsPdfIcon
-                                                fontSize="small"
-                                                sx={{ fontSize: "16px" }}
-                                              />
-                                            )}
-                                          </IconButton>
-                                        </span>
-                                      </Tooltip>
-                                    </div>
-                                  ))}
-                                </div>
-                              );
-                            } else if (item.estimated_nfe) {
-                              // Split multiple NFE numbers by " + "
-                              const nfeNumbers = item.estimated_nfe.nfe_numero
-                                ? item.estimated_nfe.nfe_numero.split(" + ")
-                                : [];
-                              const chave = item.estimated_nfe.nfe_chave;
-                              return (
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    alignItems: "center",
-                                    gap: "4px",
-                                  }}
-                                >
-                                  {nfeNumbers.map((nfeNum, idx) => (
-                                    <div
-                                      key={idx}
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: "4px",
-                                      }}
-                                    >
-                                      <Tooltip
-                                        title={`NF estimada por IA (${item.estimated_nfe.match_score?.toFixed(
-                                          0,
-                                        )}% match)${
-                                          item.estimated_nfe.nfe_fornecedor
-                                            ? ` - ${item.estimated_nfe.nfe_fornecedor}`
-                                            : ""
-                                        }`}
-                                      >
-                                        <span
-                                          style={{
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: "4px",
-                                            color: "#9c27b0",
-                                            fontStyle: "italic",
-                                          }}
-                                        >
-                                          <span>✨</span>
-                                          <span>{nfeNum.trim()}</span>
-                                        </span>
-                                      </Tooltip>
-                                      <Tooltip
-                                        title={
-                                          loadingDanfeNf === nfeNum.trim()
-                                            ? "Carregando..."
-                                            : "Visualizar DANFE"
-                                        }
-                                      >
-                                        <span>
-                                          <IconButton
-                                            size="small"
-                                            color="primary"
-                                            onClick={() =>
-                                              handleDanfeIconClick({
-                                                num_nf: nfeNum.trim(),
-                                                chave: chave,
-                                              })
-                                            }
-                                            disabled={
-                                              loadingDanfeNf === nfeNum.trim()
-                                            }
-                                            sx={{ padding: "2px" }}
-                                          >
-                                            {loadingDanfeNf ===
-                                            nfeNum.trim() ? (
-                                              <CircularProgress size={16} />
-                                            ) : (
-                                              <PictureAsPdfIcon
-                                                fontSize="small"
-                                                sx={{ fontSize: "16px" }}
-                                              />
-                                            )}
-                                          </IconButton>
-                                        </span>
-                                      </Tooltip>
-                                    </div>
-                                  ))}
-                                </div>
-                              );
+                        {canViewNfes && (
+                          <TableCell
+                            align="center"
+                            sx={
+                              isFullyCanceled
+                                ? {
+                                    textDecoration: "line-through",
+                                    color: "#9e9e9e",
+                                  }
+                                : {}
                             }
-                            // Show search button when no actual NFE and no estimation
-                            return (
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "4px",
-                                }}
-                              >
-                                <IconButton
-                                  size="small"
-                                  color="primary"
-                                  onClick={fetchNfeData}
-                                  disabled={loadingNfe}
-                                  title="Buscar notas fiscais"
+                          >
+                            {(() => {
+                              const actualNfes = purchase.order.nfes.filter(
+                                (nf) => nf.linha == item.linha && nf.num_nf,
+                              );
+                              if (actualNfes.length > 0) {
+                                return (
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      flexDirection: "column",
+                                      alignItems: "center",
+                                      gap: "4px",
+                                    }}
+                                  >
+                                    {actualNfes.map((nf) => (
+                                      <div
+                                        key={nf.id}
+                                        style={{
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: "4px",
+                                        }}
+                                      >
+                                        <span>{nf.num_nf}</span>
+                                        <Tooltip
+                                          title={
+                                            loadingDanfeNf === nf.num_nf
+                                              ? "Carregando..."
+                                              : "Visualizar DANFE"
+                                          }
+                                        >
+                                          <span>
+                                            <IconButton
+                                              size="small"
+                                              color="primary"
+                                              onClick={() =>
+                                                handleDanfeIconClick(nf)
+                                              }
+                                              disabled={
+                                                loadingDanfeNf === nf.num_nf
+                                              }
+                                              sx={{ padding: "2px" }}
+                                            >
+                                              {loadingDanfeNf === nf.num_nf ? (
+                                                <CircularProgress size={16} />
+                                              ) : (
+                                                <PictureAsPdfIcon
+                                                  fontSize="small"
+                                                  sx={{ fontSize: "16px" }}
+                                                />
+                                              )}
+                                            </IconButton>
+                                          </span>
+                                        </Tooltip>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              } else if (item.estimated_nfe) {
+                                // Split multiple NFE numbers by " + "
+                                const nfeNumbers = item.estimated_nfe.nfe_numero
+                                  ? item.estimated_nfe.nfe_numero.split(" + ")
+                                  : [];
+                                const chave = item.estimated_nfe.nfe_chave;
+                                return (
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      flexDirection: "column",
+                                      alignItems: "center",
+                                      gap: "4px",
+                                    }}
+                                  >
+                                    {nfeNumbers.map((nfeNum, idx) => (
+                                      <div
+                                        key={idx}
+                                        style={{
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: "4px",
+                                        }}
+                                      >
+                                        <Tooltip
+                                          title={`NF estimada por IA (${item.estimated_nfe.match_score?.toFixed(
+                                            0,
+                                          )}% match)${
+                                            item.estimated_nfe.nfe_fornecedor
+                                              ? ` - ${item.estimated_nfe.nfe_fornecedor}`
+                                              : ""
+                                          }`}
+                                        >
+                                          <span
+                                            style={{
+                                              display: "flex",
+                                              alignItems: "center",
+                                              gap: "4px",
+                                              color: "#9c27b0",
+                                              fontStyle: "italic",
+                                            }}
+                                          >
+                                            <span>✨</span>
+                                            <span>{nfeNum.trim()}</span>
+                                          </span>
+                                        </Tooltip>
+                                        <Tooltip
+                                          title={
+                                            loadingDanfeNf === nfeNum.trim()
+                                              ? "Carregando..."
+                                              : "Visualizar DANFE"
+                                          }
+                                        >
+                                          <span>
+                                            <IconButton
+                                              size="small"
+                                              color="primary"
+                                              onClick={() =>
+                                                handleDanfeIconClick({
+                                                  num_nf: nfeNum.trim(),
+                                                  chave: chave,
+                                                })
+                                              }
+                                              disabled={
+                                                loadingDanfeNf === nfeNum.trim()
+                                              }
+                                              sx={{ padding: "2px" }}
+                                            >
+                                              {loadingDanfeNf ===
+                                              nfeNum.trim() ? (
+                                                <CircularProgress size={16} />
+                                              ) : (
+                                                <PictureAsPdfIcon
+                                                  fontSize="small"
+                                                  sx={{ fontSize: "16px" }}
+                                                />
+                                              )}
+                                            </IconButton>
+                                          </span>
+                                        </Tooltip>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              }
+                              // Show search button when no actual NFE and no estimation
+                              return (
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "4px",
+                                  }}
                                 >
-                                  {loadingNfe ? (
-                                    <CircularProgress size={16} />
-                                  ) : (
-                                    <SearchIcon fontSize="small" />
-                                  )}
-                                </IconButton>
-                                {nfeData &&
-                                  nfeData.nfe_data &&
-                                  nfeData.nfe_data.length > 0 && (
-                                    <IconButton
-                                      size="small"
-                                      color="secondary"
-                                      onClick={() => setShowNfeDialog(true)}
-                                      title="Ver Notas Fiscais"
-                                    >
-                                      <ReceiptIcon fontSize="small" />
-                                    </IconButton>
-                                  )}
-                              </div>
-                            );
-                          })()}
-                        </TableCell>
+                                  <IconButton
+                                    size="small"
+                                    color="primary"
+                                    onClick={fetchNfeData}
+                                    disabled={loadingNfe}
+                                    title="Buscar notas fiscais"
+                                  >
+                                    {loadingNfe ? (
+                                      <CircularProgress size={16} />
+                                    ) : (
+                                      <SearchIcon fontSize="small" />
+                                    )}
+                                  </IconButton>
+                                  {nfeData &&
+                                    nfeData.nfe_data &&
+                                    nfeData.nfe_data.length > 0 && (
+                                      <IconButton
+                                        size="small"
+                                        color="secondary"
+                                        onClick={() => setShowNfeDialog(true)}
+                                        title="Ver Notas Fiscais"
+                                      >
+                                        <ReceiptIcon fontSize="small" />
+                                      </IconButton>
+                                    )}
+                                </div>
+                              );
+                            })()}
+                          </TableCell>
+                        )}
                       </TableRow>
                     );
                   })}
@@ -916,20 +936,22 @@ function PurchaseRow(props) {
                         >
                           Observação: {purchase.order.observacao}
                         </Typography>
-                        <Typography
-                          variant="body2"
-                          component="div"
-                          sx={{
-                            fontWeight: "bold",
-                            textAlign: "right",
-                            color: "#1a1f2e",
-                          }}
-                        >
-                          Total c/ ipi:{" "}
-                          {formatCurrency(purchase.order.total_pedido_com_ipi)}{" "}
-                          Total c/ desconto:{" "}
-                          {formatCurrency(purchase.order.adjusted_total)}
-                        </Typography>
+                        {canViewFinancials && (
+                          <Typography
+                            variant="body2"
+                            component="div"
+                            sx={{
+                              fontWeight: "bold",
+                              textAlign: "right",
+                              color: "#1a1f2e",
+                            }}
+                          >
+                            Total c/ ipi:{" "}
+                            {formatCurrency(purchase.order.total_pedido_com_ipi)}{" "}
+                            Total c/ desconto:{" "}
+                            {formatCurrency(purchase.order.adjusted_total)}
+                          </Typography>
+                        )}
                       </Box>
                     </TableCell>
                   </TableRow>
@@ -1111,6 +1133,28 @@ function PurchaseRow(props) {
 
 const UnifiedSearch = () => {
   const { setNfeBadge } = useOutletContext() || {};
+  const [userCapabilities, setUserCapabilities] = useState([]);
+  const canViewFinancials = userCapabilities.includes('view_financials');
+  const canViewNfes = userCapabilities.includes('view_nfes');
+
+  useEffect(() => {
+    const stored = localStorage.getItem('userCapabilities');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (parsed.length === 0) {
+           setUserCapabilities(['view_financials', 'view_nfes']); // Admin or grandfathered legacy state.
+        } else {
+           setUserCapabilities(parsed);
+        }
+      } catch (error) {
+        setUserCapabilities(['view_financials', 'view_nfes']);
+      }
+    } else {
+        setUserCapabilities(['view_financials', 'view_nfes']); // Fallback to all if not set yet
+    }
+  }, []);
+
   const SEARCH_MODE_STORAGE_KEY = "searchModePreference";
   const SEARCH_PARAMS_STORAGE_KEY = "searchParamsPreference";
   const SHOW_SUGGESTIONS_STORAGE_KEY = "showSuggestionsPreference";
@@ -1301,7 +1345,7 @@ const UnifiedSearch = () => {
 
   // Export to Excel handler
   const handleExportExcel = () => {
-    exportPurchaseOrdersToExcel(results);
+    exportPurchaseOrdersToExcel(results, { canViewFinancials, canViewNfes });
   };
   const formatLastUpdated = (dateStr) => {
     if (!dateStr) return "—";
@@ -2588,6 +2632,8 @@ const UnifiedSearch = () => {
                       !showFulfilled && purchase.order.is_fulfilled
                     }
                     codEmp1Options={codEmp1Options}
+                    canViewFinancials={canViewFinancials}
+                    canViewNfes={canViewNfes}
                   />
                 ))}
               </TableBody>
