@@ -138,6 +138,12 @@ def create_app():
                 session['last_action_time'] = now_time
                 session.modified = True
                 
+                # Also update in the database so it's not empty
+                from datetime import datetime
+                from app import db
+                current_user.last_action_time = datetime.fromtimestamp(now_time)
+                db.session.commit()
+                
         return None
 
     return app

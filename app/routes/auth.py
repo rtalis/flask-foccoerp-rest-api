@@ -89,6 +89,7 @@ def login():
         new_session_token = secrets.token_hex(32)
         user.session_token = new_session_token
         user.session_token_created_at = datetime.now()
+        user.last_action_time = datetime.now()
         db.session.commit()
         
         login_user(user)
