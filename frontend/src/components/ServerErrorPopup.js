@@ -37,17 +37,18 @@ const ServerErrorPopup = () => {
           <h2 className="server-error-title">Sessão Encerrada</h2>
 
           <p className="server-error-message">
-            Você foi desconectado porque sua conta foi acessada em outro
-            dispositivo.
+            {error?.message || "Sua sessão expirou."}
           </p>
 
-          <p
-            className="server-error-message"
-            style={{ marginTop: "8px", fontSize: "0.9rem", color: "#6c757d" }}
-          >
-            Apenas uma sessão ativa é permitida por vez. Se não foi você,
-            recomendamos alterar sua senha.
-          </p>
+          {(!error || !error.isTimeout) && (
+            <p
+              className="server-error-message"
+              style={{ marginTop: "8px", fontSize: "0.9rem", color: "#6c757d" }}
+            >
+              Apenas uma sessão ativa é permitida por vez. Se não foi você,
+              recomendamos alterar sua senha.
+            </p>
+          )}
 
           <div className="server-error-actions">
             <button

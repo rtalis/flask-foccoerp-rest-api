@@ -98,12 +98,52 @@ def create_app():
         if current_user.is_authenticated:
             session_token = request.cookies.get('session_token')
             if current_user.session_token and session_token != current_user.session_token:
+                from flask_login import logout_user
+                logout_user()
                 return jsonify({
                     'error': 'Session invalidated',
                     'code': 'SESSION_INVALIDATED',
                     'message': 'Você foi desconectado porque fez login em outro dispositivo.'
                 }), 403
-        
+
+            # Logic for 60m overall / 15m idle session timeout
+            from flask import session
+            from datetime import timedelta
+            from flask_login import logout_user
+            
+            now_time = time.time()
+            # Try to get the login time from current_user or session
+            login_time_dt = current_user.session_token_created_at
+            login_time = login_time_dt.timestamp() if login_time_dt else now_time
+            if not login_time_dt and 'login_time' in session:
+                login_time = session['login_time']
+                
+            last_action_time = session.get('last_action_time', login_time)
+
+            absolute_limit = login_time + (60 * 60) # 60 minutes from login
+            idle_limit = last_action_time + (15 * 60) # 15 minutes from last action
+            
+            expiration_time = max(absolute_limit, idle_limit)
+
+            if now_time > expiration_time:
+                logout_user()
+                return jsonify({
+                    'error': 'Session expired',
+                    'code': 'SESSION_EXPIRED',
+                    'message': 'Sua sessão expirou por inatividade ou tempo limite.'
+                }), 401
+            
+            # Update last action time roughly every minute to avoid too many DB writes or cookie rewrites
+            if now_time - last_action_time > 60:
+                session['last_action_time'] = now_time
+                session.modified = True
+                
+                # Also update in the database so it's not empty
+                from datetime import datetime
+                from app import db
+                current_user.last_action_time = datetime.fromtimestamp(now_time)
+                db.session.commit()
+                
         return None
 
     return app

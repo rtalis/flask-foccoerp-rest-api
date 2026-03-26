@@ -1,4 +1,3 @@
-// filepath: /home/talison/dev/flask-rest-api/frontend/src/components/ItemScreen.js
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { Chart, LineController, LineElement, PointElement, LinearScale, Title, CategoryScale, Tooltip } from 'chart.js';

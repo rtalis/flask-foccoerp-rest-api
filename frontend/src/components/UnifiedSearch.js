@@ -1131,7 +1131,7 @@ const UnifiedSearch = () => {
     selectedCodEmp1: "todos",
     searchByCodPedc: true,
     searchByFornecedor: true,
-    searchByCnpjFornecedor: false,
+    searchByCnpjFornecedor: true,
     searchByObservacao: true,
     searchByItemId: true,
     searchByDescricao: true,
@@ -1249,7 +1249,7 @@ const UnifiedSearch = () => {
     const fieldDefaults = {
       searchByCodPedc: { label: "Cód. Pedido", def: true },
       searchByFornecedor: { label: "Fornecedor", def: true },
-      searchByCnpjFornecedor: { label: "CNPJ Fornecedor", def: false },
+      searchByCnpjFornecedor: { label: "CNPJ Fornecedor", def: true },
       searchByObservacao: { label: "Observação", def: true },
       searchByItemId: { label: "Cód. Item", def: true },
       searchByDescricao: { label: "Descrição", def: true },
