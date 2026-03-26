@@ -96,7 +96,8 @@ const AppContent = () => {
       if (now > expirationTime) {
         handleLogout();
         showSessionError({
-          message: "Sua sessão expirou por inatividade ou tempo limite."
+          message: "Sua sessão expirou por inatividade ou tempo limite.",
+          isTimeout: true
         });
       }
     }, 30000);
@@ -129,7 +130,13 @@ const AppContent = () => {
 
         if (error?.response?.status === 401) {
           setIsAuthenticated(false);
-          if (window.location.pathname !== "/login") {
+          
+          if (error?.response?.data?.code === "SESSION_EXPIRED") {
+            showSessionError({
+              message: error.response.data.message || "Sua sessão expirou por inatividade ou tempo limite.",
+              isTimeout: true
+            });
+          } else if (window.location.pathname !== "/login") {
             window.location.href = "/login";
           }
         }
