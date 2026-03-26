@@ -613,10 +613,17 @@ def import_rfor0302(file_content):
     import xml.etree.ElementTree as ET
     from app.models import Supplier
 
+    def normalize_cnpj_val(cnpj_str):
+        """Normalize CNPJ/CPF by removing non-digits"""
+        if not cnpj_str:
+            return None
+        return re.sub(r'[^0-9]', '', cnpj_str)
+
     root = ET.fromstring(file_content)
     suppliers_data = []
     
     for g_fornec in root.findall('.//G_FORNEC'):
+        cnpj_val = g_fornec.findtext('NVL_FORN_CNPJ_FORN_CPF')
         suppliers_data.append({
             'cod_for': g_fornec.findtext('COD_FOR'),
             'tip_forn': g_fornec.findtext('TIP_FORN'),
@@ -630,7 +637,8 @@ def import_rfor0302(file_content):
             'cidade': g_fornec.findtext('CIDADE'),
             'uf': g_fornec.findtext('UF'),
             'id_for': g_fornec.findtext('ID_FOR'),
-            'nvl_forn_cnpj_forn_cpf': g_fornec.findtext('NVL_FORN_CNPJ_FORN_CPF'),
+            'nvl_forn_cnpj_forn_cpf': cnpj_val,
+            'cnpj_cpf_normalized': normalize_cnpj_val(cnpj_val),
             'descricao': g_fornec.findtext('DESCRICAO'),
             'bairro': g_fornec.findtext('BAIRRO'),
             'cf_fax': g_fornec.findtext('CF_FAX')
@@ -662,6 +670,7 @@ def import_rfor0302(file_content):
             existing_supplier.cidade = s_data['cidade']
             existing_supplier.uf = s_data['uf']
             existing_supplier.nvl_forn_cnpj_forn_cpf = s_data['nvl_forn_cnpj_forn_cpf']
+            existing_supplier.cnpj_cpf_normalized = s_data['cnpj_cpf_normalized']
             existing_supplier.descricao = s_data['descricao']
             existing_supplier.bairro = s_data['bairro']
             existing_supplier.cf_fax = s_data['cf_fax']

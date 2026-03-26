@@ -1248,3 +1248,314 @@ def test_search_advanced_matches_num_nf_from_nfe_match(auth_client: FlaskClient)
     assert response.status_code == 200
     payload = response.get_json()
     assert payload['purchases']
+
+
+# ==================== INVALID INPUT TESTS ====================
+# Tests for edge cases and invalid inputs to ensure endpoints don't hang or crash
+
+def test_search_advanced_incomplete_cnpj_no_hang(auth_client: FlaskClient):
+    """Test that incomplete CNPJs like 12.123.123 don't hang the search.
+    
+    Incomplete CNPJs should be treated as normal text (if >= 2 chars) and
+    only searched as text, not triggering expensive CNPJ lookups.
+    """
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': '12.123.123',  # Only 8 digits - incomplete CNPJ
+        'page': 1,
+        'per_page': 20
+    })
+    # Should complete quickly without hanging
+    assert response.status_code == 200
+    assert 'purchases' in response.json
+
+
+def test_search_advanced_single_character_query(auth_client: FlaskClient):
+    """Test that single character queries are rejected (too short)."""
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': 'a',
+        'page': 1,
+        'per_page': 20
+    })
+    # Should return empty results or error gracefully
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert 'purchases' in payload
+
+
+def test_search_advanced_only_dots(auth_client: FlaskClient):
+    """Test that queries with only dots/slashes are rejected."""
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': '...',
+        'page': 1,
+        'per_page': 20
+    })
+    # Should return empty results
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert 'purchases' in payload
+
+
+def test_search_advanced_only_dashes(auth_client: FlaskClient):
+    """Test that queries with only dashes are rejected."""
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': '-----',
+        'page': 1,
+        'per_page': 20
+    })
+    # Should return empty results
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert 'purchases' in payload
+
+
+def test_search_advanced_incomplete_cpf(auth_client: FlaskClient):
+    """Test that incomplete CPFs don't trigger expensive CNPJ lookups."""
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': '123.456.789',  # Only 9 digits - incomplete CPF
+        'page': 1,
+        'per_page': 20
+    })
+    # Should complete without hanging
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert 'purchases' in payload
+
+
+def test_search_advanced_valid_complete_cnpj(auth_client: FlaskClient):
+    """Test that complete CNPJs with 14 digits are recognized."""
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': '45.986.718/0001-37',  # Exactly 14 digits
+        'page': 1,
+        'per_page': 20
+    })
+    # Should complete quickly and trigger CNPJ search
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert 'purchases' in payload
+
+
+def test_search_advanced_valid_complete_cpf(auth_client: FlaskClient):
+    """Test that complete CPFs with 11 digits are recognized."""
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': '123.456.789-10',  # Exactly 11 digits
+        'page': 1,
+        'per_page': 20
+    })
+    # Should complete quickly and trigger CNPJ search  
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert 'purchases' in payload
+
+
+def test_search_advanced_whitespace_only(auth_client: FlaskClient):
+    """Test that whitespace-only queries are rejected."""
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': '   ',
+        'page': 1,
+        'per_page': 20
+    })
+    # Should return empty results
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert 'purchases' in payload
+
+
+def test_search_combined_incomplete_cnpj_no_hang(auth_client: FlaskClient):
+    """Test that incomplete CNPJs don't hang combined search."""
+    response = auth_client.get('/api/search_combined', query_string={
+        'query': '12.123.123',  # Only 8 digits
+        'page': 1,
+        'per_page': 10
+    })
+    # Should complete without hanging
+    assert response.status_code == 200
+    assert 'purchases' in response.json
+
+
+def test_search_advanced_very_long_query(auth_client: FlaskClient):
+    """Test that very long queries don't cause issues."""
+    long_query = 'a' * 1000  # 1000 character query
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': long_query,
+        'page': 1,
+        'per_page': 20
+    })
+    # Should complete without hanging or error
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert 'purchases' in payload
+
+
+def test_search_advanced_special_characters(auth_client: FlaskClient):
+    """Test that special characters in queries are handled safely."""
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': '<script>alert("xss")</script>',
+        'page': 1,
+        'per_page': 20
+    })
+    # Should complete safely without XSS vulnerability
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert 'purchases' in payload
+
+
+def test_search_advanced_sql_injection_attempt(auth_client: FlaskClient):
+    """Test that SQL injection attempts are safely handled."""
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': "' OR '1'='1",
+        'page': 1,
+        'per_page': 20
+    })
+    # Should complete safely without SQL injection
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert 'purchases' in payload
+
+
+def test_search_advanced_negative_page(auth_client: FlaskClient):
+    """Test that negative page numbers are handled."""
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': 'test',
+        'page': -5,
+        'per_page': 20
+    })
+    # Should handle gracefully
+    assert response.status_code == 200
+
+
+def test_search_advanced_zero_per_page(auth_client: FlaskClient):
+    """Test that zero items per page is handled."""
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': 'test',
+        'page': 1,
+        'per_page': 0
+    })
+    # Should handle gracefully
+    assert response.status_code == 200
+
+
+def test_search_advanced_excessive_per_page(auth_client: FlaskClient):
+    """Test that excessive items per page is capped."""
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': 'test',
+        'page': 1,
+        'per_page': 10000
+    })
+    # Should handle gracefully (capped to 200)
+    assert response.status_code == 200
+
+
+def test_search_advanced_invalid_date_format(auth_client: FlaskClient):
+    """Test that invalid date formats are handled gracefully."""
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': 'test',
+        'date_from': 'not-a-date',
+        'date_to': 'also-not-a-date',
+        'page': 1,
+        'per_page': 20
+    })
+    # Should handle gracefully and ignore invalid dates
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert 'purchases' in payload
+
+
+def test_search_advanced_partial_cnpj_with_wildcards(auth_client: FlaskClient):
+    """Test that partial CNPJs with wildcards don't cause issues."""
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': '45.986.7*/*-37',  # Partial CNPJ with wildcards
+        'page': 1,
+        'per_page': 20
+    })
+    # Should complete without hanging
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert 'purchases' in payload
+
+
+def test_search_combined_multiple_incomplete_cnpjs(auth_client: FlaskClient):
+    """Test searching with multiple incomplete CNPJs."""
+    response = auth_client.get('/api/search_combined', query_string={
+        'query': '12.123 34.567 56.789',  # Multiple incomplete patterns
+        'page': 1,
+        'per_page': 10
+    })
+    # Should complete without hanging
+    assert response.status_code == 200
+    assert 'purchases' in response.json
+
+
+def test_search_advanced_min_max_value_edge_cases(auth_client: FlaskClient):
+    """Test min/max value filters with edge case values."""
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': 'test',
+        'minValue': -999999,
+        'maxValue': 999999999,
+        'valueSearchType': 'item',
+        'page': 1,
+        'per_page': 20
+    })
+    # Should handle extreme values gracefully
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert 'purchases' in payload
+
+
+def test_search_advanced_invalid_value_search_type(auth_client: FlaskClient):
+    """Test that invalid valueSearchType is handled."""
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': 'test',
+        'minValue': 100,
+        'valueSearchType': 'invalid_type',
+        'page': 1,
+        'per_page': 20
+    })
+    # Should handle gracefully
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert 'purchases' in payload
+
+
+def test_count_results_incomplete_cnpj(auth_client: FlaskClient):
+    """Test count_results with incomplete CNPJ."""
+    response = auth_client.get('/api/count_results', query_string={
+        'query': '12.123.123',
+        'score_cutoff': 100
+    })
+    # Should complete without hanging
+    assert response.status_code == 200
+    assert 'count' in response.json
+
+
+def test_search_fuzzy_incomplete_cnpj(auth_client: FlaskClient):
+    """Test fuzzy search with incomplete CNPJ."""
+    response = auth_client.get('/api/search_fuzzy', query_string={
+        'query': '12.123.123',
+        'score_cutoff': 60
+    })
+    # Should complete without hanging
+    assert response.status_code == 200
+    assert 'items' in response.json
+
+
+def test_search_advanced_suggestions_incomplete_cnpj(auth_client: FlaskClient):
+    """Test search suggestions with incomplete CNPJ."""
+    response = auth_client.get('/api/search_advanced/suggestions', query_string={
+        'term': '12.123.123'
+    })
+    # Should complete without hanging
+    assert response.status_code == 200
+    assert 'suggestions' in response.json
+
+
+def test_search_advanced_empty_multiple_terms(auth_client: FlaskClient):
+    """Test search with multiple spaces or empty terms."""
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': '   test    motor    ',
+        'page': 1,
+        'per_page': 20
+    })
+    # Should handle gracefully
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert 'purchases' in payload

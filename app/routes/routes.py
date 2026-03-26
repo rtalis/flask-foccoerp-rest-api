@@ -783,22 +783,48 @@ def search_advanced():
         else:
             return column.ilike(pattern)
 
-    def normalize_cnpj_expr(column):
-        normalized = func.coalesce(cast(column, db.String), '')
-        for char in ('.', '/', '-', ' '):
-            normalized = func.replace(normalized, char, '')
-        return normalized
+    def normalize_cnpj_string(cnpj: str) -> str:
+        """Normalize CNPJ/CPF string by removing non-digits."""
+        return re.sub(r'[^0-9]', '', cnpj)
+    
+    def is_valid_cnpj_search(token: str) -> bool:
+        """Check if token is a valid CNPJ or CPF for searching.
+        
+        Only accepts:
+        - Exactly 11 digits (CPF)
+        - Exactly 14 digits (CNPJ)
+        
+        Returns False for incomplete patterns to prevent database locks.
+        """
+        cleaned = normalize_cnpj_string(token)
+        # Only match complete CNPJ (14) or CPF (11) - never partial
+        return len(cleaned) in (11, 14)
 
-    def is_cnpj_like(token: str) -> bool:
-        """Check if token looks like a CNPJ or CPF (contains mostly digits, dots, slashes, dashes)."""
-        cleaned = re.sub(r'[^0-9]', '', token)
-        # CNPJ has 14 digits, CPF has 11 digits
-        return len(cleaned) in (11, 14) or (len(cleaned) > 8 and re.search(r'\d{8,}', token))
+    def is_valid_search_pattern(token: str) -> bool:
+        """Check if a search pattern is valid for text search.
+        
+        Returns False for patterns that are too short or too common to avoid
+        expensive database queries that would hang the system.
+        """
+        # Minimum 2 characters for any text search
+        if len(token.strip()) < 2:
+            return False
+        # Don't search for pure wildcards or dots/slashes
+        if re.match(r'^[\*\./\-\s]+$', token):
+            return False
+        return True
 
-    # Auto-detect CNPJ/CPF tokens and enable CNPJ search
-    has_cnpj_like_token = any(is_cnpj_like(token) for token in tokens)
-    if has_cnpj_like_token:
-        include_cnpj_fornecedor = True
+    valid_tokens = [token for token in tokens if is_valid_search_pattern(token)]
+    valid_cnpj_tokens = [token for token in tokens if include_cnpj_fornecedor and is_valid_cnpj_search(token)]
+    
+    if not valid_tokens and not valid_cnpj_tokens:
+        # No valid search patterns provided
+        return jsonify({
+            'purchases': [],
+            'total_pages': 0,
+            'current_page': 1,
+            'total_results': 0
+        }), 200
 
     base_query = (
         PurchaseItem.query
@@ -835,16 +861,13 @@ def search_advanced():
         base_query = base_query.filter(PurchaseItem.quantidade > PurchaseItem.qtde_canc)
     
     token_filters = []
-    for token in tokens:
+    
+    # Text search on regular columns
+    for token in valid_tokens:
         pattern = build_like_pattern(token)
-        
-        # For CNPJ-like tokens, skip regular text columns but still create term_clauses with CNPJ search
-        if is_cnpj_like(token):
-            term_clauses = []  # Will only use CNPJ search for this token
-        else:
-            term_clauses = [apply_ilike(column, pattern) for column in search_columns]
+        term_clauses = [apply_ilike(column, pattern) for column in search_columns]
 
-        if include_nf and not is_cnpj_like(token):
+        if include_nf:
             nf_column = NFEntry.num_nf
             nf_expr = remove_accents(nf_column) if remove_accents else nf_column
             nf_clause = exists().where(and_(
@@ -862,20 +885,23 @@ def search_advanced():
             ))
             term_clauses.append(nfe_match_clause)
 
-        # Handle CNPJ search for both explicit requests and auto-detected CNPJ tokens
-        if include_cnpj_fornecedor or is_cnpj_like(token):
-            cnpj_token = re.sub(r'[^0-9*]', '', token)
-            if cnpj_token:
-                cnpj_pattern = build_like_pattern(cnpj_token)
-                cnpj_clause = exists().where(and_(
+        if include_cnpj_fornecedor and token in valid_cnpj_tokens:
+            # Normalize CNPJ in Python
+            normalized_cnpj = normalize_cnpj_string(token)
+            
+            # Use indexed normalized column for fast exact matching
+            cnpj_clause = db.session.query(Supplier).filter(
+                and_(
                     or_(
                         Supplier.id_for == PurchaseOrder.fornecedor_id,
                         Supplier.cod_for == cast(PurchaseOrder.fornecedor_id, db.String),
                         func.ltrim(Supplier.cod_for, '0') == func.ltrim(cast(PurchaseOrder.fornecedor_id, db.String), '0')
                     ),
-                    normalize_cnpj_expr(Supplier.nvl_forn_cnpj_forn_cpf).ilike(cnpj_pattern)
-                ))
-                term_clauses.append(cnpj_clause)
+                    # Query indexed normalized column with digits only
+                    Supplier.cnpj_cpf_normalized == normalized_cnpj
+                )
+            ).exists()
+            term_clauses.append(cnpj_clause)
 
         if term_clauses:
             token_filters.append(or_(*term_clauses))
@@ -883,9 +909,9 @@ def search_advanced():
     if token_filters:
         base_query = base_query.filter(and_(*token_filters))
 
-    if score_cutoff < 100 and tokens:
+    if score_cutoff < 100 and valid_tokens:
         items = base_query.order_by(PurchaseOrder.dt_emis.desc(), PurchaseItem.id.desc()).all()
-        items = fuzzy_search(' '.join(tokens), items, score_cutoff, 'descricao' in fields, 'observacao' in fields)
+        items = fuzzy_search(' '.join(valid_tokens), items, score_cutoff, 'descricao' in fields, 'observacao' in fields)
         purchases_payload = _build_purchase_payload(items)
         return jsonify({
             'purchases': purchases_payload,

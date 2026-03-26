@@ -172,6 +172,7 @@ class Supplier(db.Model):
     cidade = db.Column(db.String(100))
     uf = db.Column(db.String(10))
     nvl_forn_cnpj_forn_cpf = db.Column(db.String(30))
+    cnpj_cpf_normalized = db.Column(db.String(14), index=True, nullable=True)
     descricao = db.Column(db.String(200))
     bairro = db.Column(db.String(100))
     cf_fax = db.Column(db.String(50))
