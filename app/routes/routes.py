@@ -37,7 +37,14 @@ def apply_user_scopes(query, model):
     if "observacao_contains" in filters_config:
         keywords = filters_config["observacao_contains"]
         if keywords and hasattr(model, 'observacao'):
-            filter_clauses = [model.observacao.ilike(f"%{kw}%") for kw in keywords]
+            from sqlalchemy import func
+            if db.engine.name == 'postgresql':
+                filter_clauses = [
+                    func.unaccent(model.observacao).ilike(func.unaccent(func.cast(f"%{kw}%", db.String))) 
+                    for kw in keywords
+                ]
+            else:
+                filter_clauses = [model.observacao.ilike(f"%{kw}%") for kw in keywords]
             query = query.filter(or_(*filter_clauses))
             
     return query
