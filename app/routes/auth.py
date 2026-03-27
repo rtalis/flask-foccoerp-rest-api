@@ -158,7 +158,6 @@ def register():
     capabilities = data.get('capabilities', ['view_financials', 'view_nfes'])
     data_filters = data.get('data_filters', {})
     system_name = data.get('system_name', '')
-    user_type = data.get('user_type', 'Visualizador básico')
 
     if not username or not email or not password:
         return jsonify({'error': 'Missing fields'}), 400
@@ -176,8 +175,7 @@ def register():
         allowed_screens=allowed_screens,
         capabilities=capabilities,
         data_filters=data_filters,
-        system_name=system_name,
-        user_type=user_type
+        system_name=system_name
     )
     db.session.add(new_user)
     db.session.commit()
@@ -495,9 +493,6 @@ def update_user(user_id):
 
     if 'system_name' in data:
         user.system_name = data['system_name']
-
-    if 'user_type' in data:
-        user.user_type = data['user_type']
 
     db.session.commit()
     return jsonify({'message': 'User updated successfully'}), 200

@@ -41,56 +41,49 @@ import {
   ExpandLess as ExpandLessIcon,
 } from "@mui/icons-material";
 
-const USER_TYPE_PRESETS = {
-  "Visualizador básico": {
-    role: "viewer",
-    initial_screen: "/dashboard",
-    allowed_screens: ["/dashboard"],
-    capabilities: [],
-    data_filters_observacao: "",
-  },
-  "Visualizador": {
-    role: "viewer",
-    initial_screen: "/dashboard",
-    allowed_screens: ["/dashboard", "/search"],
-    capabilities: [],
-    data_filters_observacao: "",
-  },
-  "Fiscal": {
-    role: "viewer",
-    initial_screen: "/nfe-search",
-    allowed_screens: ["/dashboard", "/search", "/nfe-search"],
-    capabilities: ["view_nfes"],
-    data_filters_observacao: "",
-  },
-  "Financeiro": {
-    role: "viewer",
-    initial_screen: "/dashboard",
-    allowed_screens: ["/dashboard", "/search", "/nfe-search", "/quotation-analyzer"],
-    capabilities: ["view_financials", "view_nfes"],
-    data_filters_observacao: "",
-  },
-  "Comprador": {
-    role: "viewer",
-    initial_screen: "/search",
-    allowed_screens: ["/dashboard", "/search", "/nfe-search", "/quotation-analyzer"],
-    capabilities: ["view_financials", "view_nfes"],
-    data_filters_observacao: "",
-  },
-  "Conferente": {
-    role: "viewer",
-    initial_screen: "/search",
-    allowed_screens: ["/dashboard", "/search", "/nfe-search"],
-    capabilities: ["view_nfes"],
-    data_filters_observacao: "",
-  },
-  "Administrador": {
-    role: "admin",
+const ROLE_PRESETS = {
+  admin: {
     initial_screen: "/dashboard",
     allowed_screens: ["/dashboard", "/search", "/nfe-search", "/quotation-analyzer", "/import"],
     capabilities: ["view_financials", "view_nfes"],
-    data_filters_observacao: "",
+    data_filters_observacao: ""
   },
+  basic_viewer: {
+    initial_screen: "/search",
+    allowed_screens: ["/search"],
+    capabilities: [],
+    data_filters_observacao: ""
+  },
+  viewer: {
+    initial_screen: "/search",
+    allowed_screens: ["/dashboard", "/search"],
+    capabilities: ["view_financials", "view_nfes"],
+    data_filters_observacao: ""
+  },
+  fiscal: {
+    initial_screen: "/nfe-search",
+    allowed_screens: ["/search", "/nfe-search","/import"],
+    capabilities: ["view_nfes", "view_financials"],
+    data_filters_observacao: ""
+  },
+  financial: {
+    initial_screen: "/search",
+    allowed_screens: ["/dashboard", "/search", "/nfe-search", "/quotation-analyzer", "/import"],
+    capabilities: ["view_financials", "view_nfes"],
+    data_filters_observacao: ""
+  },
+  purchaser: {
+    initial_screen: "/search",
+    allowed_screens: ["/search", "/quotation-analyzer", "/nfe-search", "/import"],
+    capabilities: ["view_financials", "view_nfes"],
+    data_filters_observacao: ""
+  },
+  checker: {
+    initial_screen: "/search",
+    allowed_screens: ["/search", "/nfe-search", "/import"],
+    capabilities: ["view_financials", "view_nfes"],
+    data_filters_observacao: ""
+  }
 };
 
 const Register = () => {
@@ -101,13 +94,12 @@ const Register = () => {
     username: "",
     email: "",
     password: "",
-    user_type: "Visualizador básico",
     role: "viewer",
     purchaser_name: "",
     system_name: "",
     initial_screen: "/dashboard",
     allowed_screens: ["/dashboard"],
-    capabilities: [],
+    capabilities: ["view_financials", "view_nfes"],
     data_filters: {},
     data_filters_observacao: "",
   });
@@ -131,7 +123,7 @@ const Register = () => {
   const availableScreens = [
     { path: "/dashboard", label: "Dashboard" },
     { path: "/search", label: "Buscar Pedidos" },
-    { path: "/nfe-search", label: "Notas Fiscais" },
+    { path: "/nfe-search", label: "Buscar NFEs" },
     { path: "/quotation-analyzer", label: "Analisar Cotações" },
     { path: "/import", label: "Importar Dados" },
   ];
@@ -191,22 +183,20 @@ const Register = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-
-    if (name === "user_type" && USER_TYPE_PRESETS[value]) {
-       const preset = USER_TYPE_PRESETS[value];
-       setFormData((prev) => ({
-         ...prev,
-         user_type: value,
-         role: preset.role,
-         initial_screen: preset.initial_screen,
-         allowed_screens: preset.allowed_screens,
-         capabilities: preset.capabilities,
-         data_filters_observacao: preset.data_filters_observacao,
-       }));
-       return;
+    
+    if (name === "role" && ROLE_PRESETS[value]) {
+      const preset = ROLE_PRESETS[value];
+      setFormData((prev) => ({
+        ...prev,
+        [name]: value,
+        initial_screen: preset.initial_screen,
+        allowed_screens: [...preset.allowed_screens],
+        capabilities: [...preset.capabilities],
+        data_filters_observacao: preset.data_filters_observacao
+      }));
+    } else {
+      setFormData((prev) => ({ ...prev, [name]: value }));
     }
-
-    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleCapabilitiesChange = (capability) => {
@@ -246,17 +236,17 @@ const Register = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Custom restrictions alert
-    if (formData.user_type && USER_TYPE_PRESETS[formData.user_type] && formData.user_type !== "Administrador" && formData.user_type !== "Personalizado") {
-      const preset = USER_TYPE_PRESETS[formData.user_type];
-      const hasCustomCap = JSON.stringify([...(formData.capabilities || [])].sort()) !== JSON.stringify([...preset.capabilities].sort());
-      const hasCustomScreens = JSON.stringify([...(formData.allowed_screens || [])].sort()) !== JSON.stringify([...preset.allowed_screens].sort());
-      const hasCustomFilters = formData.data_filters_observacao !== preset.data_filters_observacao;
+    // Check if configuration matches the preset for the role
+    const preset = ROLE_PRESETS[formData.role];
+    if (preset) {
+      const screensMatch = JSON.stringify([...formData.allowed_screens].sort()) === JSON.stringify([...preset.allowed_screens].sort());
+      const capsMatch = JSON.stringify([...formData.capabilities].sort()) === JSON.stringify([...preset.capabilities].sort());
+      const filtersMatch = (formData.data_filters_observacao || "").trim() === (preset.data_filters_observacao || "").trim();
 
-      if (hasCustomCap || hasCustomScreens || hasCustomFilters) {
-        if (!window.confirm("Você alterou algumas permissões ou telas do tipo padrão selecionado. Tem certeza de que deseja salvar com essas restrições personalizadas?")) {
-          return;
-        }
+      if (!screensMatch || !capsMatch || !filtersMatch) {
+         if (!window.confirm("Atenção: A configuração atual possui restrições/permissões customizadas que diferem do padrão do tipo selecionado. Deseja salvar estas customizações?")) {
+           return;
+         }
       }
     }
 
@@ -330,7 +320,6 @@ const Register = () => {
       username: user.username,
       email: user.email,
       password: "",
-      user_type: user.user_type || "Personalizado",
       role: user.role || "viewer",
       purchaser_name: user.purchaser_name || "",
       system_name: user.system_name || "",
@@ -369,13 +358,12 @@ const Register = () => {
       username: "",
       email: "",
       password: "",
-      user_type: "Visualizador básico",
       role: "viewer",
       purchaser_name: "",
       system_name: "",
       initial_screen: "/dashboard",
       allowed_screens: ["/dashboard"],
-      capabilities: [],
+      capabilities: ["view_financials", "view_nfes"],
       data_filters: {},
       data_filters_observacao: "",
     });
@@ -388,12 +376,28 @@ const Register = () => {
   const handleCloseAlert = () => setAlert({ ...alert, open: false });
 
   const getRoleLabel = (role) => {
-    const labels = { admin: "Admin", purchaser: "Comprador", viewer: "Viewer" };
+    const labels = {
+      admin: "Admin",
+      basic_viewer: "Vis. Básico",
+      viewer: "Visualizador",
+      fiscal: "Fiscal",
+      financial: "Financeiro",
+      purchaser: "Comprador",
+      checker: "Conferente"
+    };
     return labels[role] || role;
   };
 
   const getRoleColor = (role) => {
-    const colors = { admin: "error", purchaser: "primary", viewer: "default" };
+    const colors = {
+      admin: "error",
+      basic_viewer: "default",
+      viewer: "secondary",
+      fiscal: "warning",
+      financial: "success",
+      purchaser: "primary",
+      checker: "info"
+    };
     return colors[role] || "default";
   };
 
@@ -504,43 +508,23 @@ const Register = () => {
               />
             </Stack>
 
-            {/* Row 1.5: User Type + Role */}
+            {/* Row 2: Role + System Name */}
             <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-              <FormControl size="small" sx={{ minWidth: 200 }}>
-                <InputLabel>Perfil de Acesso</InputLabel>
-                <Select
-                  name="user_type"
-                  label="Perfil de Acesso"
-                  value={formData.user_type}
-                  onChange={handleInputChange}
-                >
-                  {Object.keys(USER_TYPE_PRESETS).map((t) => (
-                    <MenuItem key={t} value={t}>{t}</MenuItem>
-                  ))}
-                  <MenuItem value="Personalizado">Personalizado</MenuItem>
-                </Select>
-              </FormControl>
-
               <FormControl size="small" sx={{ minWidth: 150 }}>
-                <InputLabel>Regra do Sistema</InputLabel>
+                <InputLabel>Tipo</InputLabel>
                 <Select
                   name="role"
-                  label="Regra do Sistema"
+                  label="Tipo"
                   value={formData.role}
                   onChange={handleInputChange}
                 >
-                  <MenuItem value="viewer">Viewer</MenuItem>
-                  <MenuItem value="admin">Admin</MenuItem>
-                </Select>
-              </FormControl>
-            </Stack>
-
-            {/* Row 2: System Name */}
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                >
-                  <MenuItem value="admin">Admin</MenuItem>
+                  <MenuItem value="admin">Administrador</MenuItem>
+                  <MenuItem value="basic_viewer">Visualizador Básico</MenuItem>
+                  <MenuItem value="viewer">Visualizador</MenuItem>
+                  <MenuItem value="fiscal">Fiscal</MenuItem>
+                  <MenuItem value="financial">Financeiro</MenuItem>
                   <MenuItem value="purchaser">Comprador</MenuItem>
-                  <MenuItem value="viewer">Viewer</MenuItem>
+                  <MenuItem value="checker">Conferente</MenuItem>
                 </Select>
               </FormControl>
               <FormControl size="small" sx={{ flex: 1 }}>
