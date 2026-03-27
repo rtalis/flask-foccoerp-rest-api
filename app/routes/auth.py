@@ -74,9 +74,19 @@ def login():
 
     if user and check_password_hash(user.password, password):
         has_existing_session = False
-        if user.session_token and user.session_token_created_at:
-            session_age = datetime.now() - user.session_token_created_at
-            if session_age < current_app.config['PERMANENT_SESSION_LIFETIME']:
+        if user.session_token:
+            now = datetime.now()
+            session_active = False
+            
+            exp_hours = current_app.config.get('SESSION_EXPIRATION_HOURS', 1)
+            idle_minutes = current_app.config.get('SESSION_IDLE_MINUTES', 15)
+            
+            if user.session_token_created_at and (now - user.session_token_created_at) < timedelta(hours=exp_hours):
+                session_active = True
+            elif user.last_action_time and (now - user.last_action_time) < timedelta(minutes=idle_minutes):
+                session_active = True
+                
+            if session_active:
                 has_existing_session = True
         
         if has_existing_session and not force:
