@@ -80,8 +80,10 @@ const Login = ({ onLogin }) => {
 
         // Successful login
         setLoginSuccess(true);
+        const initialScreen = response.data?.user?.initial_screen || "/search";
+        const allowedScreens = response.data?.user?.allowed_screens || [];
         setTimeout(() => {
-          onLogin();
+          onLogin(initialScreen, allowedScreens);
         }, 1);
       }
     } catch (error) {

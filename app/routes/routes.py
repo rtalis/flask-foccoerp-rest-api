@@ -825,13 +825,8 @@ def search_advanced():
 
     def is_valid_search_pattern(token: str) -> bool:
         """Check if a search pattern is valid for text search.
-        
-        Returns False for patterns that are too short or too common to avoid
-        expensive database queries that would hang the system.
         """
-        # Minimum 2 characters for any text search
-        if len(token.strip()) < 2:
-            return False
+   
         # Don't search for pure wildcards or dots/slashes
         if re.match(r'^[\*\./\-\s]+$', token):
             return False
@@ -840,7 +835,9 @@ def search_advanced():
     valid_tokens = [token for token in tokens if is_valid_search_pattern(token)]
     valid_cnpj_tokens = [token for token in tokens if include_cnpj_fornecedor and is_valid_cnpj_search(token)]
     
-    if not valid_tokens and not valid_cnpj_tokens:
+    # Allow empty query to list scoped/paginated results, but keep blocking
+    # non-empty invalid patterns (e.g., only wildcards).
+    if normalized_query and not valid_tokens and not valid_cnpj_tokens:
         # No valid search patterns provided
         return jsonify({
             'purchases': [],

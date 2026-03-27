@@ -1197,6 +1197,7 @@ const UnifiedSearch = () => {
     valueSearchType: "item",
     ignoreDiacritics: true,
     exactSearch: false,
+    hideCancelled: false,
   };
 
   const getStoredSearchParams = () => {
