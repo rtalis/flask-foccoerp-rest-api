@@ -5,6 +5,7 @@ import {
   Container,
   Typography,
   TextField,
+  MenuItem,
   Button,
   Paper,
   Snackbar,
@@ -24,12 +25,27 @@ import {
 } from "@mui/icons-material";
 
 const Account = () => {
+  const allScreenOptions = [
+    { value: "/search", label: "Pedidos" },
+    { value: "/nfe-search", label: "Notas Fiscais" },
+    { value: "/quotation-analyzer", label: "Cotações" },
+    { value: "/import", label: "Atualizar" },
+    { value: "/dashboard", label: "Relatórios" },
+    { value: "/register", label: "Cadastro de Usuários" },
+    { value: "/token-manager", label: "Tokens" },
+    { value: "/usage-report", label: "Relatório de Uso" },
+    { value: "/account", label: "Minha Conta" },
+  ];
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [role, setRole] = useState("viewer");
+  const [allowedScreens, setAllowedScreens] = useState([]);
   const [userData, setUserData] = useState({
     username: "",
     email: "",
     purchaser_name: "",
+    initial_screen: "/search",
   });
   const [passwordData, setPasswordData] = useState({
     current_password: "",
@@ -61,7 +77,10 @@ const Account = () => {
         username: response.data.username || "",
         email: response.data.email || "",
         purchaser_name: response.data.purchaser_name || "",
+        initial_screen: response.data.initial_screen || "/search",
       });
+      setRole(response.data.role || "viewer");
+      setAllowedScreens(response.data.allowed_screens || []);
     } catch (error) {
       setAlert({
         open: true,
@@ -87,6 +106,11 @@ const Account = () => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
   };
+
+  const availableInitialScreenOptions =
+    role === "admin" || allowedScreens.includes("*")
+      ? allScreenOptions
+      : allScreenOptions.filter((option) => allowedScreens.includes(option.value));
 
   const handleSaveProfile = async (e) => {
     e.preventDefault();
@@ -117,6 +141,7 @@ const Account = () => {
           username: userData.username,
           email: userData.email,
           purchaser_name: userData.purchaser_name,
+          initial_screen: userData.initial_screen,
         },
         { withCredentials: true },
       );
@@ -246,6 +271,24 @@ const Account = () => {
                 fullWidth
                 helperText="Este nome será exibido em relatórios e atividades"
               />
+              <TextField
+                size="small"
+                select
+                label="Tela inicial"
+                name="initial_screen"
+                value={userData.initial_screen}
+                onChange={handleUserDataChange}
+                fullWidth
+                required
+                helperText="Escolha para qual tela você será redirecionado após login"
+                disabled={availableInitialScreenOptions.length === 0}
+              >
+                {availableInitialScreenOptions.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </TextField>
               <Box sx={{ pt: 1 }}>
                 <Button
                   type="submit"

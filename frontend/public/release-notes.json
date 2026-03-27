@@ -18,9 +18,10 @@
   {
     "version": "2.1.0",
     "notes": [
-      "Novo controle de acesso por tipo de usuário, com redirecionamento automático para a tela inicial configurada.",
+      "Novo controle de acesso por tipo de usuário, com permissão de telas e tela inicial por usuário (O usuário pode definir sua tela inicial em 'Conta').",
+      "Novo timer de ultima ação adicionado, para o usuário não ser deslogado no meio de uma ação.",
       "Permissões agora controlam visualização de valores financeiros e NFEs em telas e exportações.",
-      "Filtros restritivos por usuário passaram a ser aplicados nas buscas, com indicação clara quando os resultados estiverem limitados."
+      "Filtros restritivos para usuários de busca simples podem ser definidos, com indicação de quando os resultados estiverem limitados."
     ]
   }
 ]

@@ -539,6 +539,18 @@ def update_me():
     # Update purchaser_name (display name) if provided
     if 'purchaser_name' in data:
         user.purchaser_name = data['purchaser_name']
+
+    # Update initial screen if provided, but only to a screen the user can access
+    if 'initial_screen' in data:
+        initial_screen = (data.get('initial_screen') or '').strip()
+        if not initial_screen:
+            return jsonify({'error': 'Tela inicial é obrigatória'}), 400
+
+        allowed_screens = user.allowed_screens or []
+        if allowed_screens and '*' not in allowed_screens and initial_screen not in allowed_screens:
+            return jsonify({'error': 'Tela inicial inválida para este usuário'}), 400
+
+        user.initial_screen = initial_screen
     
     # Update password if provided (requires current password verification)
     if 'new_password' in data and data['new_password']:
@@ -556,7 +568,8 @@ def update_me():
         'message': 'Conta atualizada com sucesso',
         'username': user.username,
         'email': user.email,
-        'purchaser_name': user.purchaser_name
+        'purchaser_name': user.purchaser_name,
+        'initial_screen': user.initial_screen
     }), 200
 
 @auth_bp.route('/users/<int:user_id>', methods=['DELETE'])
