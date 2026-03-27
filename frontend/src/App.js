@@ -27,11 +27,40 @@ import UsageReport from "./components/UsageReport";
 
 const AppContent = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [postLoginRedirect, setPostLoginRedirect] = useState("/search");
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
   const [unseenReleases, setUnseenReleases] = useState([]);
   const { showError, showSessionError } = useServerError();
 
   const apiUrl = process.env.REACT_APP_API_URL;
+
+  const normalizeInitialScreen = (screen, allowedScreens = []) => {
+    const fallback = "/search";
+    const validScreens = [
+      "/dashboard",
+      "/search",
+      "/nfe-search",
+      "/quotation-analyzer",
+      "/import",
+      "/register",
+      "/token-manager",
+      "/usage-report",
+      "/account",
+    ];
+
+    if (!screen || typeof screen !== "string" || !validScreens.includes(screen)) {
+      return fallback;
+    }
+
+    if (Array.isArray(allowedScreens) && allowedScreens.length > 0) {
+      if (!allowedScreens.includes("*") && !allowedScreens.includes(screen)) {
+        const firstAllowed = allowedScreens.find((path) => validScreens.includes(path));
+        return firstAllowed || fallback;
+      }
+    }
+
+    return screen;
+  };
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -41,6 +70,19 @@ const AppContent = () => {
         });
         if (response.status === 200) {
           setIsAuthenticated(true);
+
+          try {
+            const meResponse = await axios.get(`${apiUrl}/auth/me`, {
+              withCredentials: true,
+            });
+            const nextScreen = normalizeInitialScreen(
+              meResponse.data?.initial_screen,
+              meResponse.data?.allowed_screens || [],
+            );
+            setPostLoginRedirect(nextScreen);
+          } catch (meError) {
+            setPostLoginRedirect("/search");
+          }
           
           if (!localStorage.getItem('loginTime')) {
             localStorage.setItem('loginTime', Date.now().toString());
@@ -193,8 +235,9 @@ const AppContent = () => {
     };
   }, [showError]);
 
-  const handleLogin = () => {
+  const handleLogin = (initialScreen = "/search", allowedScreens = []) => {
     setIsAuthenticated(true);
+    setPostLoginRedirect(normalizeInitialScreen(initialScreen, allowedScreens));
     localStorage.setItem('loginTime', Date.now().toString());
     localStorage.setItem('lastActionTime', Date.now().toString());
 
@@ -245,7 +288,7 @@ const AppContent = () => {
             path="/login"
             element={
               isAuthenticated ? (
-                <Navigate to="/search" />
+                <Navigate to={postLoginRedirect} />
               ) : (
                 <Login onLogin={handleLogin} />
               )
@@ -276,7 +319,7 @@ const AppContent = () => {
           {/* Default redirect */}
           <Route
             path="*"
-            element={<Navigate to={isAuthenticated ? "/search" : "/login"} />}
+            element={<Navigate to={isAuthenticated ? postLoginRedirect : "/login"} />}
           />
         </Routes>
       </Router>

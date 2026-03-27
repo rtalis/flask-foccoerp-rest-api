@@ -21,9 +21,26 @@ from config import Config
 
 bp = Blueprint('api', __name__)
 
-
 UPLOAD_FOLDER = tempfile.gettempdir()
 ALLOWED_EXTENSIONS = {'xml'}
+
+def apply_user_scopes(query, model):
+    """
+    Applies data filtering constraints onto an active SQLAlchemy query based on the user's data_filters.
+    Expected data_filters schema: {"observacao_contains": ["keyword1"], "department_equals": ["TI"]} 
+    """
+    if getattr(current_user, 'role', 'viewer') == 'admin':
+        return query
+    
+    filters_config = getattr(current_user, 'data_filters', {}) or {}
+    
+    if "observacao_contains" in filters_config:
+        keywords = filters_config["observacao_contains"]
+        if keywords and hasattr(model, 'observacao'):
+            filter_clauses = [model.observacao.ilike(f"%{kw}%") for kw in keywords]
+            query = query.filter(or_(*filter_clauses))
+            
+    return query
 
 
 def _build_purchase_payload(items):
@@ -73,6 +90,10 @@ def _build_purchase_payload(items):
                     'nfe_data_emissao': match.nfe_data_emissao.isoformat() if match.nfe_data_emissao else None
                 }
 
+    user_caps = getattr(current_user, 'capabilities', []) or []
+    can_view_financials = 'view_financials' in user_caps or current_user.role == 'admin'
+    can_view_nfes = 'view_nfes' in user_caps or current_user.role == 'admin'
+
     for item in items:
         cod_pedc = item.cod_pedc
         order = item.purchase_order
@@ -94,21 +115,21 @@ def _build_purchase_payload(items):
                     'dt_emis':  _parse_date(order.dt_emis),
                     'fornecedor_id': order.fornecedor_id,
                     'fornecedor_descricao': order.fornecedor_descricao,
-                    'total_bruto': order.total_bruto,
-                    'total_pedido_com_ipi': order.total_pedido_com_ipi,
-                    'adjusted_total': adjusted_total,
+                    'total_bruto': order.total_bruto if can_view_financials else None,
+                    'total_pedido_com_ipi': order.total_pedido_com_ipi if can_view_financials else None,
+                    'adjusted_total': adjusted_total if can_view_financials else None,
                     'adjustments': [
                         {
                             'tp_apl': adj.tp_apl,
                             'tp_dctacr1': adj.tp_dctacr1,
                             'tp_vlr1': adj.tp_vlr1,
-                            'vlr1': adj.vlr1,
+                            'vlr1': adj.vlr1 if can_view_financials else None,
                             'order_index': adj.order_index
                         }
                         for adj in adjustments
-                    ],
-                    'total_liquido': order.total_liquido,
-                    'total_liquido_ipi': order.total_liquido_ipi,
+                    ] if can_view_financials else [],
+                    'total_liquido': order.total_liquido if can_view_financials else None,
+                    'total_liquido_ipi': order.total_liquido_ipi if can_view_financials else None,
                     'posicao': order.posicao,
                     'posicao_hist': order.posicao_hist,
                     'observacao': order.observacao,
@@ -119,14 +140,14 @@ def _build_purchase_payload(items):
                     'cod_emp1': order.cod_emp1,
                     'nfes': [
                         {
-                            'num_nf': nf_entry.num_nf,
-                            'id': nf_entry.id,
+                            'num_nf': nf_entry.num_nf if can_view_nfes else None,
+                            'id': nf_entry.id if can_view_nfes else None,
                             'dt_ent': nf_entry.dt_ent,
                             'qtde': nf_entry.qtde,
                             'linha': nf_entry.linha
                         }
                         for nf_entry in order_nf_entries
-                    ]
+                    ] 
                 },
                 'items': []
             }
@@ -136,21 +157,21 @@ def _build_purchase_payload(items):
             'item_id': item.item_id,
             'descricao': item.descricao,
             'quantidade': item.quantidade,
-            'preco_unitario': item.preco_unitario,
-            'total': item.total,
+            'preco_unitario': item.preco_unitario if can_view_financials else None,
+            'total': item.total if can_view_financials else None,
             'unidade_medida': item.unidade_medida,
             'linha': item.linha,
             'dt_entrega': item.dt_entrega,
             'perc_ipi': item.perc_ipi,
-            'tot_liquido_ipi': item.tot_liquido_ipi,
-            'tot_descontos': item.tot_descontos,
-            'tot_acrescimos': item.tot_acrescimos,
+            'tot_liquido_ipi': item.tot_liquido_ipi if can_view_financials else None,
+            'tot_descontos': item.tot_descontos if can_view_financials else None,
+            'tot_acrescimos': item.tot_acrescimos if can_view_financials else None,
             'qtde_canc': item.qtde_canc,
             'qtde_canc_toler': item.qtde_canc_toler,
             'perc_toler': item.perc_toler,
             'qtde_atendida': item.qtde_atendida,
             'qtde_saldo': item.qtde_saldo,
-            'estimated_nfe': estimated_nfe_by_item.get(item.id),
+            'estimated_nfe': estimated_nfe_by_item.get(item.id) if can_view_nfes else None,
         })
 
     return list(grouped_results.values())
@@ -305,6 +326,8 @@ def search_purchases():
     observacao = request.args.get('observacao')
 
     query = PurchaseOrder.query
+    query = apply_user_scopes(query, PurchaseOrder)
+    
     filters = []
 
     if cod_pedc:
@@ -318,7 +341,7 @@ def search_purchases():
         query = query.filter(or_(*filters))
         orders = query.order_by(PurchaseOrder.dt_emis.desc()).all()
     else:
-        orders = PurchaseOrder.query.order_by(PurchaseOrder.dt_emis.desc()).limit(200).all()
+        orders = query.order_by(PurchaseOrder.dt_emis.desc()).limit(200).all()
 
     
     result = []
@@ -802,13 +825,8 @@ def search_advanced():
 
     def is_valid_search_pattern(token: str) -> bool:
         """Check if a search pattern is valid for text search.
-        
-        Returns False for patterns that are too short or too common to avoid
-        expensive database queries that would hang the system.
         """
-        # Minimum 2 characters for any text search
-        if len(token.strip()) < 2:
-            return False
+   
         # Don't search for pure wildcards or dots/slashes
         if re.match(r'^[\*\./\-\s]+$', token):
             return False
@@ -817,7 +835,9 @@ def search_advanced():
     valid_tokens = [token for token in tokens if is_valid_search_pattern(token)]
     valid_cnpj_tokens = [token for token in tokens if include_cnpj_fornecedor and is_valid_cnpj_search(token)]
     
-    if not valid_tokens and not valid_cnpj_tokens:
+    # Allow empty query to list scoped/paginated results, but keep blocking
+    # non-empty invalid patterns (e.g., only wildcards).
+    if normalized_query and not valid_tokens and not valid_cnpj_tokens:
         # No valid search patterns provided
         return jsonify({
             'purchases': [],
@@ -831,6 +851,8 @@ def search_advanced():
         .join(PurchaseOrder, PurchaseItem.purchase_order_id == PurchaseOrder.id)
         .options(joinedload(PurchaseItem.purchase_order).joinedload(PurchaseOrder.adjustments))
     )
+
+    base_query = apply_user_scopes(base_query, PurchaseOrder)
 
     value_filters = []
     if min_value is not None:

@@ -48,28 +48,40 @@ const Layout = ({ onLogout }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showTrackedCompanies, setShowTrackedCompanies] = useState(false);
   const [userRole, setUserRole] = useState(null);
+  const [allowedScreens, setAllowedScreens] = useState([]);
+  const [capabilities, setCapabilities] = useState([]);
+  const [dataFilters, setDataFilters] = useState({});
   const [nfeBadge, setNfeBadge] = useState(false);
 
   const isAdmin = userRole === "admin";
+  
+  // Expose these via context or session storage if needed deeper down
+  useEffect(() => {
+    localStorage.setItem('userCapabilities', JSON.stringify(capabilities));
+    localStorage.setItem('userDataFilters', JSON.stringify(dataFilters));
+  }, [capabilities, dataFilters]);
 
   useEffect(() => {
-    const fetchUserRole = async () => {
+    const fetchUserContext = async () => {
       try {
         const response = await axios.get(
           `${process.env.REACT_APP_API_URL}/auth/me`,
           { withCredentials: true },
         );
         setUserRole(response.data.role);
+        setAllowedScreens(response.data.allowed_screens || []);
+        setCapabilities(response.data.capabilities || []);
+        setDataFilters(response.data.data_filters || {});
       } catch (error) {
-        console.error("Error fetching user role:", error);
+        console.error("Error fetching user data:", error);
       }
     };
-    fetchUserRole();
+    fetchUserContext();
   }, []);
 
   const drawerWidth = sidebarOpen ? DRAWER_WIDTH : DRAWER_WIDTH_COLLAPSED;
 
-  const menuItems = [
+  const allMenuItems = [
     {
       text: "Pedidos",
       icon: <SearchIcon />,
@@ -101,6 +113,24 @@ const Layout = ({ onLogout }) => {
       description: "Visão geral e métricas",
     },
   ];
+
+  // Filter menu items by allowed screens (Admins see everything)
+  const menuItems = allMenuItems.filter((item) =>
+    isAdmin ||
+    allowedScreens.includes(item.path) ||
+    allowedScreens.includes("*")
+  );
+
+  // If user does not have capabilities to view NFEs, completely drop the NFEs tab even if it's 'allowed' in screens
+  const finalMenuItems = menuItems.filter(item => {
+    if (item.path === '/nfe-search' && !capabilities.includes('view_nfes') && !isAdmin) {
+      return false;
+    }
+    if (item.path === '/quotation-analyzer' && !capabilities.includes('view_financials') && !isAdmin) {
+      return false;
+    }
+    return true;
+  });
 
   const bottomMenuItems = [
     {
@@ -197,7 +227,7 @@ const Layout = ({ onLogout }) => {
 
       {/* Main Navigation */}
       <List sx={{ px: 1.5, py: 2, flexGrow: 1 }}>
-        {menuItems.map((item) => (
+        {finalMenuItems.map((item) => (
           <Tooltip
             key={item.path}
             title={!sidebarOpen ? item.text : ""}

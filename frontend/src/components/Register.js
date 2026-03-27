@@ -41,6 +41,51 @@ import {
   ExpandLess as ExpandLessIcon,
 } from "@mui/icons-material";
 
+const ROLE_PRESETS = {
+  admin: {
+    initial_screen: "/dashboard",
+    allowed_screens: ["/dashboard", "/search", "/nfe-search", "/quotation-analyzer", "/import"],
+    capabilities: ["view_financials", "view_nfes"],
+    data_filters_observacao: ""
+  },
+  basic_viewer: {
+    initial_screen: "/search",
+    allowed_screens: ["/search"],
+    capabilities: [],
+    data_filters_observacao: ""
+  },
+  viewer: {
+    initial_screen: "/search",
+    allowed_screens: ["/dashboard", "/search"],
+    capabilities: ["view_financials", "view_nfes"],
+    data_filters_observacao: ""
+  },
+  fiscal: {
+    initial_screen: "/nfe-search",
+    allowed_screens: ["/search", "/nfe-search","/import"],
+    capabilities: ["view_nfes", "view_financials"],
+    data_filters_observacao: ""
+  },
+  financial: {
+    initial_screen: "/search",
+    allowed_screens: ["/dashboard", "/search", "/nfe-search", "/quotation-analyzer", "/import"],
+    capabilities: ["view_financials", "view_nfes"],
+    data_filters_observacao: ""
+  },
+  purchaser: {
+    initial_screen: "/search",
+    allowed_screens: ["/search", "/quotation-analyzer", "/nfe-search", "/import"],
+    capabilities: ["view_financials", "view_nfes"],
+    data_filters_observacao: ""
+  },
+  checker: {
+    initial_screen: "/search",
+    allowed_screens: ["/search", "/nfe-search", "/import"],
+    capabilities: ["view_financials", "view_nfes"],
+    data_filters_observacao: ""
+  }
+};
+
 const Register = () => {
   const navigate = useNavigate();
 
@@ -54,6 +99,9 @@ const Register = () => {
     system_name: "",
     initial_screen: "/dashboard",
     allowed_screens: ["/dashboard"],
+    capabilities: ["view_financials", "view_nfes"],
+    data_filters: {},
+    data_filters_observacao: "",
   });
 
   // UI state
@@ -75,6 +123,7 @@ const Register = () => {
   const availableScreens = [
     { path: "/dashboard", label: "Dashboard" },
     { path: "/search", label: "Buscar Pedidos" },
+    { path: "/nfe-search", label: "Buscar NFEs" },
     { path: "/quotation-analyzer", label: "Analisar Cotações" },
     { path: "/import", label: "Importar Dados" },
   ];
@@ -134,7 +183,37 @@ const Register = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    
+    if (name === "role" && ROLE_PRESETS[value]) {
+      const preset = ROLE_PRESETS[value];
+      setFormData((prev) => ({
+        ...prev,
+        [name]: value,
+        initial_screen: preset.initial_screen,
+        allowed_screens: [...preset.allowed_screens],
+        capabilities: [...preset.capabilities],
+        data_filters_observacao: preset.data_filters_observacao
+      }));
+    } else {
+      setFormData((prev) => ({ ...prev, [name]: value }));
+    }
+  };
+
+  const handleCapabilitiesChange = (capability) => {
+    setFormData((prev) => {
+      const currentCaps = prev.capabilities || [];
+      if (currentCaps.includes(capability)) {
+        return {
+          ...prev,
+          capabilities: currentCaps.filter((cap) => cap !== capability),
+        };
+      } else {
+        return {
+          ...prev,
+          capabilities: [...currentCaps, capability],
+        };
+      }
+    });
   };
 
   const handleScreensChange = (screenPath) => {
@@ -156,11 +235,42 @@ const Register = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Check if configuration matches the preset for the role
+    const preset = ROLE_PRESETS[formData.role];
+    if (preset) {
+      const screensMatch = JSON.stringify([...formData.allowed_screens].sort()) === JSON.stringify([...preset.allowed_screens].sort());
+      const capsMatch = JSON.stringify([...formData.capabilities].sort()) === JSON.stringify([...preset.capabilities].sort());
+      const filtersMatch = (formData.data_filters_observacao || "").trim() === (preset.data_filters_observacao || "").trim();
+
+      if (!screensMatch || !capsMatch || !filtersMatch) {
+         if (!window.confirm("Atenção: A configuração atual possui restrições/permissões customizadas que diferem do padrão do tipo selecionado. Deseja salvar estas customizações?")) {
+           return;
+         }
+      }
+    }
+
     try {
+      // Process data filters string to array before submission
+      const submitData = { ...formData };
+      
+      const obsFilterList = submitData.data_filters_observacao
+        ? submitData.data_filters_observacao.split(',').map(s => s.trim()).filter(Boolean)
+        : [];
+        
+      if (obsFilterList.length > 0) {
+        submitData.data_filters = { observacao_contains: obsFilterList };
+      } else {
+        submitData.data_filters = {};
+      }
+      
+      // Remove temporary UI state field
+      delete submitData.data_filters_observacao;
+
       if (isEditing && editUserId) {
         await axios.put(
           `${process.env.REACT_APP_API_URL}/auth/users/${editUserId}`,
-          formData,
+          submitData,
           { withCredentials: true }
         );
         setAlert({
@@ -171,7 +281,7 @@ const Register = () => {
       } else {
         const response = await axios.post(
           `${process.env.REACT_APP_API_URL}/auth/register`,
-          formData,
+          submitData,
           { withCredentials: true }
         );
         if (response.status === 201) {
@@ -199,6 +309,13 @@ const Register = () => {
     setIsEditing(true);
     setEditUserId(user.id);
     setShowAdvanced(true);
+    
+    // Parse the observation filters for the simple text input UI
+    let obsText = "";
+    if (user.data_filters && user.data_filters.observacao_contains) {
+      obsText = user.data_filters.observacao_contains.join(", ");
+    }
+    
     setFormData({
       username: user.username,
       email: user.email,
@@ -208,6 +325,9 @@ const Register = () => {
       system_name: user.system_name || "",
       initial_screen: user.initial_screen || "/dashboard",
       allowed_screens: user.allowed_screens || ["/dashboard"],
+      capabilities: user.capabilities || [],
+      data_filters: user.data_filters || {},
+      data_filters_observacao: obsText,
     });
   };
 
@@ -243,6 +363,9 @@ const Register = () => {
       system_name: "",
       initial_screen: "/dashboard",
       allowed_screens: ["/dashboard"],
+      capabilities: ["view_financials", "view_nfes"],
+      data_filters: {},
+      data_filters_observacao: "",
     });
     setIsEditing(false);
     setEditUserId(null);
@@ -253,12 +376,28 @@ const Register = () => {
   const handleCloseAlert = () => setAlert({ ...alert, open: false });
 
   const getRoleLabel = (role) => {
-    const labels = { admin: "Admin", purchaser: "Comprador", viewer: "Viewer" };
+    const labels = {
+      admin: "Admin",
+      basic_viewer: "Vis. Básico",
+      viewer: "Visualizador",
+      fiscal: "Fiscal",
+      financial: "Financeiro",
+      purchaser: "Comprador",
+      checker: "Conferente"
+    };
     return labels[role] || role;
   };
 
   const getRoleColor = (role) => {
-    const colors = { admin: "error", purchaser: "primary", viewer: "default" };
+    const colors = {
+      admin: "error",
+      basic_viewer: "default",
+      viewer: "secondary",
+      fiscal: "warning",
+      financial: "success",
+      purchaser: "primary",
+      checker: "info"
+    };
     return colors[role] || "default";
   };
 
@@ -379,9 +518,13 @@ const Register = () => {
                   value={formData.role}
                   onChange={handleInputChange}
                 >
-                  <MenuItem value="admin">Admin</MenuItem>
+                  <MenuItem value="admin">Administrador</MenuItem>
+                  <MenuItem value="basic_viewer">Visualizador Básico</MenuItem>
+                  <MenuItem value="viewer">Visualizador</MenuItem>
+                  <MenuItem value="fiscal">Fiscal</MenuItem>
+                  <MenuItem value="financial">Financeiro</MenuItem>
                   <MenuItem value="purchaser">Comprador</MenuItem>
-                  <MenuItem value="viewer">Viewer</MenuItem>
+                  <MenuItem value="checker">Conferente</MenuItem>
                 </Select>
               </FormControl>
               <FormControl size="small" sx={{ flex: 1 }}>
@@ -471,6 +614,72 @@ const Register = () => {
                     ))}
                   </Stack>
                 </Box>
+
+                {/* Capabilities Access Control Section */}
+                <Box sx={{ p: 2, bgcolor: "grey.50", borderRadius: 1 }}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ mb: 1, display: "block" }}
+                  >
+                    Permissões de Acesso a Dados Extras
+                  </Typography>
+                  <Stack direction="row" flexWrap="wrap" gap={1}>
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            size="small"
+                            checked={(formData.capabilities || []).includes("view_financials")}
+                            onChange={() => handleCapabilitiesChange("view_financials")}
+                          />
+                        }
+                        label={<Typography variant="body2">Visualizar Valores Financeiros</Typography>}
+                      />
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            size="small"
+                            checked={(formData.capabilities || []).includes("view_nfes")}
+                            onChange={() => handleCapabilitiesChange("view_nfes")}
+                          />
+                        }
+                        label={<Typography variant="body2">Visualizar Menus de NFEs</Typography>}
+                      />
+                  </Stack>
+                </Box>
+
+                {/* Data Filtering Access Control Section */}
+                <Box sx={{ p: 2, bgcolor: "grey.50", borderRadius: 1 }}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ mb: 1, display: "block" }}
+                  >
+                    Filtro Restritivo de Dados
+                  </Typography>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                    <TextField
+                      size="small"
+                      label="Forçar Observação que contém (separar por vírgula)"
+                      placeholder="Ex: manutenção, reforma"
+                      name="data_filters_observacao"
+                      value={formData.data_filters_observacao || ""}
+                      onChange={handleInputChange}
+                      sx={{ flex: 1 }}
+                      InputProps={{
+                        style: { fontSize: '0.875rem' }
+                      }}
+                    />
+                  </Stack>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ mt: 1, display: "block", fontStyle: "italic" }}
+                  >
+                    *Se preenchido, este usuário só encontrará pedidos cuja observação possua essas palavras.
+                  </Typography>
+                </Box>
+
               </Stack>
             </Collapse>
 
