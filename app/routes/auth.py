@@ -196,6 +196,7 @@ def logout():
     # Clear session token to invalidate the session
     current_user.session_token = None
     current_user.session_token_created_at = None
+    current_user.last_action_time = None
     db.session.commit()
     
     _record_logout_event(current_user, request)
