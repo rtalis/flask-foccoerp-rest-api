@@ -85,7 +85,6 @@ class User(UserMixin, db.Model):
     last_action_time = db.Column(db.DateTime, nullable=True)  # Last user activity time
     capabilities = db.Column(db.JSON, nullable=True, default=list) # E.g., ['view_financials', 'view_nfes']
     data_filters = db.Column(db.JSON, nullable=True, default=dict) # E.g., {'observacao_contains': ['manutenção']}
-    user_type = db.Column(db.String(50), nullable=True, default="Visualizador básico")
 
 class Company(db.Model):
     __tablename__ = 'companies'
