@@ -1,16 +1,5 @@
 [
-  {
-    "version": "2.0.6",
-    "notes": [
-      "Fallback local: o sistema irá gerar a DANFE com dados da base local caso o SIEG esteja indisponpivel."
-    ]
-  },
-  {
-    "version": "2.0.7",
-    "notes": [
-      "Paginação de resultados agora categoriza e conta corretamente o numero de resultados e de maneira mais rápida."
-    ]
-  },
+  
   {
     "version": "2.0.8",
     "notes": [
@@ -24,6 +13,14 @@
     "notes": [
       "Adicionada busca por CNPJ - Quando um numero completo de CNPJ é inserido, o sistema irá buscar pelos pedidos correspondentes.",
       "Consertado erro quando o sistema tentava buscar uma nota inexistente na base e a data de emissão era anterior a data do pedido de compra."
+    ]
+  },
+  {
+    "version": "2.1.0",
+    "notes": [
+      "Novo controle de acesso por tipo de usuário, com redirecionamento automático para a tela inicial configurada.",
+      "Permissões agora controlam visualização de valores financeiros e NFEs em telas e exportações.",
+      "Filtros restritivos por usuário passaram a ser aplicados nas buscas, com indicação clara quando os resultados estiverem limitados."
     ]
   }
 ]
