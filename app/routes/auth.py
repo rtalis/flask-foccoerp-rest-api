@@ -111,7 +111,6 @@ def login():
                 'allowed_screens': user.allowed_screens or [],
                 'capabilities': user.capabilities or [],
                 'data_filters': user.data_filters or {},
-                'user_type': user.user_type
             }
         }), 200)
         session_lifetime = int(current_app.config['PERMANENT_SESSION_LIFETIME'].total_seconds())
@@ -136,7 +135,6 @@ def me():
         'allowed_screens': u.allowed_screens or [],
         'capabilities': u.capabilities or [],
         'data_filters': u.data_filters or {},
-        'user_type': u.user_type
     }), 200
 
 @auth_bp.route('/register', methods=['POST'])
@@ -434,7 +432,6 @@ def get_users():
         'allowed_screens': user.allowed_screens,
         'capabilities': user.capabilities or [],
         'data_filters': user.data_filters or {},
-                'user_type': user.user_type
     } for user in users]
     
     return jsonify(result), 200
