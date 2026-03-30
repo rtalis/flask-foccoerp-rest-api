@@ -16,16 +16,31 @@ from app.utils import parse_and_store_nfe_xml
 from app.models import NFEData, Company
 from config import Config
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("/var/log/foccoerp/nfe_sync.log"),
-        logging.StreamHandler()
-    ]
-)
+# Configure logging - avoid writing to system files during tests or if directory doesn't exist
 logger = logging.getLogger('nfe_sync')
+logger.setLevel(logging.INFO)
+
+# Create console handler
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+
+# Create formatter
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
+
+# Add console handler
+logger.addHandler(console_handler)
+
+# Try to add file handler if directory is writable, otherwise skip
+try:
+    log_dir = "/var/log/foccoerp"
+    if os.path.exists(log_dir) and os.access(log_dir, os.W_OK):
+        file_handler = logging.FileHandler(os.path.join(log_dir, "nfe_sync.log"))
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+except Exception:
+    pass  # Silently skip file logging if permission denied
 
 def sync_nfe_for_yesterday():
     """
