@@ -1,6 +1,7 @@
 import logging
 from collections import defaultdict
 from datetime import datetime, date
+import re
 from flask import jsonify, current_app, has_app_context
 from app.models import NFEntry, PurchaseAdjustment, PurchaseItem, PurchaseOrder, Quotation, PurchaseItemNFEMatch, Company
 from app import db
@@ -1415,6 +1416,7 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
         nfe_items_db = NFEItem.query.filter_by(nfe_id=nfe.id).all()
         
         nfe_value = float(nfe.valor_total or 0)
+        nfe_items_value = float(nfe.valor_produtos or 0)
         nfe_info_adic = str(nfe.informacoes_adicionais or '').lower()
  
         score = 0
@@ -1505,6 +1507,10 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
         compare_value = total_remaining_value if total_remaining_value > 0 else po_data['valor_total']
         
         #TODO check the compare value (purchase order value) + ipi is not a better match for the value
+        #TODO the logic now is to get the remaining items, multiply by unit price to get the remaining value
+        #even if the purchase is not fulfilled, might be better to check the full value of the purchase with the full value of the nfe
+        #and the items value of the nfe with the full value of the purchase order. 
+        
         if compare_value > 0 and nfe_value > 0:
             value_diff_pct = abs(nfe_value - compare_value) / compare_value * 100
             
