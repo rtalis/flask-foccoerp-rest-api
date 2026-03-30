@@ -235,11 +235,18 @@ const AppContent = () => {
     };
   }, [showError]);
 
-  const handleLogin = (initialScreen = "/search", allowedScreens = []) => {
+  const handleLogin = (
+    initialScreen = "/search",
+    allowedScreens = [],
+    capabilities = [],
+    dataFilters = {},
+  ) => {
     setIsAuthenticated(true);
     setPostLoginRedirect(normalizeInitialScreen(initialScreen, allowedScreens));
     localStorage.setItem('loginTime', Date.now().toString());
     localStorage.setItem('lastActionTime', Date.now().toString());
+    localStorage.setItem('userCapabilities', JSON.stringify(capabilities || []));
+    localStorage.setItem('userDataFilters', JSON.stringify(dataFilters || {}));
 
     fetch("/release-notes.json")
       .then((res) => res.json())
@@ -269,6 +276,10 @@ const AppContent = () => {
       console.error("Error logging out:", error);
     } finally {
       setIsAuthenticated(false);
+      localStorage.removeItem('userCapabilities');
+      localStorage.removeItem('userDataFilters');
+      localStorage.removeItem('loginTime');
+      localStorage.removeItem('lastActionTime');
     }
   };
 

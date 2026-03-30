@@ -1139,6 +1139,8 @@ const UnifiedSearch = () => {
   const canViewNfes = userCapabilities.includes('view_nfes');
 
   useEffect(() => {
+    let isMounted = true;
+
     const stored = localStorage.getItem('userCapabilities');
     if (stored) {
       try {
@@ -1159,6 +1161,32 @@ const UnifiedSearch = () => {
         setUserDataFilters({});
       }
     }
+
+    const refreshUserContext = async () => {
+      try {
+        const response = await axios.get(
+          `${process.env.REACT_APP_API_URL}/auth/me`,
+          { withCredentials: true },
+        );
+        if (!isMounted) {
+          return;
+        }
+        const nextCapabilities = response.data?.capabilities || [];
+        const nextFilters = response.data?.data_filters || {};
+        setUserCapabilities(nextCapabilities);
+        setUserDataFilters(nextFilters);
+        localStorage.setItem('userCapabilities', JSON.stringify(nextCapabilities));
+        localStorage.setItem('userDataFilters', JSON.stringify(nextFilters));
+      } catch (error) {
+        console.error("Error refreshing user context:", error);
+      }
+    };
+
+    refreshUserContext();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const hasDataFilters = userDataFilters && Object.keys(userDataFilters).length > 0 && userDataFilters.observacao_contains && userDataFilters.observacao_contains.length > 0;

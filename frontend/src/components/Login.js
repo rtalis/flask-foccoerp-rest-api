@@ -82,8 +82,10 @@ const Login = ({ onLogin }) => {
         setLoginSuccess(true);
         const initialScreen = response.data?.user?.initial_screen || "/search";
         const allowedScreens = response.data?.user?.allowed_screens || [];
+        const capabilities = response.data?.user?.capabilities || [];
+        const dataFilters = response.data?.user?.data_filters || {};
         setTimeout(() => {
-          onLogin(initialScreen, allowedScreens);
+          onLogin(initialScreen, allowedScreens, capabilities, dataFilters);
         }, 1);
       }
     } catch (error) {

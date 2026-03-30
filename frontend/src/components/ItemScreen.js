@@ -18,6 +18,8 @@ const ItemScreen = ({ itemId, onClose }) => {
   const canViewFinancials = userCapabilities.includes('view_financials');
 
   useEffect(() => {
+    let isMounted = true;
+
     const stored = localStorage.getItem('userCapabilities');
     if (stored) {
       try {
@@ -29,6 +31,29 @@ const ItemScreen = ({ itemId, onClose }) => {
     } else {
       setUserCapabilities(['view_financials', 'view_nfes']);
     }
+
+    const refreshCapabilities = async () => {
+      try {
+        const response = await axios.get(
+          `${process.env.REACT_APP_API_URL}/auth/me`,
+          { withCredentials: true },
+        );
+        if (!isMounted) {
+          return;
+        }
+        const nextCapabilities = response.data?.capabilities || [];
+        setUserCapabilities(nextCapabilities);
+        localStorage.setItem('userCapabilities', JSON.stringify(nextCapabilities));
+      } catch (error) {
+        console.error('Error refreshing user capabilities', error);
+      }
+    };
+
+    refreshCapabilities();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
 
