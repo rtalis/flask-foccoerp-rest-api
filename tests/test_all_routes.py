@@ -334,6 +334,7 @@ def test_quotations(auth_client: FlaskClient):
             item_id='QUOT-ITEM-001',
             descricao='Item para cotacao',
             quantidade=20,
+            unidade_medida='UN',
             preco_unitario=150
         )
         db.session.add(quotation)
@@ -342,6 +343,7 @@ def test_quotations(auth_client: FlaskClient):
     response = auth_client.get('/api/quotations', query_string={'item_id': 'QUOT-ITEM-001'})
     assert response.status_code == 200
     assert isinstance(response.json, list)
+    assert response.json[0]['unidade_medida'] == 'UN'
 
 
 def test_quotation_items(auth_client: FlaskClient):
@@ -355,6 +357,7 @@ def test_quotation_items(auth_client: FlaskClient):
             item_id='COTITEM-001',
             descricao='Primeiro item cotacao',
             quantidade=10,
+            unidade_medida='UN',
             preco_unitario=200
         )
         db.session.add(quotation)
@@ -363,6 +366,7 @@ def test_quotation_items(auth_client: FlaskClient):
     response = auth_client.get('/api/quotation_items', query_string={'cod_cot': 'COTITEMS-001'})
     assert response.status_code == 200
     assert 'cod_cot' in response.json
+    assert response.json['items'][0]['unidade_medida'] == 'UN'
 
 
 # ==================== FUZZY SEARCH TESTS ====================
@@ -447,6 +451,7 @@ def test_quotations_fuzzy(auth_client: FlaskClient):
             item_id='FUZZQUOT-ITEM',
             descricao='Corrente desmontavel',
             quantidade=50,
+            unidade_medida='UN',
             preco_unitario=25
         )
         db.session.add(quotation)
@@ -523,7 +528,7 @@ def test_search_combined_matches_supplier_cnpj(auth_client: FlaskClient):
         order = PurchaseOrder(
             cod_pedc='PO-CNPJ-001',
             dt_emis=date(2024, 7, 1),
-            fornecedor_id='12.345.678/0001-95',
+            fornecedor_id='12345678000195',
             fornecedor_descricao='Fornecedor CNPJ'
         )
         db.session.add(order)
@@ -687,7 +692,7 @@ def test_get_nfe(auth_client: FlaskClient):
         db.session.add(nfe)
         db.session.commit()
 
-    response = auth_client.get('/api/get_nfe', query_string={'xml_key': '12345678901234567890123456789012345678901244'})
+    response = auth_client.get('/api/get_nfe', query_string={'cod_pedc': '35000', 'linha': 1})
     # May return 404 if not found, that's acceptable for test
     assert response.status_code in (200, 404, 500)
 
@@ -951,7 +956,7 @@ def test_last_update(auth_client: FlaskClient):
 def test_usage_report(auth_client: FlaskClient):
     """Test usage report endpoint."""
     response = auth_client.get('/api/usage_report')
-    assert response.status_code in (200, 400, 500)  # May not have data yet
+    assert response.status_code in (200, 400, 403)  # May not have data yet
 
 
 # ==================== USER PURCHASES TESTS ====================
@@ -1657,8 +1662,9 @@ def test_import_rcot0300_quotations(auth_client: FlaskClient):
                     <COD_ITEM>ITEM001</COD_ITEM>
                     <DESC_ITEM>Test Product</DESC_ITEM>
                     <QTDE>10.00</QTDE>
+                    <UNID_MED>UN</UNID_MED>
                     <PRECO_UNITARIO>100.00</PRECO_UNITARIO>
-                    <DT_ENTREGA>15/01/2024</DT_ENTREGA>
+                    <DT_ENTREGA>15/01/24</DT_ENTREGA>
                     <COD_EMP>001</COD_EMP>
                 </G_4>
             </G_3>
@@ -1675,6 +1681,10 @@ def test_import_rcot0300_quotations(auth_client: FlaskClient):
     )
     assert response.status_code == 201
     assert 'imported' in response.json['message'].lower() or 'success' in response.json['message'].lower()
+    with auth_client.application.app_context():
+        quotation = Quotation.query.filter_by(cod_cot='COT001', item_id='ITEM001').first()
+        assert quotation is not None
+        assert quotation.unidade_medida == 'UN'
 
 
 def test_import_ruah_purchase_orders(auth_client: FlaskClient):

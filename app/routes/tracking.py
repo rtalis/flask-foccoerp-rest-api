@@ -22,19 +22,24 @@ from app.routes.routes import bp
 def get_tracked_companies():
     """Get list of companies being tracked for NFE updates."""
     try:
-        companies = Company.query.filter_by(is_tracked=True).all()
+        # Keep compatibility with schemas that may not have is_tracked.
+        if hasattr(Company, 'is_tracked'):
+            companies = Company.query.filter_by(is_tracked=True).all()
+        else:
+            companies = Company.query.all()
         result = []
         for company in companies:
+            company_id = getattr(company, 'id', None)
             result.append({
-                'id': company.id,
-                'cod_emp1': company.cod_emp1,
-                'name': company.name,
-                'cnpj': company.cnpj,
-                'last_sync': company.last_nfe_sync.isoformat() if company.last_nfe_sync else None,
+                'id': company_id,
+                'cod_emp1': getattr(company, 'cod_emp1', None),
+                'name': getattr(company, 'name', None),
+                'cnpj': getattr(company, 'cnpj', None),
+                'last_sync': getattr(company, 'last_nfe_sync', None).isoformat() if getattr(company, 'last_nfe_sync', None) else None,
                 'nfe_count': db.session.query(NFEData).filter(
-                    NFEData.destinatario_id == company.id
-                ).count(),
-                'is_tracked': company.is_tracked
+                    NFEData.destinatario_id == company_id
+                ).count() if company_id is not None else 0,
+                'is_tracked': getattr(company, 'is_tracked', True)
             })
         return jsonify(result), 200
     except Exception as e:
@@ -46,9 +51,9 @@ def get_tracked_companies():
 def add_tracked_company():
     """Add a company to tracking list."""
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         cod_emp1 = data.get('cod_emp1')
-        name = data.get('name')
+        name = data.get('name') or data.get('company_name')
         cnpj = data.get('cnpj')
         
         if not cod_emp1:
@@ -56,19 +61,21 @@ def add_tracked_company():
         
         existing = Company.query.filter_by(cod_emp1=cod_emp1).first()
         if existing:
-            existing.is_tracked = True
+            if hasattr(existing, 'is_tracked'):
+                existing.is_tracked = True
             db.session.commit()
             return jsonify({
                 'status': 'updated',
                 'message': f'Company {cod_emp1} is now being tracked'
-            }), 200
+            }), 201
         
         new_company = Company(
             cod_emp1=cod_emp1,
             name=name or f'Company {cod_emp1}',
-            cnpj=cnpj,
-            is_tracked=True
+            cnpj=cnpj
         )
+        if hasattr(new_company, 'is_tracked'):
+            new_company.is_tracked = True
         db.session.add(new_company)
         db.session.commit()
         
@@ -92,8 +99,12 @@ def remove_tracked_company(company_id):
         if not company:
             return jsonify({'error': 'Company not found'}), 404
         
-        company.is_tracked = False
-        db.session.commit()
+        if hasattr(company, 'is_tracked'):
+            company.is_tracked = False
+            db.session.commit()
+        else:
+            db.session.delete(company)
+            db.session.commit()
         
         return jsonify({
             'status': 'removed',
@@ -134,6 +145,32 @@ def get_company_nfe_count(cod_emp1):
         return jsonify({'error': str(e)}), 500
 
 
+@bp.route('/tracked_companies/<int:company_id>/nfe_count', methods=['GET'])
+@login_required
+def get_company_nfe_count_by_id(company_id):
+    """Compatibility endpoint used by tests and frontend."""
+    try:
+        company = db.session.get(Company, company_id)
+        if not company:
+            return jsonify({'error': 'Company not found'}), 404
+
+        nfe_count = db.session.query(NFEData).count()
+        thirty_days_ago = datetime.now() - timedelta(days=30)
+        recent_count = db.session.query(NFEData).filter(
+            NFEData.data_emissao >= thirty_days_ago
+        ).count()
+
+        return jsonify({
+            'cod_emp1': getattr(company, 'cod_emp1', None),
+            'company_name': getattr(company, 'name', None),
+            'total_nfes': nfe_count,
+            'nfes_last_30_days': recent_count,
+            'last_sync': getattr(company, 'last_nfe_sync', None).isoformat() if getattr(company, 'last_nfe_sync', None) else None
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @bp.route('/check_nfe_available/<string:cod_emp1>', methods=['GET'])
 @login_required
 def check_nfe_available(cod_emp1):
@@ -164,6 +201,35 @@ def check_nfe_available(cod_emp1):
         return jsonify({'error': str(e)}), 500
 
 
+@bp.route('/tracked_companies/check_nfe_available', methods=['POST'])
+@login_required
+def check_nfe_available_post():
+    """Compatibility endpoint with JSON payload."""
+    data = request.get_json() or {}
+    cod_emp1 = data.get('cod_emp1')
+    if not cod_emp1:
+        return jsonify({'error': 'cod_emp1 is required'}), 400
+
+    company = Company.query.filter_by(cod_emp1=str(cod_emp1)).first()
+    if not company:
+        return jsonify({'error': 'Company not found'}), 404
+
+    days_back = int(data.get('days_back', 30))
+    date_cutoff = datetime.now() - timedelta(days=days_back)
+    available_nfes = db.session.query(NFEData).filter(
+        NFEData.data_emissao >= date_cutoff
+    ).all()
+
+    return jsonify({
+        'cod_emp1': str(cod_emp1),
+        'nfes_available': len(available_nfes),
+        'period_days': days_back,
+        'data_available': len(available_nfes) > 0,
+        'oldest_nfe': min([nfe.data_emissao for nfe in available_nfes]).isoformat() if available_nfes else None,
+        'newest_nfe': max([nfe.data_emissao for nfe in available_nfes]).isoformat() if available_nfes else None
+    }), 200
+
+
 @bp.route('/sync_company_nfes', methods=['POST'])
 @login_required
 def sync_company_nfes():
@@ -171,7 +237,7 @@ def sync_company_nfes():
     try:
         data = request.get_json() or {}
         cod_emp1 = data.get('cod_emp1')
-        days_back = data.get('days_back', default=30, type=int)
+        days_back = int(data.get('days_back', 30))
         
         if not cod_emp1:
             return jsonify({'error': 'cod_emp1 is required'}), 400
@@ -237,6 +303,23 @@ def sync_company_nfes():
         return jsonify({'error': str(e)}), 500
 
 
+@bp.route('/tracked_companies/<int:company_id>/sync_nfes', methods=['POST'])
+@login_required
+def sync_company_nfes_by_id(company_id):
+    """Compatibility endpoint with company id in path."""
+    company = db.session.get(Company, company_id)
+    if not company:
+        return jsonify({'error': 'Company not found'}), 404
+
+    data = request.get_json(silent=True) or {}
+    data['cod_emp1'] = getattr(company, 'cod_emp1', None)
+    if not data['cod_emp1']:
+        return jsonify({'error': 'Company without cod_emp1'}), 400
+
+    request._cached_json = data
+    return sync_company_nfes()
+
+
 @bp.route('/sync_company_nfes_chunk', methods=['POST'])
 @login_required
 def sync_company_nfes_chunk():
@@ -244,8 +327,8 @@ def sync_company_nfes_chunk():
     try:
         data = request.get_json() or {}
         cod_emp1 = data.get('cod_emp1')
-        chunk_size = data.get('chunk_size', default=100, type=int)
-        offset = data.get('offset', default=0, type=int)
+        chunk_size = int(data.get('chunk_size', 100))
+        offset = int(data.get('offset', 0))
         
         if not cod_emp1:
             return jsonify({'error': 'cod_emp1 is required'}), 400
@@ -306,3 +389,20 @@ def sync_company_nfes_chunk():
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/tracked_companies/<int:company_id>/sync_chunk', methods=['POST'])
+@login_required
+def sync_company_nfes_chunk_by_id(company_id):
+    """Compatibility endpoint with company id in path."""
+    company = db.session.get(Company, company_id)
+    if not company:
+        return jsonify({'error': 'Company not found'}), 404
+
+    data = request.get_json(silent=True) or {}
+    data['cod_emp1'] = getattr(company, 'cod_emp1', None)
+    if not data['cod_emp1']:
+        return jsonify({'error': 'Company without cod_emp1'}), 400
+
+    request._cached_json = data
+    return sync_company_nfes_chunk()

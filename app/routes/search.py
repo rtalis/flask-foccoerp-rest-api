@@ -7,7 +7,7 @@ import re
 from datetime import datetime
 from fuzzywuzzy import process, fuzz
 from flask import request, jsonify
-from sqlalchemy import and_, or_, func, cast, tuple_
+from sqlalchemy import and_, or_, func, cast, tuple_, text
 from sqlalchemy.sql import exists
 from sqlalchemy.orm import joinedload
 from flask_login import login_required, current_user
@@ -54,8 +54,7 @@ def apply_user_scopes(query, model):
 
 def _build_purchase_payload(items):
     """Group purchase items by order and prepare API payload."""
-    from app.routes.routes import bp  # noqa: E402
-    
+
     grouped_results = {}
     order_keys = set()
     item_ids = set()
@@ -523,8 +522,6 @@ def search_advanced():
     """Advanced search with multiple filters, fuzzy matching, and pagination."""
     
     if request.args.get('legacy', 'false').lower() == 'true':
-        # Fallback to legacy combined search
-        from app.routes.search import search_combined  # noqa: E402
         return search_combined()
 
     normalized_query = request.args.get('query', '').strip()
@@ -576,7 +573,7 @@ def search_advanced():
 
     remove_accents = None
     if ignore_diacritics and db.engine.name == 'postgresql':
-        db.session.execute("CREATE EXTENSION IF NOT EXISTS unaccent")
+        db.session.execute(text("CREATE EXTENSION IF NOT EXISTS unaccent"))
         remove_accents = lambda col: func.unaccent(col)
     
     def build_like_pattern(term: str) -> str:

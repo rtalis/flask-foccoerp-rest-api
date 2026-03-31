@@ -341,6 +341,9 @@ const QuotationAnalyzer = () => {
                           Quantidade
                         </TableCell>
                         <TableCell className="table-header-cell">
+                          Unidade
+                        </TableCell>
+                        <TableCell className="table-header-cell">
                           Fornecedor Anterior
                         </TableCell>
                         <TableCell className="table-header-cell">
@@ -372,6 +375,7 @@ const QuotationAnalyzer = () => {
                             </Typography>
                           </TableCell>
                           <TableCell>{item.quantidade}</TableCell>
+                          <TableCell>{item.unidade_medida || "—"}</TableCell>
                           <TableCell>
                             {item.last_purchase
                               ? getFirstChars(item.last_purchase.fornecedor, 15)
@@ -399,7 +403,7 @@ const QuotationAnalyzer = () => {
                     </TableBody>
                     <TableFooter>
                       <TableRow sx={{ backgroundColor: "#e9e9e9ff" }}>
-                        <TableCell colSpan={7}>
+                        <TableCell colSpan={8}>
                           <Box
                             sx={{
                               display: "flex",

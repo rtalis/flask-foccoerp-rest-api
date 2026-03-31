@@ -72,6 +72,7 @@ class QuotationSchema(Schema):
     item_id = fields.Str(required=True)
     descricao = fields.Str(required=True)
     quantidade = fields.Float(required=True)
+    unidade_medida = fields.Str(required=False)
     preco_unitario = fields.Float(required=False)
     dt_entrega = fields.Date(required=False)
     cod_emp1 = fields.Str(required=False)

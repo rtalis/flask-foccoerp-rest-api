@@ -36,6 +36,7 @@ def get_quotations():
             'item_id': quotation.item_id,
             'descricao': quotation.descricao,
             'quantidade': quotation.quantidade,
+            'unidade_medida': quotation.unidade_medida,
             'preco_unitario': quotation.preco_unitario,
             'dt_entrega': quotation.dt_entrega,
             'cod_emp1': quotation.cod_emp1
@@ -71,6 +72,7 @@ def get_quotations_fuzzy():
             'item_id': quotation.item_id,
             'descricao': quotation.descricao,
             'quantidade': quotation.quantidade,
+            'unidade_medida': quotation.unidade_medida,
             'preco_unitario': quotation.preco_unitario,
             'dt_entrega': quotation.dt_entrega,
             'cod_emp1': quotation.cod_emp1
@@ -91,11 +93,9 @@ def get_quotation_items():
     if not quotation_items:
         return jsonify({'error': 'No items found for this quotation'}), 404
 
-    result = []
+    items = []
     for item in quotation_items:
-        result.append({
-            'cod_cot': item.cod_cot,
-            'item_seq': item.item_seq,
+        items.append({
             'item_id': item.item_id,
             'descricao': item.descricao,
             'quantidade': item.quantidade,
@@ -104,10 +104,15 @@ def get_quotation_items():
             'total': item.quantidade * item.preco_unitario if item.quantidade and item.preco_unitario else None,
             'dt_entrega': item.dt_entrega,
             'fornecedor_id': item.fornecedor_id,
-            'fornecedor_descricao': item.fornecedor_descricao
+            'fornecedor_descricao': item.fornecedor_descricao,
+            'last_purchase': None,
         })
 
-    return jsonify(result), 200
+    return jsonify({
+        'cod_cot': cod_cot,
+        'dt_emissao': quotation_items[0].dt_emissao,
+        'items': items,
+    }), 200
 
 
 @bp.route('/extract_quotation_data', methods=['POST'])
