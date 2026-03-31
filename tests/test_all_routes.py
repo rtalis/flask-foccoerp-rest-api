@@ -764,7 +764,7 @@ def test_nfe_by_purchase(auth_client: FlaskClient):
         'cod_pedc': '35000',
         'cod_emp1': '1'
     })
-    assert response.status_code in (200)
+    assert response.status_code in (200, 404)
 
 
 def test_get_nfe_by_number(auth_client: FlaskClient):

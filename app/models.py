@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from app import db
 from flask_login import UserMixin
 
@@ -81,8 +81,8 @@ class User(UserMixin, db.Model):
     allowed_screens = db.Column(db.JSON, nullable=False, default=list)
     system_name = db.Column(db.String(150), nullable= True)
     session_token = db.Column(db.String(64), nullable=True)  # Token to enforce single-device login
-    session_token_created_at = db.Column(db.DateTime, nullable=True)  # When the session token was created
-    last_action_time = db.Column(db.DateTime, nullable=True)  # Last user activity time
+    session_token_created_at = db.Column(db.DateTime(timezone=True), nullable=True)  # When the session token was created
+    last_action_time = db.Column(db.DateTime(timezone=True), nullable=True)  # Last user activity time
     capabilities = db.Column(db.JSON, nullable=True, default=list) # E.g., ['view_financials', 'view_nfes']
     data_filters = db.Column(db.JSON, nullable=True, default=dict) # E.g., {'observacao_contains': ['manutenção']}
 
@@ -119,8 +119,8 @@ class Company(db.Model):
 class LoginHistory(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    login_time = db.Column(db.DateTime, default=datetime.now)
-    logout_time = db.Column(db.DateTime, nullable=True)
+    login_time = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    logout_time = db.Column(db.DateTime(timezone=True), nullable=True)
     login_ip = db.Column(db.String(45), nullable=True)
     login_user_agent = db.Column(db.Text, nullable=True)
     logout_ip = db.Column(db.String(45), nullable=True)
@@ -134,10 +134,10 @@ class UserToken(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     token = db.Column(db.Text, nullable=False, unique=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    expires_at = db.Column(db.DateTime, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
     created_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    disabled_at = db.Column(db.DateTime, nullable=True)
+    disabled_at = db.Column(db.DateTime(timezone=True), nullable=True)
     disabled_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
 
     user = db.relationship('User', foreign_keys=[user_id])
