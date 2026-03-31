@@ -107,15 +107,20 @@ def parse_xml(xml_data):
             }
 
             for item in order.findall('.//TPEDC_ITEM'):
+                item_id_tag = item.find('ITEM_COD') if item.find('ITEM_COD') is not None else item.find('ITEM_ID')
+                descricao_tag = item.find('ITEM_DESC_TECNICA') if item.find('ITEM_DESC_TECNICA') is not None else item.find('DESCRICAO')
+                quantidade_tag = item.find('QTDE') if item.find('QTDE') is not None else item.find('QTD')
+                total_tag = item.find('TOT_BRUTO') if item.find('TOT_BRUTO') is not None else item.find('TOTAL')
+                unidade_tag = item.find('UNID_MED') if item.find('UNID_MED') is not None else item.find('UNIDADE_MEDIDA')
                 item_data = {
-                    'item_id': int(item.find('ITEM_COD').text) if item.find('ITEM_COD') is not None else None,
+                    'item_id': int(item_id_tag.text) if item_id_tag is not None and item_id_tag.text else None,
                     'cod_pedc': cod_pedc,
                     'linha': item.find('LINHA1').text if item.find('LINHA1') is not None else None,
-                    'descricao': item.find('ITEM_DESC_TECNICA').text if item.find('ITEM_DESC_TECNICA') is not None else None,
-                    'quantidade': float(item.find('QTDE').text.replace(',', '.')) if item.find('QTDE') is not None and item.find('QTDE').text else None,
+                    'descricao': descricao_tag.text if descricao_tag is not None else None,
+                    'quantidade': float(quantidade_tag.text.replace(',', '.')) if quantidade_tag is not None and quantidade_tag.text else None,
                     'preco_unitario': float(item.find('PRECO_UNITARIO').text.replace(',', '.')) if item.find('PRECO_UNITARIO') is not None and item.find('PRECO_UNITARIO').text else None,
-                    'total': float(item.find('TOT_BRUTO').text.replace(',', '.')) if item.find('TOT_BRUTO') is not None and item.find('TOT_BRUTO').text else None,
-                    'unidade_medida': item.find('UNID_MED').text if item.find('UNID_MED') is not None else None,
+                    'total': float(total_tag.text.replace(',', '.')) if total_tag is not None and total_tag.text else None,
+                    'unidade_medida': unidade_tag.text if unidade_tag is not None else None,
                     'dt_entrega': item.find('DT_ENTREGA').text if item.find('DT_ENTREGA') is not None else None,
                     'perc_ipi': float(item.find('PERC_IPI').text.replace(',', '.')) if item.find('PERC_IPI') is not None and item.find('PERC_IPI').text else None,
                     'tot_liquido_ipi': float(item.find('TOT_LIQUIDO_IPI').text.replace(',', '.')) if item.find('TOT_LIQUIDO_IPI') is not None and item.find('TOT_LIQUIDO_IPI').text else None,
@@ -488,7 +493,7 @@ def parse_rcot0300(xml_data):
     for g1 in root.findall('.//G_1'):
         cod_cot = g1.find('COD_COT').text if g1.find('COD_COT') is not None else None
         dt_emissao = g1.find('DT_EMISSAO').text if g1.find('DT_EMISSAO') is not None else None
-        dt_emissao = datetime.strptime(dt_emissao, '%d/%m/%y').strftime('%Y-%m-%d') if dt_emissao else None
+        dt_emissao = _parse_date(dt_emissao)
 
         for g2 in g1.findall('.//G_2'):
             for g3 in g2.findall('.//G_3'):
@@ -502,8 +507,9 @@ def parse_rcot0300(xml_data):
                     quantidade = float(quantidade.replace(',', '.')) if quantidade else None
                     preco_unitario = g4.find('PRECO_UNITARIO').text if g4.find('PRECO_UNITARIO') is not None else None
                     preco_unitario = float(preco_unitario.replace(',', '.')) if preco_unitario else None
+                    unidade_medida = g4.find('UNID_MED').text if g4.find('UNID_MED') is not None else None
                     dt_entrega = g4.find('DT_ENTREGA').text if g4.find('DT_ENTREGA') is not None else None
-                    dt_entrega = datetime.strptime(dt_entrega, '%d/%m/%y').strftime('%Y-%m-%d') if dt_entrega else None
+                    dt_entrega = _parse_date(dt_entrega)
                     cod_emp1 = g4.find('COD_EMP').text if g4.find('COD_EMP') is not None else None
 
                     quotation_data = {
@@ -514,6 +520,7 @@ def parse_rcot0300(xml_data):
                         'item_id': item_id,
                         'descricao': descricao,
                         'quantidade': quantidade,
+                        'unidade_medida': unidade_medida,
                         'preco_unitario': preco_unitario,
                         'dt_entrega': dt_entrega,
                         'cod_emp1': cod_emp1
@@ -543,6 +550,7 @@ def import_rcot0300(file_content):
             existing_quotation.fornecedor_descricao = quotation_data['fornecedor_descricao']
             existing_quotation.descricao = quotation_data['descricao']
             existing_quotation.quantidade = quotation_data['quantidade']
+            existing_quotation.unidade_medida = quotation_data['unidade_medida']
             existing_quotation.preco_unitario = quotation_data['preco_unitario']
             existing_quotation.dt_entrega = quotation_data['dt_entrega']
             existing_quotation.cod_emp1 = quotation_data['cod_emp1']
@@ -557,6 +565,7 @@ def import_rcot0300(file_content):
                 item_id=quotation_data['item_id'],
                 descricao=quotation_data['descricao'],
                 quantidade=quotation_data['quantidade'],
+                unidade_medida=quotation_data['unidade_medida'],
                 preco_unitario=quotation_data['preco_unitario'],
                 dt_entrega=quotation_data['dt_entrega'],
                 cod_emp1=quotation_data['cod_emp1']

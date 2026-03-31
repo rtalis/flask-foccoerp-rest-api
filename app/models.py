@@ -154,6 +154,7 @@ class Quotation(db.Model):
     item_id = db.Column(db.String, nullable=False)
     descricao = db.Column(db.String, nullable=False)
     quantidade = db.Column(db.Float, nullable=False)
+    unidade_medida = db.Column(db.String, nullable=True)
     preco_unitario = db.Column(db.Float, nullable=True)
     dt_entrega = db.Column(db.Date, nullable=True)
     cod_emp1 = db.Column(db.String, nullable=True)
