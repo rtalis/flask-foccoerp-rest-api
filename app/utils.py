@@ -113,7 +113,7 @@ def parse_xml(xml_data):
                 total_tag = item.find('TOT_BRUTO') if item.find('TOT_BRUTO') is not None else item.find('TOTAL')
                 unidade_tag = item.find('UNID_MED') if item.find('UNID_MED') is not None else item.find('UNIDADE_MEDIDA')
                 item_data = {
-                    'item_id': int(item_id_tag.text) if item_id_tag is not None and item_id_tag.text else None,
+                    'item_id': item_id_tag.text if item_id_tag is not None and item_id_tag.text else None,
                     'cod_pedc': cod_pedc,
                     'linha': item.find('LINHA1').text if item.find('LINHA1') is not None else None,
                     'descricao': descricao_tag.text if descricao_tag is not None else None,

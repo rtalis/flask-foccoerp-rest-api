@@ -140,7 +140,10 @@ function PurchaseRow(props) {
       const response = await axios.get(
         `${process.env.REACT_APP_API_URL}/api/nfe_by_purchase`,
         {
-          params: { cod_pedc: purchase.order.cod_pedc },
+          params: {
+            cod_pedc: purchase.order.cod_pedc,
+            cod_emp1: purchase.order.cod_emp1,
+          },
           withCredentials: true,
         },
       );
@@ -291,7 +294,10 @@ function PurchaseRow(props) {
     try {
       // Call nfe_by_purchase to sync NFEs from SIEG to database
       await axios.get(`${process.env.REACT_APP_API_URL}/api/nfe_by_purchase`, {
-        params: { cod_pedc: purchase.order.cod_pedc },
+        params: {
+          cod_pedc: purchase.order.cod_pedc,
+          cod_emp1: purchase.order.cod_emp1,
+        },
         withCredentials: true,
       });
 
@@ -946,9 +952,9 @@ function PurchaseRow(props) {
                               color: "#1a1f2e",
                             }}
                           >
-                            Total c/ ipi:{" "}
+                            Valor total:{" "}
                             {formatCurrency(purchase.order.total_pedido_com_ipi)}{" "}
-                            Total c/ desconto:{" "}
+                            Valor com ajustes:{" "}
                             {formatCurrency(purchase.order.adjusted_total)}
                           </Typography>
                         )}
