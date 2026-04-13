@@ -677,11 +677,3 @@ def _check_supplier_match(purchase_order, nfe_emitente):
         return name_ratio >= 80
     
     return False
-
-from app.routes import analytics  # noqa: E402,F401
-from app.routes import search  # noqa: E402,F401
-from app.routes import nfe  # noqa: E402,F401
-from app.routes import imports  # noqa: E402,F401
-from app.routes import quotations  # noqa: E402,F401
-from app.routes import tracking  # noqa: E402,F401
-from app.routes import purchases  # noqa: E402,F401

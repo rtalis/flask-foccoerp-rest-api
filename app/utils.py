@@ -624,6 +624,7 @@ def import_rfor0302(file_content):
     from app.models import Supplier
 
     def normalize_cnpj_val(cnpj_str):
+        import re
         """Normalize CNPJ/CPF by removing non-digits"""
         if not cnpj_str:
             return None
