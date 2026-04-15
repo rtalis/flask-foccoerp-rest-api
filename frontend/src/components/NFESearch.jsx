@@ -176,7 +176,7 @@ const NFESearch = () => {
     const refreshCapabilities = async () => {
       try {
         const response = await axios.get(
-          `${process.env.REACT_APP_API_URL}/auth/me`,
+          `${import.meta.env.VITE_API_URL}/auth/me`,
           { withCredentials: true },
         );
         if (!isMounted) {
@@ -263,7 +263,7 @@ const NFESearch = () => {
     setLoadingCompanies(true);
     try {
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/tracked_companies`,
+        `${import.meta.env.VITE_API_URL}/api/tracked_companies`,
         { withCredentials: true },
       );
       setTrackedCompanies(response.data.companies || []);
@@ -304,7 +304,7 @@ const NFESearch = () => {
       }
 
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/search_nfe`,
+        `${import.meta.env.VITE_API_URL}/api/search_nfe`,
         { params, withCredentials: true },
       );
 
@@ -340,14 +340,14 @@ const NFESearch = () => {
         }
 
         // First ensure the NFE data is stored in the database
-        await axios.get(`${process.env.REACT_APP_API_URL}/api/get_nfe_data`, {
+        await axios.get(`${import.meta.env.VITE_API_URL}/api/get_nfe_data`, {
           params: { xmlKey: nfeChave },
           withCredentials: true,
         });
 
         // Then get the PDF
         const pdfResponse = await axios.get(
-          `${process.env.REACT_APP_API_URL}/api/get_danfe_pdf`,
+          `${import.meta.env.VITE_API_URL}/api/get_danfe_pdf`,
           {
             params: { xmlKey: nfeChave },
             withCredentials: true,

@@ -139,7 +139,7 @@ function PurchaseRow(props) {
     try {
       
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/nfe_by_purchase`, 
+        `${import.meta.env.VITE_API_URL}/api/nfe_by_purchase`, 
         {
           params: {
             cod_pedc: purchase.order.cod_pedc,
@@ -174,14 +174,14 @@ function PurchaseRow(props) {
       }
 
       // TODO: Check if the nfe var always have the chave property and if not, if there's an error
-      await axios.get(`${process.env.REACT_APP_API_URL}/api/get_nfe_data`, {
+      await axios.get(`${import.meta.env.VITE_API_URL}/api/get_nfe_data`, {
         params: { xmlKey: nfe.chave },
         withCredentials: true,
       });
 
       // Then get the PDF
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/get_danfe_pdf`,
+        `${import.meta.env.VITE_API_URL}/api/get_danfe_pdf`,
         {
           params: { xmlKey: nfe.chave },
           withCredentials: true,
@@ -256,7 +256,7 @@ function PurchaseRow(props) {
         });
       } else {
         const response = await axios.get(
-          `${process.env.REACT_APP_API_URL}/api/get_nfe_by_number`,
+          `${import.meta.env.VITE_API_URL}/api/get_nfe_by_number`,
           {
             params: {
               num_nf: nfEntry.num_nf,
@@ -298,7 +298,7 @@ function PurchaseRow(props) {
   const syncAndRetryDanfe = async (nfEntry) => {
     try {
       // Call nfe_by_purchase to sync NFEs from SIEG to database
-      await axios.get(`${process.env.REACT_APP_API_URL}/api/nfe_by_purchase`, {
+      await axios.get(`${import.meta.env.VITE_API_URL}/api/nfe_by_purchase`, {
         params: {
           cod_pedc: purchase.order.cod_pedc,
           cod_emp1: purchase.order.cod_emp1,
@@ -308,7 +308,7 @@ function PurchaseRow(props) {
 
       // Now retry finding the NFE in the database
       const retryResponse = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/get_nfe_by_number`,
+        `${import.meta.env.VITE_API_URL}/api/get_nfe_by_number`,
         {
           params: {
             num_nf: nfEntry.num_nf,
@@ -360,7 +360,7 @@ function PurchaseRow(props) {
 
       try {
         const response = await axios.post(
-          `${process.env.REACT_APP_API_URL}/api/manual_match_nfe`,
+          `${import.meta.env.VITE_API_URL}/api/manual_match_nfe`,
           {
             nfe_chave: nfe.chave,
             cod_pedc: purchase.order.cod_pedc,
@@ -1176,7 +1176,7 @@ const UnifiedSearch = () => {
     const refreshUserContext = async () => {
       try {
         const response = await axios.get(
-          `${process.env.REACT_APP_API_URL}/auth/me`,
+          `${import.meta.env.VITE_API_URL}/auth/me`,
           { withCredentials: true },
         );
         if (!isMounted) {
@@ -1365,7 +1365,7 @@ const UnifiedSearch = () => {
   const checkNfeForTerm = async (term) => {
     try {
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/search_nfe`,
+        `${import.meta.env.VITE_API_URL}/api/search_nfe`,
         {
           params: {
             query: term,
@@ -1449,7 +1449,7 @@ const UnifiedSearch = () => {
     const fetchFuncNames = async () => {
       try {
         const response = await axios.get(
-          `${process.env.REACT_APP_API_URL}/api/purchasers`,
+          `${import.meta.env.VITE_API_URL}/api/purchasers`,
           { withCredentials: true },
         );
         const sortedFuncNames = response.data
@@ -1466,7 +1466,7 @@ const UnifiedSearch = () => {
     const fetchCompanies = async () => {
       try {
         const response = await axios.get(
-          `${process.env.REACT_APP_API_URL}/api/companies`,
+          `${import.meta.env.VITE_API_URL}/api/companies`,
           { withCredentials: true },
         );
         setCodEmp1Options(response.data);
@@ -1478,7 +1478,7 @@ const UnifiedSearch = () => {
     const fetchLastUpdate = async () => {
       try {
         const response = await axios.get(
-          `${process.env.REACT_APP_API_URL}/api/last_update`,
+          `${import.meta.env.VITE_API_URL}/api/last_update`,
           { withCredentials: true },
         );
         if (response.data && response.data.last_updated) {
@@ -1519,7 +1519,7 @@ const UnifiedSearch = () => {
       setLoadingSuggestions(true);
       try {
         const { data } = await axios.get(
-          `${process.env.REACT_APP_API_URL}/api/search_advanced/suggestions`,
+          `${import.meta.env.VITE_API_URL}/api/search_advanced/suggestions`,
           {
             params: { term, limit: 10 },
             withCredentials: true,
@@ -1637,7 +1637,7 @@ const UnifiedSearch = () => {
     const term = (searchParams.query || "").trim();
     try {
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/count_results`,
+        `${import.meta.env.VITE_API_URL}/api/count_results`,
         {
           params: {
             query: term || undefined,
@@ -1689,7 +1689,7 @@ const UnifiedSearch = () => {
 
       if (usingEnhanced) {
         response = await axios.get(
-          `${process.env.REACT_APP_API_URL}/api/search_advanced`,
+          `${import.meta.env.VITE_API_URL}/api/search_advanced`,
           {
             params: {
               query: trimmedQuery || undefined,
@@ -1713,7 +1713,7 @@ const UnifiedSearch = () => {
         );
       } else {
         response = await axios.get(
-          `${process.env.REACT_APP_API_URL}/api/search_combined`,
+          `${import.meta.env.VITE_API_URL}/api/search_combined`,
           {
             params: {
               query: trimmedQuery,

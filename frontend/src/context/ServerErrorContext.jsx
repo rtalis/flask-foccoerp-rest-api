@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from "react";
 
-const BACKUP_URL = process.env.REACT_APP_BACKUP_URL;
+const BACKUP_URL = import.meta.env.VITE_BACKUP_URL;
 
 const ServerErrorContext = createContext();
 

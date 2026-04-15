@@ -64,7 +64,7 @@ const TrackedCompanies = ({ open, onClose }) => {
     setError(null);
     try {
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/tracked_companies`,
+        `${import.meta.env.VITE_API_URL}/api/tracked_companies`,
         { withCredentials: true }
       );
       const companiesData = response.data.companies || [];
@@ -74,7 +74,7 @@ const TrackedCompanies = ({ open, onClose }) => {
         companiesData.map(async (company) => {
           try {
             const countRes = await axios.get(
-              `${process.env.REACT_APP_API_URL}/api/tracked_companies/${company.id}/nfe_count`,
+              `${import.meta.env.VITE_API_URL}/api/tracked_companies/${company.id}/nfe_count`,
               { withCredentials: true }
             );
             return { ...company, nfe_count: countRes.data.nfe_count || 0 };
@@ -105,7 +105,7 @@ const TrackedCompanies = ({ open, onClose }) => {
     setAddingCompany(true);
     try {
       await axios.post(
-        `${process.env.REACT_APP_API_URL}/api/tracked_companies`,
+        `${import.meta.env.VITE_API_URL}/api/tracked_companies`,
         newCompany,
         { withCredentials: true }
       );
@@ -124,7 +124,7 @@ const TrackedCompanies = ({ open, onClose }) => {
     
     try {
       await axios.delete(
-        `${process.env.REACT_APP_API_URL}/api/tracked_companies/${companyId}`,
+        `${import.meta.env.VITE_API_URL}/api/tracked_companies/${companyId}`,
         { withCredentials: true }
       );
       fetchCompanies();
@@ -198,7 +198,7 @@ const TrackedCompanies = ({ open, onClose }) => {
       
       try {
         const response = await axios.post(
-          `${process.env.REACT_APP_API_URL}/api/tracked_companies/${syncCompany.id}/sync_chunk`,
+          `${import.meta.env.VITE_API_URL}/api/tracked_companies/${syncCompany.id}/sync_chunk`,
           {
             chunk_start: chunk.start,
             chunk_end: chunk.end,

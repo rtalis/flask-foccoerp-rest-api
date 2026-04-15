@@ -35,7 +35,7 @@ const ItemScreen = ({ itemId, onClose }) => {
     const refreshCapabilities = async () => {
       try {
         const response = await axios.get(
-          `${process.env.REACT_APP_API_URL}/auth/me`,
+          `${import.meta.env.VITE_API_URL}/auth/me`,
           { withCredentials: true },
         );
         if (!isMounted) {
@@ -65,14 +65,14 @@ const ItemScreen = ({ itemId, onClose }) => {
     try {
       let response;
       if (searchType === 'item_id') {
-        response = await axios.get(`${process.env.REACT_APP_API_URL}/api/item_details/${itemId}`, { withCredentials: true });
+        response = await axios.get(`${import.meta.env.VITE_API_URL}/api/item_details/${itemId}`, { withCredentials: true });
       } else if (searchType === 'fuzzy_95') {
-        response = await axios.get(`${process.env.REACT_APP_API_URL}/api/search_item_fuzzy`, {
+        response = await axios.get(`${import.meta.env.VITE_API_URL}/api/search_item_fuzzy`, {
           params: { descricao: itemDetails.descricao, score_cutoff: 95 },
           withCredentials: true
         });
       } else if (searchType === 'fuzzy_70') {
-        response = await axios.get(`${process.env.REACT_APP_API_URL}/api/search_item_fuzzy`, {
+        response = await axios.get(`${import.meta.env.VITE_API_URL}/api/search_item_fuzzy`, {
           params: { descricao: itemDetails.descricao, score_cutoff: 70 },
           withCredentials: true
         });
@@ -90,12 +90,12 @@ const ItemScreen = ({ itemId, onClose }) => {
     try {
       let response;
       if (searchType === 'item_id') {
-        response = await axios.get(`${process.env.REACT_APP_API_URL}/api/quotations`, {
+        response = await axios.get(`${import.meta.env.VITE_API_URL}/api/quotations`, {
           params: { item_id: itemDetails.item_id },
           withCredentials: true
         });
       } else {
-        response = await axios.get(`${process.env.REACT_APP_API_URL}/api/quotations_fuzzy`, {
+        response = await axios.get(`${import.meta.env.VITE_API_URL}/api/quotations_fuzzy`, {
           params: { descricao: itemDetails.descricao, score_cutoff: searchType === 'fuzzy_95' ? 95 : 70 },
           withCredentials: true
         });

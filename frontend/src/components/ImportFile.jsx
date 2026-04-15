@@ -156,7 +156,7 @@ const ImportFile = () => {
 
     try {
       await axios.post(
-        `${process.env.REACT_APP_API_URL}/api/upload_chunk`,
+        `${import.meta.env.VITE_API_URL}/api/upload_chunk`,
         formData,
         {
           withCredentials: true,
@@ -201,7 +201,7 @@ const ImportFile = () => {
       });
 
       const response = await axios.post(
-        `${process.env.REACT_APP_API_URL}/api/process_file`,
+        `${import.meta.env.VITE_API_URL}/api/process_file`,
         { fileId: id },
         { withCredentials: true }
       );

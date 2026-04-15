@@ -50,7 +50,7 @@ const NFEDetails = ({ open, onClose, nfeChave, nfeNumero }) => {
     setError(null);
     try {
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/get_nfe_data`,
+        `${import.meta.env.VITE_API_URL}/api/get_nfe_data`,
         {
           params: { xmlKey: nfeChave },
           withCredentials: true,

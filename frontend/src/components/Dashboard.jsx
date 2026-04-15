@@ -151,7 +151,7 @@ const Dashboard = () => {
       }
 
       const res = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/dashboard_summary`,
+        `${import.meta.env.VITE_API_URL}/api/dashboard_summary`,
         {
           params,
           withCredentials: true,

@@ -32,7 +32,7 @@ const AppContent = () => {
   const [unseenReleases, setUnseenReleases] = useState([]);
   const { showError, showSessionError } = useServerError();
 
-  const apiUrl = process.env.REACT_APP_API_URL;
+  const apiUrl = import.meta.env.VITE_API_URL;
 
   const normalizeInitialScreen = (screen, allowedScreens = []) => {
     const fallback = "/search";

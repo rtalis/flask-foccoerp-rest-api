@@ -62,7 +62,7 @@ const TokenManager = () => {
     severity: "success",
   });
 
-  const apiBase = process.env.REACT_APP_API_URL;
+  const apiBase = import.meta.env.VITE_API_URL;
 
   const fetchUsers = async () => {
     try {

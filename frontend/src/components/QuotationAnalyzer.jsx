@@ -77,7 +77,7 @@ const QuotationAnalyzer = () => {
 
     try {
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/quotation_items`,
+        `${import.meta.env.VITE_API_URL}/api/quotation_items`,
         {
           params: { cod_cot: codCotacao },
           withCredentials: true,
@@ -185,7 +185,7 @@ const QuotationAnalyzer = () => {
       });
       formData.append("cod_cot", codCotacao);
       const response = await axios.post(
-        `${process.env.REACT_APP_API_URL}/api/extract_quotation_data`,
+        `${import.meta.env.VITE_API_URL}/api/extract_quotation_data`,
         formData,
         {
           withCredentials: true,

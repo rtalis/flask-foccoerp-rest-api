@@ -112,7 +112,7 @@ const UsageReport = () => {
   const [sortField, setSortField] = useState("request_count");
   const [sortDirection, setSortDirection] = useState("desc");
 
-  const apiUrl = process.env.REACT_APP_API_URL;
+  const apiUrl = import.meta.env.VITE_API_URL;
 
   const fetchReport = useCallback(async () => {
     setLoading(true);

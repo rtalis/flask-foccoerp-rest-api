@@ -70,7 +70,7 @@ const Account = () => {
   const fetchUserData = async () => {
     try {
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/auth/me`,
+        `${import.meta.env.VITE_API_URL}/auth/me`,
         { withCredentials: true },
       );
       setUserData({
@@ -136,7 +136,7 @@ const Account = () => {
     setSaving(true);
     try {
       await axios.put(
-        `${process.env.REACT_APP_API_URL}/auth/me`,
+        `${import.meta.env.VITE_API_URL}/auth/me`,
         {
           username: userData.username,
           email: userData.email,
@@ -185,7 +185,7 @@ const Account = () => {
     setSaving(true);
     try {
       await axios.put(
-        `${process.env.REACT_APP_API_URL}/auth/me`,
+        `${import.meta.env.VITE_API_URL}/auth/me`,
         {
           current_password: passwordData.current_password,
           new_password: passwordData.new_password,

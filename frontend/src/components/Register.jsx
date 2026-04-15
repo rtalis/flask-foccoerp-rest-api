@@ -132,7 +132,7 @@ const Register = () => {
     const checkAdminStatus = async () => {
       try {
         const response = await axios.get(
-          `${process.env.REACT_APP_API_URL}/auth/me`,
+          `${import.meta.env.VITE_API_URL}/auth/me`,
           { withCredentials: true }
         );
         if (response.data.role !== "admin") {
@@ -155,7 +155,7 @@ const Register = () => {
   const fetchPurchaserNames = async () => {
     try {
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/purchasers`,
+        `${import.meta.env.VITE_API_URL}/api/purchasers`,
         { withCredentials: true }
       );
       // Filter out empty values and duplicates
@@ -172,7 +172,7 @@ const Register = () => {
   const fetchUsers = async () => {
     try {
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/auth/users`,
+        `${import.meta.env.VITE_API_URL}/auth/users`,
         { withCredentials: true }
       );
       setUsers(response.data);
@@ -269,7 +269,7 @@ const Register = () => {
 
       if (isEditing && editUserId) {
         await axios.put(
-          `${process.env.REACT_APP_API_URL}/auth/users/${editUserId}`,
+          `${import.meta.env.VITE_API_URL}/auth/users/${editUserId}`,
           submitData,
           { withCredentials: true }
         );
@@ -280,7 +280,7 @@ const Register = () => {
         });
       } else {
         const response = await axios.post(
-          `${process.env.REACT_APP_API_URL}/auth/register`,
+          `${import.meta.env.VITE_API_URL}/auth/register`,
           submitData,
           { withCredentials: true }
         );
@@ -335,7 +335,7 @@ const Register = () => {
     if (!window.confirm("Excluir este usuário?")) return;
     try {
       await axios.delete(
-        `${process.env.REACT_APP_API_URL}/auth/users/${userId}`,
+        `${import.meta.env.VITE_API_URL}/auth/users/${userId}`,
         { withCredentials: true }
       );
       setAlert({
