@@ -1,8 +1,3 @@
-"""
-Phase 7: Purchase Endpoints
-Contains 6 pure data access endpoints for retrieving purchase order information.
-"""
-
 from datetime import datetime, timedelta
 from flask import request, jsonify
 from flask_login import login_required, current_user

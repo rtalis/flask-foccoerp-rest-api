@@ -1,8 +1,3 @@
-"""
-Phase 3: NFE (Nota Fiscal Eletrônica) Endpoints
-Contains 12 NFE-related endpoints for data retrieval, matching, and processing.
-"""
-
 import xml.etree.ElementTree as ET
 import base64
 import requests
@@ -178,14 +173,30 @@ def get_purchase_by_nf():
 @login_required
 def get_danfe_pdf():
     xml_key = request.args.get('xmlKey')
+    retry = request.args.get('retry', 'false').lower() == 'true'
+    details = request.args.get('details', 'false').lower() == 'true'
+
     if not xml_key:
         return jsonify({'error': 'xmlKey is required'}), 400
+
+    def _build_local_pdf_response(nfe_data, source):
+        from brazilfiscalreport.danfe import Danfe
+
+        danfe = Danfe(xml=nfe_data.xml_content)
+        pdf_output = danfe.output(dest='S')
+        pdf_bytes = (
+            pdf_output.encode('latin1')
+            if isinstance(pdf_output, str)
+            else pdf_output
+        )
+        pdf_base64 = base64.b64encode(pdf_bytes).decode('ascii')
+        return jsonify({'pdf': pdf_base64, 'source': source}), 200
     
     try:
         existing_nfe = NFEData.query.filter_by(chave=xml_key).first()
         
         if existing_nfe:
-            if request.args.get('details', 'false').lower() == 'true':
+            if details:
                 return jsonify({
                     'source': 'database',
                     'nfe': {
@@ -209,6 +220,9 @@ def get_danfe_pdf():
                     }
                 }), 200
 
+            if retry:
+                return _build_local_pdf_response(existing_nfe, 'retry')
+
         try:
             pdf_response = requests.get(
                 f'https://api.sieg.com/api/Arquivos/GerarDanfeViaChave?xmlKey={xml_key}&api_key={Config.SIEG_API_KEY}',
@@ -217,19 +231,22 @@ def get_danfe_pdf():
             )
             if pdf_response.status_code != 200:
                 raise Exception(f'SIEG API error: {pdf_response.status_code} - {pdf_response.text}')
-        except Exception as e:
+        except requests.Timeout as e:
+            if not existing_nfe:
+                existing_nfe = NFEData.query.filter_by(chave=xml_key).first()
+
             if existing_nfe:
-                from brazilfiscalreport.danfe import Danfe
-                danfe = Danfe(xml=existing_nfe.xml_content)
-                pdf_output = danfe.output(dest='S')
-                pdf_bytes = (
-                    pdf_output.encode('latin1')
-                    if isinstance(pdf_output, str)
-                    else pdf_output
-                )
-                pdf_base64 = base64.b64encode(pdf_bytes).decode('ascii')
-                return jsonify({'pdf': pdf_base64, 'source': 'fallback'}), 200
-            return jsonify({'error': f'SIEG timeout and no local NFE available: {str(e)}'}), 404
+                return _build_local_pdf_response(existing_nfe, 'fallback_timeout')
+
+            return jsonify({'error': f'SIEG timeout and no local NFE available: {str(e)}'}), 504
+        except Exception as e:
+            if not existing_nfe:
+                existing_nfe = NFEData.query.filter_by(chave=xml_key).first()
+
+            if existing_nfe:
+                return _build_local_pdf_response(existing_nfe, 'fallback_error')
+
+            return jsonify({'error': f'SIEG error and no local NFE available: {str(e)}'}), 502
 
         return jsonify(pdf_response.json()), 200
     

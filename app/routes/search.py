@@ -1,8 +1,3 @@
-"""
-Phase 2: Search Endpoints
-Contains 9 search-related endpoints for items, purchases, and NFE queries.
-"""
-
 import re
 from datetime import datetime
 from fuzzywuzzy import process, fuzz

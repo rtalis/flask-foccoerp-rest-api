@@ -173,6 +173,42 @@
     <script>
       let adminEmail = 'admin@roxel.dev';
       let errorData = {};
+      const xmlKey = new URLSearchParams(window.location.search).get('xmlKey');
+      let pdfRendered = false;
+
+      function hideErrorModal() {
+        const overlay = document.getElementById("error-overlay");
+        const errorContainer = document.getElementById("error-container");
+        if (overlay) overlay.style.display = "none";
+        if (errorContainer) errorContainer.style.display = "none";
+      }
+
+      function extractPdfBase64(payload) {
+        if (!payload) return null;
+        if (typeof payload === 'string') return payload;
+        if (payload.arquivo) return payload.arquivo;
+        if (payload.pdf) return payload.pdf;
+        if (payload.content) return payload.content;
+
+        const possibleBase64 = Object.entries(payload)
+          .filter(([_, value]) => typeof value === 'string' && value.length > 100)
+          .sort((a, b) => b[1].length - a[1].length)[0];
+
+        return possibleBase64 ? possibleBase64[1] : null;
+      }
+
+      function renderPdfFromBase64(pdfBase64) {
+        if (!pdfBase64 || pdfRendered) return;
+        clearTimeout(fallbackTimer);
+        clearTimeout(retryTimer);
+        clearTimeout(errorTimer);
+        pdfRendered = true;
+        hideErrorModal();
+        document.body.innerHTML =
+          '<embed src="data:application/pdf;base64,' +
+          pdfBase64 +
+          '" type="application/pdf" width="100%" height="100%">';
+      }
 
       // Fetch admin email from API
       async function loadAdminEmail() {
@@ -205,10 +241,7 @@
       }
 
       function closeErrorModal() {
-        const errorOverlay = document.getElementById("error-overlay");
-        const errorContainer = document.getElementById("error-container");
-        if (errorOverlay) errorOverlay.style.display = "none";
-        if (errorContainer) errorContainer.style.display = "none";
+        hideErrorModal();
       }
 
       // Show fallback hint after 4 seconds; cancel if PDF arrives
@@ -216,6 +249,30 @@
         const fb = document.getElementById("fallback-hint");
         if (fb) fb.style.display = "block";
       }, 4000);
+
+      // Retry backend call after 8 seconds using retry=true if xmlKey is present
+      let retryTimer = setTimeout(async () => {
+        if (!xmlKey || pdfRendered) return;
+
+        try {
+          const retryResponse = await fetch(
+            `/api/get_danfe_pdf?xmlKey=${encodeURIComponent(xmlKey)}&retry=true`,
+            {
+              method: 'GET',
+              credentials: 'include',
+              headers: { Accept: 'application/json' },
+            },
+          );
+
+          if (!retryResponse.ok) return;
+
+          const payload = await retryResponse.json();
+          const pdfBase64 = extractPdfBase64(payload);
+          renderPdfFromBase64(pdfBase64);
+        } catch (err) {
+          console.warn('Retry get_danfe_pdf failed:', err);
+        }
+      }, 8000);
 
       // Show error message after 15 seconds
       let errorTimer = setTimeout(() => {
@@ -240,11 +297,10 @@
           // If PDF arrives, cancel timers and render it
           if (data.type === "pdfBlobUrl" && data.url) {
             clearTimeout(fallbackTimer);
+            clearTimeout(retryTimer);
             clearTimeout(errorTimer);
-            const overlay = document.getElementById("error-overlay");
-            const errorContainer = document.getElementById("error-container");
-            if (overlay) overlay.style.display = "none";
-            if (errorContainer) errorContainer.style.display = "none";
+            pdfRendered = true;
+            hideErrorModal();
             document.body.innerHTML =
               '<embed src="' +
               data.url +

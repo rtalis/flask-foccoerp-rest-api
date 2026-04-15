@@ -677,3 +677,12 @@ def _check_supplier_match(purchase_order, nfe_emitente):
         return name_ratio >= 80
     
     return False
+
+
+from app.routes import analytics  
+from app.routes import search  
+from app.routes import nfe 
+from app.routes import imports 
+from app.routes import quotations  
+from app.routes import tracking 
+from app.routes import purchases

@@ -327,7 +327,11 @@ const NFESearch = () => {
     setLoadingDanfe(nfeChave);
     try {
       if (nfeChave) {
-        const newWindow = window.open("/danfe-loading.html", "_blank");
+        const encodedXmlKey = encodeURIComponent(nfeChave);
+        const newWindow = window.open(
+          `/danfe-loading.html?xmlKey=${encodedXmlKey}`,
+          "_blank",
+        );
         if (!newWindow) {
           alert(
             "Pop-up bloqueado pelo navegador. Por favor, permita pop-ups para este site.",

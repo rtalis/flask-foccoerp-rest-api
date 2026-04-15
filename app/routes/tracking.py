@@ -1,8 +1,3 @@
-"""
-Phase 6: Tracking Endpoints
-Contains 7 endpoints for tracking companies and monitoring NFE availability.
-"""
-
 import requests
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta

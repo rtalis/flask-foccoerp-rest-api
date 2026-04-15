@@ -137,8 +137,9 @@ function PurchaseRow(props) {
   const fetchNfeData = async () => {
     setLoadingNfe(true);
     try {
+      
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/nfe_by_purchase`,
+        `${process.env.REACT_APP_API_URL}/api/nfe_by_purchase`, 
         {
           params: {
             cod_pedc: purchase.order.cod_pedc,
@@ -160,7 +161,11 @@ function PurchaseRow(props) {
 
   const handleNfeClick = async (nfe) => {
     try {
-      const newWindow = window.open("/danfe-loading.html", "_blank");
+      const encodedXmlKey = encodeURIComponent(nfe.chave || "");
+      const newWindow = window.open(
+        `/danfe-loading.html?xmlKey=${encodedXmlKey}`,
+        "_blank",
+      );
       if (!newWindow) {
         alert(
           "Pop-up bloqueado pelo navegador. Por favor, permita pop-ups para este site.",
@@ -168,7 +173,7 @@ function PurchaseRow(props) {
         return;
       }
 
-      // First ensure the NFE data is stored in the database
+      // TODO: Check if the nfe var always have the chave property and if not, if there's an error
       await axios.get(`${process.env.REACT_APP_API_URL}/api/get_nfe_data`, {
         params: { xmlKey: nfe.chave },
         withCredentials: true,

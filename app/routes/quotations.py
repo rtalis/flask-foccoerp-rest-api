@@ -1,8 +1,3 @@
-"""
-Phase 5: Quotation Endpoints
-Contains 5 quotation-related endpoints for searching and extracting quotation data.
-"""
-
 import tempfile
 import os
 from datetime import datetime
