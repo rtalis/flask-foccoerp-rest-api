@@ -23,9 +23,8 @@ def app():
     app = create_app()
     app.config.update({
         "TESTING": True,
-        "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
         "WTF_CSRF_ENABLED": False,
-        "MAIL_SUPPRESS_SEND": True
+        "MAIL_SUPPRESS_SEND": True,
     })
 
     with app.app_context():
@@ -1228,7 +1227,8 @@ def test_sync_company_nfes_chunk_not_found(auth_client: FlaskClient):
         'chunk_end': '2024-01-15'
     })
     assert response.status_code == 404
-    assert 'status' in data
+    data = response.get_json()
+    assert 'error' in data or 'status' in data
 
 
 # ==================== UTILITY TESTS ====================

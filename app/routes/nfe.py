@@ -246,7 +246,7 @@ def get_danfe_pdf():
             if existing_nfe:
                 return _build_local_pdf_response(existing_nfe, 'fallback_error')
 
-            return jsonify({'error': f'SIEG error and no local NFE available: {str(e)}'}), 502
+            return jsonify({'error': f'NFE not found: {str(e)}'}), 404
 
         return jsonify(pdf_response.json()), 200
     
