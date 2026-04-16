@@ -1035,32 +1035,200 @@ def test_view_danfe_template(auth_client: FlaskClient):
 # ==================== TRACKED COMPANIES TESTS ====================
 
 def test_get_tracked_companies(auth_client: FlaskClient):
-    """Test getting tracked companies."""
+    """Test getting tracked companies - returns list."""
     response = auth_client.get('/api/tracked_companies')
-    assert response.status_code in (200, 404)
+    assert response.status_code == 200
+    data = response.get_json()
+    assert 'companies' in data
+    assert isinstance(data['companies'], list)
+
+
+def test_add_tracked_company(auth_client: FlaskClient):
+    """Test adding tracked company with valid data."""
+    response = auth_client.post('/api/tracked_companies', json={
+        'cod_emp1': 'EMP001',
+        'name': 'Test Company',
+        'cnpj': '34.028.316/0001-07'  # Valid format
+    })
+    assert response.status_code == 201
+    data = response.get_json()
+    assert 'company' in data
+    assert data['company']['cod_emp1'] == 'EMP001'
+
+
+def test_add_tracked_company_missing_cnpj(auth_client: FlaskClient):
+    """Test adding tracked company without required CNPJ."""
+    response = auth_client.post('/api/tracked_companies', json={
+        'cod_emp1': 'EMP002',
+        'name': 'Test Company'
+    })
+    assert response.status_code == 400
+    data = response.get_json()
+    assert 'error' in data
+
+
+def test_add_tracked_company_missing_cod_emp1(auth_client: FlaskClient):
+    """Test adding tracked company without required cod_emp1."""
+    response = auth_client.post('/api/tracked_companies', json={
+        'cnpj': '34.028.316/0001-07',
+        'name': 'Test Company'
+    })
+    assert response.status_code == 400
+    data = response.get_json()
+    assert 'error' in data
+
+
+def test_add_tracked_company_invalid_cnpj(auth_client: FlaskClient):
+    """Test adding company with invalid CNPJ (wrong digit count)."""
+    response = auth_client.post('/api/tracked_companies', json={
+        'cod_emp1': 'EMP003',
+        'name': 'Test',
+        'cnpj': '12345'
+    })
+    assert response.status_code == 400
+    data = response.get_json()
+    assert 'error' in data
 
 
 def test_tracked_company_nfe_count(auth_client: FlaskClient):
-    """Test getting NFE count for tracked company."""
-    response = auth_client.get('/api/tracked_companies/999/nfe_count')
-    # May return 404 if company doesn't exist
-    assert response.status_code in (200, 404)
+    """Test getting NFE count for tracked company by ID."""
+    with auth_client.application.app_context():
+        # Create a test company with valid CNPJ
+        company = Company(cod_emp1='TEST002', name='NFE Test', cnpj='34028316000107')
+        db.session.add(company)
+        db.session.commit()
+        company_id = company.id
+    
+    response = auth_client.get(f'/api/tracked_companies/{company_id}/nfe_count')
+    assert response.status_code == 200
+    data = response.get_json()
+    assert 'company_id' in data
+    assert 'company_name' in data
+    assert 'cnpj' in data
+    assert 'nfe_count' in data
 
 
-def test_add_tracked_company(admin_client: FlaskClient):
-    """Test adding tracked company (admin only)."""
-    response = admin_client.post('/api/tracked_companies', json={
-        'cnpj': '12.345.678/0001-95',
-        'company_name': 'Test Company'
+def test_tracked_company_nfe_count_not_found(auth_client: FlaskClient):
+    """Test getting NFE count for non-existent company."""
+    response = auth_client.get('/api/tracked_companies/99999/nfe_count')
+    assert response.status_code == 404
+
+
+def test_check_nfe_available_post(auth_client: FlaskClient):
+    """Test checking if NFEs are available for a CNPJ in date range."""
+    response = auth_client.post('/api/tracked_companies/check_nfe_available', json={
+        'cnpj': '34.028.316/0001-07',
+        'start_date': '2024-01-01',
+        'end_date': '2024-01-31'
     })
-    assert response.status_code in (201, 400, 409)
+    # May succeed or fail depending on SIEG API, but should not be 400/500 on validation
+    assert response.status_code in (200, 502)
 
 
-def test_delete_tracked_company(admin_client: FlaskClient):
-    """Test deleting tracked company (admin only)."""
-    response = admin_client.delete('/api/tracked_companies/999')
-    # May return 404 if not found
-    assert response.status_code in (200, 204, 404)
+def test_check_nfe_available_missing_cnpj(auth_client: FlaskClient):
+    """Test check available without CNPJ."""
+    response = auth_client.post('/api/tracked_companies/check_nfe_available', json={
+        'start_date': '2024-01-01',
+        'end_date': '2024-01-31'
+    })
+    assert response.status_code == 400
+
+
+def test_check_nfe_available_missing_dates(auth_client: FlaskClient):
+    """Test check available without date range."""
+    response = auth_client.post('/api/tracked_companies/check_nfe_available', json={
+        'cnpj': '34.028.316/0001-07'
+    })
+    assert response.status_code == 400
+
+
+def test_delete_tracked_company(auth_client: FlaskClient):
+    """Test deleting tracked company."""
+    with auth_client.application.app_context():
+        company = Company(cod_emp1='TEST006', name='Delete Test', cnpj='34028316000107')
+        db.session.add(company)
+        db.session.commit()
+        company_id = company.id
+    
+    response = auth_client.delete(f'/api/tracked_companies/{company_id}')
+    assert response.status_code == 200
+    data = response.get_json()
+    assert 'message' in data
+
+
+def test_sync_company_nfes(auth_client: FlaskClient):
+    """Test syncing NFEs for a company."""
+    with auth_client.application.app_context():
+        company = Company(cod_emp1='SYNC001', name='Sync Test', cnpj='34028316000107')
+        db.session.add(company)
+        db.session.commit()
+        company_id = company.id
+    
+    response = auth_client.post(f'/api/tracked_companies/{company_id}/sync_nfes', json={
+        'start_date': '2024-01-01',
+        'end_date': '2024-01-15'
+    })
+    # May succeed or fail based on SIEG API availability
+    assert response.status_code in (200, 400, 500)
+
+
+def test_sync_company_nfes_missing_dates(auth_client: FlaskClient):
+    """Test sync without date range."""
+    with auth_client.application.app_context():
+        company = Company(cod_emp1='SYNC002', name='No Dates', cnpj='34028316000107')
+        db.session.add(company)
+        db.session.commit()
+        company_id = company.id
+    
+    response = auth_client.post(f'/api/tracked_companies/{company_id}/sync_nfes', json={})
+    assert response.status_code == 400
+
+
+def test_sync_company_nfes_not_found(auth_client: FlaskClient):
+    """Test sync for non-existent company."""
+    response = auth_client.post('/api/tracked_companies/99999/sync_nfes', json={
+        'start_date': '2024-01-01',
+        'end_date': '2024-01-15'
+    })
+    assert response.status_code == 404
+
+
+def test_sync_company_nfes_chunk(auth_client: FlaskClient):
+    """Test syncing a single 15-day chunk of NFEs."""
+    with auth_client.application.app_context():
+        company = Company(cod_emp1='CHUNK001', name='Chunk Test', cnpj='34028316000107')
+        db.session.add(company)
+        db.session.commit()
+        company_id = company.id
+    
+    response = auth_client.post(f'/api/tracked_companies/{company_id}/sync_chunk', json={
+        'chunk_start': '2024-01-01',
+        'chunk_end': '2024-01-15'
+    })
+    # May succeed or fail based on SIEG API
+    assert response.status_code in (200, 400, 500)
+
+
+def test_sync_company_nfes_chunk_missing_dates(auth_client: FlaskClient):
+    """Test chunk sync without dates."""
+    with auth_client.application.app_context():
+        company = Company(cod_emp1='CHUNK002', name='No Dates', cnpj='34028316000107')
+        db.session.add(company)
+        db.session.commit()
+        company_id = company.id
+    
+    response = auth_client.post(f'/api/tracked_companies/{company_id}/sync_chunk', json={})
+    assert response.status_code == 400
+
+
+def test_sync_company_nfes_chunk_not_found(auth_client: FlaskClient):
+    """Test chunk sync for non-existent company."""
+    response = auth_client.post('/api/tracked_companies/99999/sync_chunk', json={
+        'chunk_start': '2024-01-01',
+        'chunk_end': '2024-01-15'
+    })
+    assert response.status_code == 404
+    assert 'status' in data
 
 
 # ==================== UTILITY TESTS ====================
