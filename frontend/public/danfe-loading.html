@@ -231,6 +231,10 @@
             credentials: 'include',
             headers: { Accept: 'application/json' },
           });
+          if (response.status === 401) {
+            showAuthError();
+            return;
+          }
           if (response && response.ok) {
             const data = await response.json();
             adminEmail = data.email || '';
@@ -261,6 +265,37 @@
         hideErrorModal();
       }
 
+      function showAuthError() {
+        clearTimeout(fallbackTimer);
+        clearTimeout(retryTimer);
+        clearTimeout(errorTimer);
+        
+        const errorOverlay = document.getElementById("error-overlay");
+        const errorContainer = document.getElementById("error-container");
+        const errorTitle = errorContainer.querySelector('.error-title');
+        const errorMessage = errorContainer.querySelector('.error-message');
+        
+        errorTitle.textContent = 'Sessão expirada';
+        errorMessage.textContent = 'Sua sessão expirou. Por favor, faça login novamente para acessar o documento.';
+        document.getElementById('error-details').textContent = '';
+        
+        if (errorOverlay) errorOverlay.style.display = "block";
+        if (errorContainer) errorContainer.style.display = "block";
+        
+        // Hide report button
+        const reportBtn = document.getElementById('report-btn');
+        if (reportBtn) reportBtn.style.display = "none";
+        
+        // Change close button text to "Ir para login"
+        const closeBtn = errorContainer.querySelector('.close-btn');
+        if (closeBtn) {
+          closeBtn.textContent = 'Ir para login';
+          closeBtn.onclick = () => {
+            window.location.href = '/';
+          };
+        }
+      }
+
       // Show fallback hint after 4 seconds; cancel if PDF arrives
       let fallbackTimer = setTimeout(() => {
         const fb = document.getElementById("fallback-hint");
@@ -280,6 +315,11 @@
               headers: { Accept: 'application/json' },
             },
           );
+
+          if (retryResponse.status === 401) {
+            showAuthError();
+            return;
+          }
 
           if (!retryResponse.ok) return;
 
