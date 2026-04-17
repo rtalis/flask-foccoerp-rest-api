@@ -1,13 +1,5 @@
 [
-  
-  {
-    "version": "2.0.8",
-    "notes": [
-      "Melhorias para a visualização do site em celulares e tablets.",
-      "Adicionada busca no banco de dados de notas local, quando um numero de nota fiscal não foi atribuido a um pedido de compra",
-      "Adicionada nova mensagem quando nenhum resultado é encontrado, mostrando os filtros que foram utilizados na busca."
-    ]
-  },
+
   {
     "version": "2.0.9",
     "notes": [
@@ -22,6 +14,15 @@
       "Novo timer de ultima ação adicionado, para o usuário não ser deslogado no meio de uma ação.",
       "Permissões agora controlam visualização de valores financeiros e NFEs em telas e exportações.",
       "Filtros restritivos para usuários de busca simples podem ser definidos, com indicação de quando os resultados estiverem limitados."
+    ]
+  },  {
+    "version": "2.2.0",
+    "notes": [
+      "Migração de CRA para Vite: Página inicial carrega mais rápido e consome menos memória.",
+      "Corrigido erro ao recuperar URL de API na tela de carregamento DANFE - menos erros de: Carregamento de DANFE está demorando.",
+      "Atualizada configuração CORS para permitir origens definidas em variável de ambiente com segurança aprimorada.",
+      "Adicionados testes abrangentes para funcionalidade de busca de NFE.",
+      "Refatorado código para melhor legibilidade e manutenibilidade."
     ]
   }
 ]
