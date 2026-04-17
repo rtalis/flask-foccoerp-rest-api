@@ -48,7 +48,17 @@ def create_app():
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'
 
-    CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
+    # Get allowed origins from env, default to localhost for development
+    allowed_origins_env = os.getenv('ALLOWED_ORIGINS', '')
+    if allowed_origins_env:
+        allowed_origins = [origin.strip() for origin in allowed_origins_env.split(',')]
+    else:
+        allowed_origins = [
+            "http://localhost:5173",  
+            "http://localhost:3000", 
+            "http://127.0.0.1:5173",
+        ]
+    CORS(app, resources={r"/*": {"origins": allowed_origins}}, supports_credentials=True)
 
     with app.app_context():
         from .routes import routes
