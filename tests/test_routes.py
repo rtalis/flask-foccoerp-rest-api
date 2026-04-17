@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 from flask import Flask
 from flask.testing import FlaskClient
 from app import create_app, db
-from app.models import PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch, NFEData, User, LoginHistory, NFEntry, Quotation
+from app.models import PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch, NFEData, User, LoginHistory, NFEntry, Quotation, NFEEmitente, NFEItem
 from app.utils import check_order_fulfillment
 from werkzeug.security import generate_password_hash
 
@@ -1209,4 +1209,373 @@ def test_tracked_companies_add_requires_cod_emp1(auth_client: FlaskClient):
         'name': 'Test Company'
     })
     assert response.status_code == 400
+
+
+# ============================================================================
+# Tests for /search_nfe endpoint
+# ============================================================================
+
+def test_search_nfe_without_auth(client: FlaskClient):
+    """Test that search_nfe requires authentication."""
+    response = client.get('/api/search_nfe', query_string={'query': '12345'})
+    assert response.status_code in (302, 401)
+
+
+def test_search_nfe_requires_query_or_date(auth_client: FlaskClient):
+    """Test that search_nfe requires either query or date range."""
+    response = auth_client.get('/api/search_nfe')
+    assert response.status_code == 400
+    assert 'error' in response.json
+    assert 'Query parameter or date range is required' in response.json['error']
+
+
+def test_search_nfe_by_numero(auth_client: FlaskClient):
+    """Test searching for NFE by NFE number."""
+    with auth_client.application.app_context():
+        # Create test NFE
+        nfe = NFEData(
+            chave='35240100000000000001550010000000011000000019',
+            numero='1',
+            serie='1',
+            xml_content='<test></test>',
+            data_emissao=datetime(2024, 4, 10, 12, 0, 0),
+            valor_total=1000.00,
+            status_motivo='Autorizado'
+        )
+        db.session.add(nfe)
+        db.session.flush()
+        
+        # Create emitente
+        emitente = NFEEmitente(
+            nfe_id=nfe.id,
+            nome='Fornecedor Test',
+            cnpj='12345678901234'
+        )
+        db.session.add(emitente)
+        db.session.commit()
+    
+    response = auth_client.get('/api/search_nfe', query_string={'query': '1', 'search_by_number': 'true'})
+    assert response.status_code == 200
+    data = response.json
+    assert 'nfes' in data
+    assert len(data['nfes']) >= 1
+    assert data['nfes'][0]['numero'] == '1'
+
+
+def test_search_nfe_by_chave(auth_client: FlaskClient):
+    """Test searching for NFE by chave de acesso."""
+    with auth_client.application.app_context():
+        # Create test NFE
+        chave = '35240100000000000001550010000000011000000019'
+        nfe = NFEData(
+            chave=chave,
+            numero='2',
+            serie='1',
+            xml_content='<test></test>',
+            data_emissao=datetime(2024, 4, 11, 12, 0, 0),
+            valor_total=2000.00,
+            status_motivo='Autorizado'
+        )
+        db.session.add(nfe)
+        db.session.flush()
+        
+        emitente = NFEEmitente(
+            nfe_id=nfe.id,
+            nome='Fornecedor Test 2',
+            cnpj='98765432109876'
+        )
+        db.session.add(emitente)
+        db.session.commit()
+    
+    response = auth_client.get('/api/search_nfe', query_string={
+        'query': chave,
+        'search_by_chave': 'true',
+        'search_by_number': 'false'
+    })
+    assert response.status_code == 200
+    data = response.json
+    assert 'nfes' in data
+    assert len(data['nfes']) >= 1
+    assert data['nfes'][0]['chave'] == chave
+
+
+def test_search_nfe_by_fornecedor(auth_client: FlaskClient):
+    """Test searching for NFE by supplier/fornecedor name."""
+    with auth_client.application.app_context():
+        # Create test NFE
+        nfe = NFEData(
+            chave='35240100000000000001550010000000011000000020',
+            numero='3',
+            serie='1',
+            xml_content='<test></test>',
+            data_emissao=datetime(2024, 4, 12, 12, 0, 0),
+            valor_total=3000.00,
+            status_motivo='Autorizado'
+        )
+        db.session.add(nfe)
+        db.session.flush()
+        
+        emitente = NFEEmitente(
+            nfe_id=nfe.id,
+            nome='Fornecedor Especial LTDA',
+            cnpj='11111111111111'
+        )
+        db.session.add(emitente)
+        db.session.commit()
+    
+    response = auth_client.get('/api/search_nfe', query_string={
+        'query': 'Fornecedor Especial',
+        'search_by_fornecedor': 'true',
+        'search_by_number': 'false',
+        'search_by_chave': 'false'
+    })
+    assert response.status_code == 200
+    data = response.json
+    assert 'nfes' in data
+    if len(data['nfes']) > 0:
+        assert 'Fornecedor Especial' in data['nfes'][0]['fornecedor']
+
+
+def test_search_nfe_by_item_description(auth_client: FlaskClient):
+    """Test searching for NFE by item description."""
+    with auth_client.application.app_context():
+        # Create test NFE
+        nfe = NFEData(
+            chave='35240100000000000001550010000000011000000021',
+            numero='4',
+            serie='1',
+            xml_content='<test></test>',
+            data_emissao=datetime(2024, 4, 13, 12, 0, 0),
+            valor_total=4000.00,
+            status_motivo='Autorizado'
+        )
+        db.session.add(nfe)
+        db.session.flush()
+        
+        emitente = NFEEmitente(
+            nfe_id=nfe.id,
+            nome='Test Fornecedor Item',
+            cnpj='22222222222222'
+        )
+        db.session.add(emitente)
+        
+        item = NFEItem(
+            nfe_id=nfe.id,
+            numero_item=1,
+            descricao='Bomba Hidraulica Industrial 5HP'
+        )
+        db.session.add(item)
+        db.session.commit()
+    
+    response = auth_client.get('/api/search_nfe', query_string={
+        'query': 'Bomba Hidraulica',
+        'search_by_item': 'true',
+        'search_by_number': 'false',
+        'search_by_chave': 'false',
+        'search_by_fornecedor': 'false'
+    })
+    assert response.status_code == 200
+    data = response.json
+    assert 'nfes' in data
+    if len(data['nfes']) > 0:
+        assert len(data['nfes'][0]['matched_items']) > 0
+
+
+def test_search_nfe_with_date_range(auth_client: FlaskClient):
+    """Test searching for NFE with date range filter."""
+    with auth_client.application.app_context():
+        # Create test NFEs with different dates
+        nfe1 = NFEData(
+            chave='35240100000000000001550010000000011000000030',
+            numero='5',
+            serie='1',
+            xml_content='<test></test>',
+            data_emissao=datetime(2024, 3, 1, 12, 0, 0),
+            valor_total=1000.00,
+            status_motivo='Autorizado'
+        )
+        nfe2 = NFEData(
+            chave='35240100000000000001550010000000011000000031',
+            numero='6',
+            serie='1',
+            xml_content='<test></test>',
+            data_emissao=datetime(2024, 4, 15, 12, 0, 0),
+            valor_total=2000.00,
+            status_motivo='Autorizado'
+        )
+        db.session.add_all([nfe1, nfe2])
+        db.session.flush()
+        
+        emitente1 = NFEEmitente(nfe_id=nfe1.id, nome='Test 1', cnpj='33333333333333')
+        emitente2 = NFEEmitente(nfe_id=nfe2.id, nome='Test 2', cnpj='44444444444444')
+        db.session.add_all([emitente1, emitente2])
+        db.session.commit()
+    
+    # Search only in April 2024
+    response = auth_client.get('/api/search_nfe', query_string={
+        'start_date': '2024-04-01',
+        'end_date': '2024-04-30'
+    })
+    assert response.status_code == 200
+    data = response.json
+    assert 'nfes' in data
+    # Should only get NFEs from April
+    for nfe in data['nfes']:
+        nfe_date = datetime.fromisoformat(nfe['data_emissao'])
+        assert nfe_date.month == 4
+        assert nfe_date.year == 2024
+
+
+def test_search_nfe_with_linked_purchase_order(auth_client: FlaskClient):
+    """Test that search_nfe returns linked purchase orders."""
+    with auth_client.application.app_context():
+        # Create purchase order
+        po = PurchaseOrder(
+            cod_pedc='PO-001',
+            cod_emp1='1',
+            dt_emis=date(2024, 4, 10),
+            fornecedor_id=12345678,
+            fornecedor_descricao='Fornecedor Especial LTDA'
+        )
+        db.session.add(po)
+        db.session.flush()
+        
+        # Create purchase item
+        item = PurchaseItem(
+            purchase_order_id=po.id,
+            cod_pedc='PO-001',
+            cod_emp1='1',
+            dt_emis=date(2024, 4, 10),
+            item_id='ITEM-001',
+            linha=1,
+            descricao='Bomba Hidraulica',
+            quantidade=1,
+            preco_unitario=1000,
+            total=1000
+        )
+        db.session.add(item)
+        db.session.flush()
+        
+        # Create NFE
+        nfe = NFEData(
+            chave='35240100000000000001550010000000011000000040',
+            numero='100',
+            serie='1',
+            xml_content='<test></test>',
+            data_emissao=datetime(2024, 4, 10, 12, 0, 0),
+            valor_total=1000.00,
+            status_motivo='Autorizado'
+        )
+        db.session.add(nfe)
+        db.session.flush()
+        
+        emitente = NFEEmitente(
+            nfe_id=nfe.id,
+            nome='Fornecedor Especial LTDA',
+            cnpj='12345678901234'
+        )
+        db.session.add(emitente)
+        
+        # Create NFEntry linking NFE to purchase order
+        nf_entry = NFEntry(
+            cod_emp1='1',
+            cod_pedc='PO-001',
+            linha='1',
+            num_nf='100'
+        )
+        db.session.add(nf_entry)
+        db.session.commit()
+    
+    response = auth_client.get('/api/search_nfe', query_string={'query': '100'})
+    assert response.status_code == 200
+    data = response.json
+    assert 'nfes' in data
+    # Verify NFE is in results
+    assert len(data['nfes']) >= 1
+    found_nfe = next((n for n in data['nfes'] if n['numero'] == '100'), None)
+    assert found_nfe is not None
+    # Verify purchase order is linked
+    assert 'linked_purchases' in found_nfe
+
+
+def test_search_nfe_exact_term_search(auth_client: FlaskClient):
+    """Test searching for NFE with exact term search enabled."""
+    with auth_client.application.app_context():
+        # Create test NFE
+        nfe = NFEData(
+            chave='35240100000000000001550010000000011000000050',
+            numero='12345',
+            serie='1',
+            xml_content='<test></test>',
+            data_emissao=datetime(2024, 4, 14, 12, 0, 0),
+            valor_total=5000.00,
+            status_motivo='Autorizado'
+        )
+        db.session.add(nfe)
+        db.session.flush()
+        
+        emitente = NFEEmitente(
+            nfe_id=nfe.id,
+            nome='Exact Match Fornecedor',
+            cnpj='55555555555555'
+        )
+        db.session.add(emitente)
+        db.session.commit()
+    
+    # Exact search for numero 12345
+    response = auth_client.get('/api/search_nfe', query_string={
+        'query': '12345',
+        'exact_term_search': 'true'
+    })
+    assert response.status_code == 200
+    data = response.json
+    assert 'nfes' in data
+    assert len(data['nfes']) >= 1
+
+
+def test_search_nfe_inexact_term_search(auth_client: FlaskClient):
+    """Test searching for NFE with inexact term search (LIKE)."""
+    with auth_client.application.app_context():
+        # Create test NFE
+        nfe = NFEData(
+            chave='35240100000000000001550010000000011000000060',
+            numero='987654321',
+            serie='2',
+            xml_content='<test></test>',
+            data_emissao=datetime(2024, 4, 15, 12, 0, 0),
+            valor_total=6000.00,
+            status_motivo='Autorizado'
+        )
+        db.session.add(nfe)
+        db.session.flush()
+        
+        emitente = NFEEmitente(
+            nfe_id=nfe.id,
+            nome='Partial Match Fornecedor',
+            cnpj='66666666666666'
+        )
+        db.session.add(emitente)
+        db.session.commit()
+    
+    # Inexact search for part of numero
+    response = auth_client.get('/api/search_nfe', query_string={
+        'query': '9876',
+        'exact_term_search': 'false'
+    })
+    assert response.status_code == 200
+    data = response.json
+    assert 'nfes' in data
+
+
+def test_search_nfe_empty_results(auth_client: FlaskClient):
+    """Test searching for NFE that doesn't exist returns empty results."""
+    response = auth_client.get('/api/search_nfe', query_string={
+        'query': 'nonexistent_nfe_999999'
+    })
+    assert response.status_code == 200
+    data = response.json
+    assert 'nfes' in data
+    assert len(data['nfes']) == 0
+    assert 'purchase_orders' in data
+    assert len(data['purchase_orders']) == 0
     assert 'cod_emp1' in response.json['error']

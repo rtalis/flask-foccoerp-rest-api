@@ -10,7 +10,7 @@ from flask import Flask
 from flask.testing import FlaskClient
 from app import create_app, db
 from app.models import (
-    PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch, NFEData, User, 
+    NFEEmitente, NFEItem, PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch, NFEData, User, 
     LoginHistory, NFEntry, Quotation, Supplier, Company
 )
 from app.utils import check_order_fulfillment
@@ -1912,3 +1912,597 @@ def test_import_ruah_purchase_orders(auth_client: FlaskClient):
     )
     assert response.status_code == 201
     assert 'imported' in response.json['message'].lower() or 'success' in response.json['message'].lower()
+
+
+# ==================== ADDITIONAL TESTS FROM test_routes.py ====================
+
+def test_get_last_update(auth_client: FlaskClient):
+    """Test getting last update timestamp."""
+    with auth_client.application.app_context():
+        order = PurchaseOrder(
+            cod_pedc='LU-001',
+            dt_emis=date(2024, 3, 1),
+            fornecedor_id=1,
+            fornecedor_descricao='Fornecedor Teste'
+        )
+        db.session.add(order)
+        db.session.commit()
+
+    response = auth_client.get('/api/last_update')
+    assert response.status_code == 200
+
+
+def test_search_combined_matches_supplier_cnpj_with_or_without_punctuation(auth_client: FlaskClient):
+    """Test combined search matches supplier CNPJ with and without punctuation."""
+    with auth_client.application.app_context():
+        # Create Supplier with CNPJ
+        supplier = Supplier(
+            id_for=12345,
+            cod_for='12345',
+            nvl_forn_cnpj_forn_cpf='12.345.678/0001-95',
+            descricao='Fornecedor CNPJ'
+        )
+        db.session.add(supplier)
+        db.session.flush()
+
+        order = PurchaseOrder(
+            cod_pedc='PO-CNPJ-001',
+            dt_emis=date(2024, 7, 1),
+            fornecedor_id=supplier.id_for,
+            fornecedor_descricao='Fornecedor CNPJ'
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        item = PurchaseItem(
+            purchase_order_id=order.id,
+            item_id='CNPJ-ITEM',
+            dt_emis=date(2024, 7, 1),
+            cod_pedc='PO-CNPJ-001',
+            descricao='Item com CNPJ',
+            quantidade=1,
+            preco_unitario=100,
+            total=100
+        )
+        db.session.add(item)
+        db.session.commit()
+
+    # Test with unformatted CNPJ
+    response = auth_client.get('/api/search_combined', query_string={
+        'query': '12345678000195',
+        'page': 1,
+        'per_page': 10,
+        'score_cutoff': 100,
+        'searchByCnpjFornecedor': True,
+        'selectedFuncName': 'todos'
+    })
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload['purchases']
+
+
+def test_search_advanced_matches_supplier_cnpj_with_or_without_punctuation(auth_client: FlaskClient):
+    """Test advanced search matches supplier CNPJ with and without punctuation."""
+    with auth_client.application.app_context():
+        # Create Supplier with CNPJ
+        supplier = Supplier(
+            id_for=98765,
+            cod_for='98765',
+            nvl_forn_cnpj_forn_cpf='98.765.432/0001-10',
+            cnpj_cpf_normalized='98765432000110',
+            descricao='Fornecedor Advanced CNPJ'
+        )
+        db.session.add(supplier)
+        db.session.flush()
+
+        order = PurchaseOrder(
+            cod_pedc='PO-ADV-CNPJ-001',
+            dt_emis=date(2024, 7, 2),
+            fornecedor_id=supplier.id_for,
+            fornecedor_descricao='Fornecedor Advanced CNPJ'
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        item = PurchaseItem(
+            purchase_order_id=order.id,
+            item_id='ADV-CNPJ-ITEM',
+            dt_emis=date(2024, 7, 2),
+            cod_pedc='PO-ADV-CNPJ-001',
+            descricao='Item advanced CNPJ',
+            quantidade=1,
+            preco_unitario=250,
+            total=250
+        )
+        db.session.add(item)
+        db.session.commit()
+
+    # Test with unformatted CNPJ
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': '98765432000110',
+        'fields': 'cnpj_fornecedor',
+        'page': 1,
+        'per_page': 20,
+        'selectedFuncName': 'todos'
+    })
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload['purchases']
+
+
+def test_auth_register_requires_admin(auth_client: FlaskClient):
+    """Test that registration requires admin role."""
+    response = auth_client.post('/auth/register', json={
+        'username': 'newuser',
+        'email': 'newuser@example.com',
+        'password': 'newpass123'
+    })
+    assert response.status_code == 403
+
+
+def test_auth_users_requires_admin(auth_client: FlaskClient):
+    """Test that getting users list requires admin role."""
+    response = auth_client.get('/auth/users')
+    assert response.status_code == 403
+
+
+def test_search_advanced_with_value_filters(auth_client: FlaskClient):
+    """Test advanced search with min/max value filters."""
+    with auth_client.application.app_context():
+        order = PurchaseOrder(
+            cod_pedc='VALUE-001',
+            dt_emis=date(2024, 11, 1),
+            fornecedor_id=900,
+            fornecedor_descricao='Fornecedor Value',
+            total_pedido_com_ipi=50000
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        item = PurchaseItem(
+            purchase_order_id=order.id,
+            item_id='EXPENSIVE-ITEM',
+            dt_emis=date(2024, 11, 1),
+            cod_pedc='VALUE-001',
+            descricao='Expensive industrial equipment',
+            quantidade=1,
+            preco_unitario=50000,
+            total=50000
+        )
+        db.session.add(item)
+        db.session.commit()
+
+    response = auth_client.get('/api/search_advanced', query_string={
+        'minValue': 10000,
+        'valueSearchType': 'item',
+        'fields': 'descricao'
+    })
+    assert response.status_code == 200
+
+
+def test_search_advanced_hide_cancelled(auth_client: FlaskClient):
+    """Test advanced search with hide cancelled filter."""
+    with auth_client.application.app_context():
+        order = PurchaseOrder(
+            cod_pedc='CANC-001',
+            dt_emis=date(2024, 11, 15),
+            fornecedor_id=950,
+            fornecedor_descricao='Fornecedor Cancelados'
+        )
+        db.session.add(order)
+        db.session.flush()
+
+        active_item = PurchaseItem(
+            purchase_order_id=order.id,
+            item_id='ACTIVE-ITEM',
+            dt_emis=date(2024, 11, 15),
+            cod_pedc='CANC-001',
+            descricao='Active item filter test',
+            quantidade=10,
+            preco_unitario=100,
+            total=1000,
+            qtde_canc=0
+        )
+        cancelled_item = PurchaseItem(
+            purchase_order_id=order.id,
+            item_id='CANCELLED-ITEM',
+            dt_emis=date(2024, 11, 15),
+            cod_pedc='CANC-001',
+            descricao='Cancelled item filter test',
+            quantidade=5,
+            preco_unitario=200,
+            total=1000,
+            qtde_canc=5
+        )
+        db.session.add_all([active_item, cancelled_item])
+        db.session.commit()
+
+    response = auth_client.get('/api/search_advanced', query_string={
+        'query': 'filter test',
+        'hideCancelled': 'true',
+        'fields': 'descricao'
+    })
+    assert response.status_code == 200
+
+
+def test_dashboard_summary_with_buyer_filter(auth_client: FlaskClient):
+    """Test dashboard summary with buyer filter."""
+    with auth_client.application.app_context():
+        order = PurchaseOrder(
+            cod_pedc='DASH-001',
+            dt_emis=date(2024, 12, 1),
+            fornecedor_id=1000,
+            fornecedor_descricao='Fornecedor Dashboard',
+            func_nome='Comprador Teste',
+            total_pedido_com_ipi=15000
+        )
+        db.session.add(order)
+        db.session.commit()
+
+    response = auth_client.get('/api/dashboard_summary', query_string={
+        'months': 3,
+        'buyer': 'Comprador Teste'
+    })
+    assert response.status_code == 200
+    assert 'summary' in response.json
+    assert 'monthly_data' in response.json
+    assert 'buyer_data' in response.json
+
+
+def test_dashboard_summary_with_date_range_extended(auth_client: FlaskClient):
+    """Test dashboard summary with custom date range."""
+    response = auth_client.get('/api/dashboard_summary', query_string={
+        'start_date': '2024-01-01',
+        'end_date': '2024-12-31'
+    })
+    assert response.status_code == 200
+    assert 'summary' in response.json
+
+
+def test_search_nfe_requires_params(auth_client: FlaskClient):
+    """Test that search_nfe requires query or date range."""
+    response = auth_client.get('/api/search_nfe')
+    assert response.status_code == 400
+    assert 'error' in response.json
+
+
+def test_tracked_companies_get(auth_client: FlaskClient):
+    """Test getting tracked companies."""
+    response = auth_client.get('/api/tracked_companies')
+    assert response.status_code == 200
+    assert 'companies' in response.json
+    assert isinstance(response.json['companies'], list)
+
+
+def test_tracked_companies_add_missing_cnpj(auth_client: FlaskClient):
+    """Test that adding tracked company requires CNPJ."""
+    response = auth_client.post('/api/tracked_companies', json={
+        'name': 'Test Company'
+    })
+    assert response.status_code == 400
+    assert 'CNPJ' in response.json['error']
+
+
+def test_tracked_companies_add_missing_cod_emp1(auth_client: FlaskClient):
+    """Test that adding tracked company requires cod_emp1."""
+    response = auth_client.post('/api/tracked_companies', json={
+        'cnpj': '12345678901234',
+        'name': 'Test Company'
+    })
+    assert response.status_code == 400
+
+
+# ============================================================================
+# Tests for /search_nfe endpoint - Comprehensive Coverage
+# ============================================================================
+
+def test_search_nfe_without_authentication(client: FlaskClient):
+    """Test that search_nfe requires authentication."""
+    response = client.get('/api/search_nfe', query_string={'query': '12345'})
+    assert response.status_code in (302, 401)
+
+
+def test_search_nfe_requires_query_or_date_params(auth_client: FlaskClient):
+    """Test that search_nfe requires either query or date range."""
+    response = auth_client.get('/api/search_nfe')
+    assert response.status_code == 400
+    assert 'error' in response.json
+
+
+def test_search_nfe_by_numero_extended(auth_client: FlaskClient):
+    """Test searching for NFE by NFE number."""
+    with auth_client.application.app_context():
+        nfe = NFEData(
+            chave='35240100000000000001550010000000011000000019',
+            numero='1',
+            serie='1',
+            xml_content='<test></test>',
+            data_emissao=datetime(2024, 4, 10, 12, 0, 0),
+            valor_total=1000.00,
+            status_motivo='Autorizado'
+        )
+        db.session.add(nfe)
+        db.session.flush()
+        
+        emitente = NFEEmitente(
+            nfe_id=nfe.id,
+            nome='Fornecedor Test',
+            cnpj='12345678901234'
+        )
+        db.session.add(emitente)
+        db.session.commit()
+    
+    response = auth_client.get('/api/search_nfe', query_string={'query': '1', 'search_by_number': 'true'})
+    assert response.status_code == 200
+    data = response.json
+    assert 'nfes' in data
+
+
+def test_search_nfe_by_chave_extended(auth_client: FlaskClient):
+    """Test searching for NFE by chave de acesso."""
+    with auth_client.application.app_context():
+        chave = '35240100000000000001550010000000011000000020'
+        nfe = NFEData(
+            chave=chave,
+            numero='2',
+            serie='1',
+            xml_content='<test></test>',
+            data_emissao=datetime(2024, 4, 11, 12, 0, 0),
+            valor_total=2000.00,
+            status_motivo='Autorizado'
+        )
+        db.session.add(nfe)
+        db.session.flush()
+        
+        emitente = NFEEmitente(
+            nfe_id=nfe.id,
+            nome='Fornecedor Test 2',
+            cnpj='98765432109876'
+        )
+        db.session.add(emitente)
+        db.session.commit()
+    
+    response = auth_client.get('/api/search_nfe', query_string={
+        'query': chave[:10],
+        'search_by_chave': 'true',
+        'search_by_number': 'false'
+    })
+    assert response.status_code == 200
+
+
+def test_search_nfe_by_fornecedor_extended(auth_client: FlaskClient):
+    """Test searching for NFE by supplier name."""
+    with auth_client.application.app_context():
+        nfe = NFEData(
+            chave='35240100000000000001550010000000011000000021',
+            numero='3',
+            serie='1',
+            xml_content='<test></test>',
+            data_emissao=datetime(2024, 4, 12, 12, 0, 0),
+            valor_total=3000.00,
+            status_motivo='Autorizado'
+        )
+        db.session.add(nfe)
+        db.session.flush()
+        
+        emitente = NFEEmitente(
+            nfe_id=nfe.id,
+            nome='Fornecedor Especial LTDA',
+            cnpj='11111111111111'
+        )
+        db.session.add(emitente)
+        db.session.commit()
+    
+    response = auth_client.get('/api/search_nfe', query_string={
+        'query': 'Especial',
+        'search_by_fornecedor': 'true'
+    })
+    assert response.status_code == 200
+
+
+def test_search_nfe_by_item_description_extended(auth_client: FlaskClient):
+    """Test searching for NFE by item description."""
+    with auth_client.application.app_context():
+        nfe = NFEData(
+            chave='35240100000000000001550010000000011000000022',
+            numero='4',
+            serie='1',
+            xml_content='<test></test>',
+            data_emissao=datetime(2024, 4, 13, 12, 0, 0),
+            valor_total=4000.00,
+            status_motivo='Autorizado'
+        )
+        db.session.add(nfe)
+        db.session.flush()
+        
+        emitente = NFEEmitente(
+            nfe_id=nfe.id,
+            nome='Test Fornecedor Item',
+            cnpj='22222222222222'
+        )
+        db.session.add(emitente)
+        
+        item = NFEItem(
+            nfe_id=nfe.id,
+            numero_item=1,
+            descricao='Bomba Hidraulica Industrial 5HP'
+        )
+        db.session.add(item)
+        db.session.commit()
+    
+    response = auth_client.get('/api/search_nfe', query_string={
+        'query': 'Bomba',
+        'search_by_item': 'true'
+    })
+    assert response.status_code == 200
+
+
+def test_search_nfe_with_date_range_extended(auth_client: FlaskClient):
+    """Test searching for NFE with date range filter."""
+    with auth_client.application.app_context():
+        nfe1 = NFEData(
+            chave='35240100000000000001550010000000011000000030',
+            numero='5',
+            serie='1',
+            xml_content='<test></test>',
+            data_emissao=datetime(2024, 3, 1, 12, 0, 0),
+            valor_total=1000.00,
+            status_motivo='Autorizado'
+        )
+        nfe2 = NFEData(
+            chave='35240100000000000001550010000000011000000031',
+            numero='6',
+            serie='1',
+            xml_content='<test></test>',
+            data_emissao=datetime(2024, 4, 15, 12, 0, 0),
+            valor_total=2000.00,
+            status_motivo='Autorizado'
+        )
+        db.session.add_all([nfe1, nfe2])
+        db.session.flush()
+        
+        emitente1 = NFEEmitente(nfe_id=nfe1.id, nome='Test 1', cnpj='33333333333333')
+        emitente2 = NFEEmitente(nfe_id=nfe2.id, nome='Test 2', cnpj='44444444444444')
+        db.session.add_all([emitente1, emitente2])
+        db.session.commit()
+    
+    response = auth_client.get('/api/search_nfe', query_string={
+        'start_date': '2024-04-01',
+        'end_date': '2024-04-30'
+    })
+    assert response.status_code == 200
+    data = response.json
+    assert 'nfes' in data
+
+
+def test_search_nfe_with_linked_purchase_order_extended(auth_client: FlaskClient):
+    """Test that search_nfe returns linked purchase orders."""
+    with auth_client.application.app_context():
+        po = PurchaseOrder(
+            cod_pedc='PO-001',
+            cod_emp1='1',
+            dt_emis=date(2024, 4, 10),
+            fornecedor_id=12345678,
+            fornecedor_descricao='Fornecedor Especial LTDA'
+        )
+        db.session.add(po)
+        db.session.flush()
+        
+        item = PurchaseItem(
+            purchase_order_id=po.id,
+            cod_pedc='PO-001',
+            cod_emp1='1',
+            dt_emis=date(2024, 4, 10),
+            item_id='ITEM-001',
+            linha=1,
+            descricao='Bomba Hidraulica',
+            quantidade=1,
+            preco_unitario=1000,
+            total=1000
+        )
+        db.session.add(item)
+        db.session.flush()
+        
+        nfe = NFEData(
+            chave='35240100000000000001550010000000011000000040',
+            numero='100',
+            serie='1',
+            xml_content='<test></test>',
+            data_emissao=datetime(2024, 4, 10, 12, 0, 0),
+            valor_total=1000.00,
+            status_motivo='Autorizado'
+        )
+        db.session.add(nfe)
+        db.session.flush()
+        
+        emitente = NFEEmitente(
+            nfe_id=nfe.id,
+            nome='Fornecedor Especial LTDA',
+            cnpj='12345678901234'
+        )
+        db.session.add(emitente)
+        
+        nf_entry = NFEntry(
+            cod_emp1='1',
+            cod_pedc='PO-001',
+            linha='1',
+            num_nf='100'
+        )
+        db.session.add(nf_entry)
+        db.session.commit()
+    
+    response = auth_client.get('/api/search_nfe', query_string={'query': '100'})
+    assert response.status_code == 200
+    data = response.json
+    assert 'nfes' in data
+
+
+def test_search_nfe_exact_term_search_extended(auth_client: FlaskClient):
+    """Test searching for NFE with exact term search enabled."""
+    with auth_client.application.app_context():
+        nfe = NFEData(
+            chave='35240100000000000001550010000000011000000050',
+            numero='12345',
+            serie='1',
+            xml_content='<test></test>',
+            data_emissao=datetime(2024, 4, 14, 12, 0, 0),
+            valor_total=5000.00,
+            status_motivo='Autorizado'
+        )
+        db.session.add(nfe)
+        db.session.flush()
+        
+        emitente = NFEEmitente(
+            nfe_id=nfe.id,
+            nome='Exact Match Fornecedor',
+            cnpj='55555555555555'
+        )
+        db.session.add(emitente)
+        db.session.commit()
+    
+    response = auth_client.get('/api/search_nfe', query_string={
+        'query': '12345',
+        'exact_term_search': 'true'
+    })
+    assert response.status_code == 200
+
+
+def test_search_nfe_inexact_term_search_extended(auth_client: FlaskClient):
+    """Test searching for NFE with inexact term search (LIKE)."""
+    with auth_client.application.app_context():
+        nfe = NFEData(
+            chave='35240100000000000001550010000000011000000060',
+            numero='987654321',
+            serie='2',
+            xml_content='<test></test>',
+            data_emissao=datetime(2024, 4, 15, 12, 0, 0),
+            valor_total=6000.00,
+            status_motivo='Autorizado'
+        )
+        db.session.add(nfe)
+        db.session.flush()
+        
+        emitente = NFEEmitente(
+            nfe_id=nfe.id,
+            nome='Partial Match Fornecedor',
+            cnpj='66666666666666'
+        )
+        db.session.add(emitente)
+        db.session.commit()
+    
+    response = auth_client.get('/api/search_nfe', query_string={
+        'query': '9876',
+        'exact_term_search': 'false'
+    })
+    assert response.status_code == 200
+
+
+def test_search_nfe_empty_results_extended(auth_client: FlaskClient):
+    """Test searching for NFE that doesn't exist returns empty results."""
+    response = auth_client.get('/api/search_nfe', query_string={
+        'query': 'nonexistent_nfe_999999'
+    })
+    assert response.status_code == 200
+    data = response.json
+    assert 'nfes' in data
+    assert 'purchase_orders' in data

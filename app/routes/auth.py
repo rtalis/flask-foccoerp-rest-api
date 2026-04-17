@@ -238,7 +238,7 @@ def _user_from_authorization(req):
     if token_record:
         if token_record.disabled_at is not None:
             return None
-        if token_record.expires_at and token_record.expires_at <= datetime.now(timezone.utc):
+        if token_record.expires_at and token_record.expires_at <= datetime.now(timezone.utc).replace(tzinfo=None):
             return None
 
     return User.query.filter_by(email=data.get('sub')).first()
@@ -256,7 +256,7 @@ def _build_jwt_for_user(user, expires_minutes=None):
 
     minutes = max(1, minutes)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     payload = {
         'sub': user.email,
         'iat': now,
@@ -272,7 +272,7 @@ def _issue_token_for_user(user, expires_minutes=None, created_by=None):
     if not token:
         return None, None, None
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     record = UserToken(
         user_id=user.id,
         token=token,
@@ -409,7 +409,7 @@ def disable_token(token_id):
         return jsonify({'error': 'Token not found'}), 404
 
     if token_record.disabled_at is None:
-        token_record.disabled_at = datetime.now(timezone.utc)
+        token_record.disabled_at = datetime.now(timezone.utc).replace(tzinfo=None)
         token_record.disabled_by_id = current_user.id
         db.session.commit()
 
