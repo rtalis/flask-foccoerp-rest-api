@@ -173,7 +173,6 @@ function PurchaseRow(props) {
         return;
       }
 
-      // TODO: Check if the nfe var always have the chave property and if not, if there's an error
       await axios.get(`${import.meta.env.VITE_API_URL}/api/get_nfe_data`, {
         params: { xmlKey: nfe.chave },
         withCredentials: true,

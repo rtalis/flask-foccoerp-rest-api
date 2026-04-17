@@ -1421,7 +1421,7 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
         emitente = NFEEmitente.query.filter_by(nfe_id=nfe.id).first()
         nfe_supplier = emitente.nome if emitente else ''
         nfe_cnpj = emitente.cnpj if emitente else ''
-        
+
         # Get NFE items
         nfe_items_db = NFEItem.query.filter_by(nfe_id=nfe.id).all()
         
@@ -1510,20 +1510,78 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
         breakdown['avg_match_quality'] = round(avg_match_quality, 2)
         
         # === 4. Value Match (0-20 points) ===
+        # IMPROVED: Compare 4 different value scenarios and pick the best match
         value_score = 0
         value_match_type = 'none'
+        value_diff_pct = None
+        compare_value = None
         
-        # Compare against remaining value or total value
-        compare_value = total_remaining_value if total_remaining_value > 0 else po_data['valor_total']
+        # Get all value variants
+        po_remaining_value = total_remaining_value if total_remaining_value > 0 else po_data['valor_total']
+        po_total_with_ipi = float(purchase_order.total_pedido_com_ipi or purchase_order.total_liquido or po_data['valor_total'])
+        nfe_total_value = float(nfe.valor_total or 0)
+        nfe_items_value = float(nfe.valor_produtos or nfe_total_value)
         
-        #TODO check the compare value (purchase order value) + ipi is not a better match for the value
-        #TODO the logic now is to get the remaining items, multiply by unit price to get the remaining value
-        #even if the purchase is not fulfilled, might be better to check the full value of the purchase with the full value of the nfe
-        #and the items value of the nfe with the full value of the purchase order. 
+        # Calculate 4 value comparison scenarios
+        value_comparisons = []
         
-        if compare_value > 0 and nfe_value > 0:
-            value_diff_pct = abs(nfe_value - compare_value) / compare_value * 100
+        # Scenario 1: NFE total vs PO remaining value
+        if po_remaining_value > 0 and nfe_total_value > 0:
+            diff_pct_1 = abs(nfe_total_value - po_remaining_value) / po_remaining_value * 100
+            value_comparisons.append({
+                'scenario': 'nfe_total_vs_po_remaining',
+                'nfe_value': nfe_total_value,
+                'po_value': po_remaining_value,
+                'diff_pct': diff_pct_1,
+                'nfe_type': 'total',
+                'po_type': 'remaining'
+            })
+        
+        # Scenario 2: NFE total vs PO total (with IPI)
+        if po_total_with_ipi > 0 and nfe_total_value > 0:
+            diff_pct_2 = abs(nfe_total_value - po_total_with_ipi) / po_total_with_ipi * 100
+            value_comparisons.append({
+                'scenario': 'nfe_total_vs_po_total_ipi',
+                'nfe_value': nfe_total_value,
+                'po_value': po_total_with_ipi,
+                'diff_pct': diff_pct_2,
+                'nfe_type': 'total',
+                'po_type': 'total_with_ipi'
+            })
+        
+        # Scenario 3: NFE items value vs PO remaining value
+        if po_remaining_value > 0 and nfe_items_value > 0:
+            diff_pct_3 = abs(nfe_items_value - po_remaining_value) / po_remaining_value * 100
+            value_comparisons.append({
+                'scenario': 'nfe_items_vs_po_remaining',
+                'nfe_value': nfe_items_value,
+                'po_value': po_remaining_value,
+                'diff_pct': diff_pct_3,
+                'nfe_type': 'items',
+                'po_type': 'remaining'
+            })
+        
+        # Scenario 4: NFE items value vs PO total (with IPI)
+        if po_total_with_ipi > 0 and nfe_items_value > 0:
+            diff_pct_4 = abs(nfe_items_value - po_total_with_ipi) / po_total_with_ipi * 100
+            value_comparisons.append({
+                'scenario': 'nfe_items_vs_po_total_ipi',
+                'nfe_value': nfe_items_value,
+                'po_value': po_total_with_ipi,
+                'diff_pct': diff_pct_4,
+                'nfe_type': 'items',
+                'po_type': 'total_with_ipi'
+            })
+        
+        # Pick the best match (lowest difference percentage)
+        best_match = None
+        if value_comparisons:
+            best_match = min(value_comparisons, key=lambda x: x['diff_pct'])
+            nfe_value_for_scoring = best_match['nfe_value']
+            compare_value = best_match['po_value']
+            value_diff_pct = best_match['diff_pct']
             
+            # Score based on best match difference
             if value_diff_pct < 1:
                 value_score = 20
                 value_match_type = 'exact'
@@ -1534,15 +1592,14 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
                 value_score = 15
                 value_match_type = 'close'
             elif value_diff_pct < 10:
-
                 value_score = 12
                 value_match_type = 'near'
             elif value_diff_pct < 20:
                 value_score = 8
                 value_match_type = 'approximate'
-            elif nfe_value < compare_value:
-                # Partial fulfillment - NFe is portion of remaining
-                portion = nfe_value / compare_value
+            elif nfe_value_for_scoring < compare_value:
+                # Partial fulfillment - NFe is portion of PO value
+                portion = nfe_value_for_scoring / compare_value
                 if portion >= 0.2:
                     value_score = 5
                     value_match_type = 'partial'
@@ -1551,9 +1608,21 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
         # max score so far: 100
         breakdown['value_score'] = value_score
         breakdown['value_match_type'] = value_match_type
-        breakdown['nfe_value'] = nfe_value
-        breakdown['compare_value'] = round(compare_value, 2)
-        breakdown['value_diff_pct'] = round(value_diff_pct, 2) if compare_value > 0 and nfe_value > 0 else None
+        breakdown['nfe_total_value'] = nfe_total_value
+        breakdown['nfe_items_value'] = nfe_items_value
+        breakdown['po_remaining_value'] = round(po_remaining_value, 2)
+        breakdown['po_total_with_ipi'] = round(po_total_with_ipi, 2)
+        breakdown['best_value_scenario'] = best_match['scenario'] if best_match else None
+        breakdown['compare_value'] = round(compare_value, 2) if compare_value else None
+        breakdown['value_diff_pct'] = round(value_diff_pct, 2) if value_diff_pct is not None else None
+        breakdown['all_value_scenarios'] = [
+            {
+                'scenario': c['scenario'],
+                'nfe_value': round(c['nfe_value'], 2),
+                'po_value': round(c['po_value'], 2),
+                'diff_pct': round(c['diff_pct'], 2)
+            } for c in value_comparisons
+        ]
         
         # === 5. Date Proximity Bonus (0-10 points) ===
         date_bonus = 0
