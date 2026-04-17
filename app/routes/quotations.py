@@ -6,7 +6,7 @@ from flask import request, jsonify
 from flask_login import login_required
 
 from app import db
-from app.models import Quotation
+from app.models import PurchaseItem, PurchaseOrder, Quotation
 from app.routes.routes import bp
 
 
@@ -79,36 +79,63 @@ def get_quotations_fuzzy():
 @bp.route('/quotation_items', methods=['GET'])
 @login_required
 def get_quotation_items():
-    """Get items from a specific quotation."""
     cod_cot = request.args.get('cod_cot')
     if not cod_cot:
         return jsonify({'error': 'cod_cot is required'}), 400
 
-    quotation_items = Quotation.query.filter_by(cod_cot=cod_cot).all()
-    if not quotation_items:
-        return jsonify({'error': 'No items found for this quotation'}), 404
+    quotations = Quotation.query.filter_by(cod_cot=cod_cot).all()
+    if not quotations:
+        return jsonify({'error': 'Quotation not found'}), 404
+    
+    unique_items = {}    
+    # Process all quotations to get unique items by description only
+    for quotation in quotations:
+        item_key = quotation.descricao.strip().lower() if quotation.descricao else ""
+        
+        if item_key not in unique_items:
+            last_purchase = PurchaseItem.query.join(PurchaseOrder)\
+                .filter(PurchaseItem.descricao.ilike(f"%{quotation.descricao}%"))\
+                .order_by(PurchaseOrder.dt_emis.desc())\
+                .first()
+            
+            last_purchase_data = None
+            if last_purchase:
+                last_purchase_data = {
+                    'price': last_purchase.preco_unitario,
+                    'date': last_purchase.purchase_order.dt_emis,
+                    'cod_pedc': last_purchase.cod_pedc,
+                    'fornecedor': last_purchase.purchase_order.fornecedor_descricao
+                }
+            
+            unique_items[item_key] = {
+                'item_id': quotation.item_id,
+                'descricao': quotation.descricao,
+                'quantidade': quotation.quantidade,
+                'dt_emissao': quotation.dt_emissao,
+                'last_purchase': last_purchase_data,
+                'fornecedores': []
+            }
 
-    items = []
-    for item in quotation_items:
-        items.append({
-            'item_id': item.item_id,
-            'descricao': item.descricao,
-            'quantidade': item.quantidade,
-            'unidade_medida': item.unidade_medida,
-            'preco_unitario': item.preco_unitario,
-            'total': item.quantidade * item.preco_unitario if item.quantidade and item.preco_unitario else None,
-            'dt_entrega': item.dt_entrega,
-            'fornecedor_id': item.fornecedor_id,
-            'fornecedor_descricao': item.fornecedor_descricao,
-            'last_purchase': None,
-        })
+        supplier_exists = False
+        for supplier in unique_items[item_key]['fornecedores']:
+            if supplier['fornecedor_id'] == quotation.fornecedor_id:
+                supplier_exists = True
+                break
+                
+        if not supplier_exists:
+            unique_items[item_key]['fornecedores'].append({
+                'fornecedor_id': quotation.fornecedor_id,
+                'fornecedor_descricao': quotation.fornecedor_descricao,
+                'preco_unitario': quotation.preco_unitario
+            })
 
-    return jsonify({
-        'cod_cot': cod_cot,
-        'dt_emissao': quotation_items[0].dt_emissao,
-        'items': items,
-    }), 200
+    quotation_data = {
+        'cod_cot': quotations[0].cod_cot,
+        'dt_emissao': quotations[0].dt_emissao,
+        'items': list(unique_items.values())
+    }
 
+    return jsonify(quotation_data), 200
 
 @bp.route('/extract_quotation_data', methods=['POST'])
 @login_required

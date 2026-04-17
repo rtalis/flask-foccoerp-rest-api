@@ -23,6 +23,7 @@ import {
   Checkbox,
   Collapse,
   Skeleton,
+  Stack,
 } from "@mui/material";
 import { DatePicker, LocalizationProvider } from "@mui/x-date-pickers";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
@@ -152,6 +153,7 @@ const NFESearch = () => {
   const [loadingDanfe, setLoadingDanfe] = useState(null);
   const [expandedNfe, setExpandedNfe] = useState({});
   const [expandedPurchaseOrder, setExpandedPurchaseOrder] = useState({});
+  const [expandedNfeItemGroups, setExpandedNfeItemGroups] = useState({});
   const [showTrackedCompanies, setShowTrackedCompanies] = useState(false);
   const [selectedNfe, setSelectedNfe] = useState(null);
   const [showNfeDetails, setShowNfeDetails] = useState(false);
@@ -228,6 +230,11 @@ const NFESearch = () => {
         dt_entrega: purchase.dt_entrega,
         is_estimated: purchase.is_estimated,
         match_score: purchase.match_score,
+        nfe_item_numero: purchase.nfe_item_numero,
+        nfe_item_descricao: purchase.nfe_item_descricao,
+        nfe_item_quantidade: purchase.nfe_item_quantidade,
+        nfe_item_unidade: purchase.nfe_item_unidade,
+        nfe_item_preco: purchase.nfe_item_preco,
       });
     });
     return Object.values(grouped);
@@ -249,6 +256,13 @@ const NFESearch = () => {
 
   const togglePurchaseOrderExpanded = (key) => {
     setExpandedPurchaseOrder((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  const toggleNfeItemGroupExpanded = (key) => {
+    setExpandedNfeItemGroups((prev) => ({
       ...prev,
       [key]: !prev[key],
     }));
@@ -428,6 +442,14 @@ const NFESearch = () => {
     }).format(value);
   };
 
+  const formatQuantity = (value) => {
+    if (value === null || value === undefined) return "-";
+    return Number(value).toLocaleString("pt-BR", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 3,
+    });
+  };
+
   const formatCNPJ = (cnpj) => {
     if (!cnpj) return "-";
     const cleaned = cnpj.replace(/\D/g, "");
@@ -489,6 +511,112 @@ const NFESearch = () => {
       onChange: handleSearchByFornecedorChange,
     },
   ];
+
+  const getNfePurchaseSummary = (nfe) => {
+    const linked = nfe.linked_purchases || [];
+    const estimated = nfe.estimated_purchases || [];
+    const allPurchases = [...linked, ...estimated];
+    const uniqueOrders = [...new Set(allPurchases.map((p) => p.cod_pedc))];
+    const estimatedCount = estimated.length;
+    const linkedCount = linked.length;
+    return {
+      allPurchases,
+      uniqueOrders,
+      uniqueOrderCount: uniqueOrders.length,
+      linkedCount,
+      estimatedCount,
+      hasEstimated: estimatedCount > 0,
+      hasLinked: linkedCount > 0,
+    };
+  };
+
+  const groupPurchasesByNfeItem = (purchases, nfeItems = []) => {
+    const grouped = {};
+
+    nfeItems.forEach((nfeItem) => {
+      const key = `${nfeItem.numero_item || "sem-numero"}-${nfeItem.descricao || "sem-descricao"}`;
+      grouped[key] = {
+        key,
+        nfe_item_id: nfeItem.id,
+        nfe_item_descricao: nfeItem.descricao || "Não identificado",
+        nfe_item_numero: nfeItem.numero_item,
+        nfe_item_unidade: nfeItem.unidade,
+        nfe_item_quantidade: nfeItem.quantidade,
+        nfe_item_preco: nfeItem.preco_unitario,
+        fulfillments: [],
+        has_estimated: false,
+      };
+    });
+
+    purchases.forEach((purchase, idx) => {
+      const key = `${purchase.nfe_item_numero || "sem-numero"}-${purchase.nfe_item_descricao || "sem-descricao"}`;
+      if (!grouped[key]) {
+        grouped[key] = {
+          key,
+          nfe_item_id: null,
+          nfe_item_descricao: purchase.nfe_item_descricao || "Não identificado",
+          nfe_item_numero: purchase.nfe_item_numero,
+          nfe_item_unidade: purchase.nfe_item_unidade || purchase.unidade_medida,
+          nfe_item_quantidade: purchase.nfe_item_quantidade,
+          nfe_item_preco: purchase.nfe_item_preco,
+          fulfillments: [],
+          has_estimated: false,
+        };
+      }
+
+      if (purchase.is_estimated) {
+        grouped[key].has_estimated = true;
+      }
+
+      grouped[key].fulfillments.push({
+        id: `${purchase.cod_emp1}-${purchase.cod_pedc}-${purchase.linha || idx}`,
+        cod_emp1: purchase.cod_emp1,
+        cod_pedc: purchase.cod_pedc,
+        item_descricao: purchase.item_descricao,
+        func_nome: purchase.func_nome,
+        quantidade: purchase.quantidade,
+        preco_unitario: purchase.preco_unitario,
+        total_item: purchase.total_item,
+        linha: purchase.linha,
+      });
+    });
+
+    return Object.values(grouped).sort((a, b) => {
+      const aNum = a.nfe_item_numero ?? Number.MAX_SAFE_INTEGER;
+      const bNum = b.nfe_item_numero ?? Number.MAX_SAFE_INTEGER;
+      return aNum - bNum;
+    });
+  };
+
+  const totalNfes = results?.nfes?.length || 0;
+  const totalNfesWithOrders =
+    results?.nfes?.filter((nfe) => getNfePurchaseSummary(nfe).uniqueOrderCount > 0)
+      .length || 0;
+  const totalUnlinkedOrders = results?.unlinked_purchase_orders?.length || 0;
+
+  const buildNfeItemGroupKey = (nfeKey, nfeItemNumero, nfeItemDescricao) =>
+    `nfe-item-${nfeKey}-${nfeItemNumero || "sem-numero"}-${nfeItemDescricao || "sem-descricao"}`;
+
+  const handleOpenPurchaseDetails = (nfeKey, nfe, codPedc, codEmp1) => {
+    setExpandedNfe((prev) => ({ ...prev, [nfeKey]: true }));
+    const purchases = [
+      ...(nfe.linked_purchases || []),
+      ...(nfe.estimated_purchases || []),
+    ];
+    const selectedPurchase = purchases.find(
+      (purchase) =>
+        purchase.cod_pedc === codPedc && String(purchase.cod_emp1) === String(codEmp1),
+    );
+
+    if (!selectedPurchase) return;
+
+    const nfeItemGroupKey = buildNfeItemGroupKey(
+      nfeKey,
+      selectedPurchase.nfe_item_numero,
+      selectedPurchase.nfe_item_descricao,
+    );
+    setExpandedNfeItemGroups((prev) => ({ ...prev, [nfeItemGroupKey]: true }));
+  };
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ptBR}>
@@ -859,6 +987,68 @@ const NFESearch = () => {
           {/* Results */}
           {!loading && results && (
             <Box>
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: {
+                    xs: "1fr",
+                    sm: "repeat(3, minmax(0, 1fr))",
+                  },
+                  gap: 1.5,
+                  mb: 2,
+                }}
+              >
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 1.5,
+                    borderRadius: 2,
+                    border: "1px solid",
+                    borderColor: "divider",
+                  }}
+                >
+                  <Typography variant="caption" color="text.secondary">
+                    NFEs encontradas
+                  </Typography>
+                  <Typography variant="h6" fontWeight={700}>
+                    {totalNfes}
+                  </Typography>
+                </Paper>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 1.5,
+                    borderRadius: 2,
+                    border: "1px solid",
+                    borderColor: "divider",
+                  }}
+                >
+                  <Typography variant="caption" color="text.secondary">
+                    NFEs com pedido vinculado
+                  </Typography>
+                  <Typography variant="h6" fontWeight={700}>
+                    {totalNfesWithOrders}
+                  </Typography>
+                </Paper>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 1.5,
+                    borderRadius: 2,
+                    border: "1px solid",
+                    borderColor: "warning.main",
+                    bgcolor: "#fffaf0",
+                  }}
+                >
+                  <Typography variant="caption" color="text.secondary">
+                    Pedidos atendidos com NFE, mas sem dados correspondentes.
+                  </Typography>
+                  <Typography variant="h6" fontWeight={700} color="warning.dark">
+                    {totalUnlinkedOrders}
+                  </Typography>
+                </Paper>
+              </Box>
+
               {/* Results Summary */}
               <Box
                 sx={{
@@ -869,7 +1059,7 @@ const NFESearch = () => {
                 }}
               >
                 <Typography variant="subtitle1" fontWeight={600}>
-                  {results.nfes?.length || 0} NFEs encontradas
+                  {totalNfes} NFEs encontradas
                   {results.purchase_orders?.filter(
                     (po) =>
                       po.match_type === "linked" ||
@@ -922,23 +1112,17 @@ const NFESearch = () => {
                     <TableHead>
                       <TableRow sx={{ bgcolor: "#f5f7fa" }}>
                         <TableCell padding="checkbox" />
-                        <TableCell align="center" sx={{ fontWeight: 600 }}>
-                          Número
+                        <TableCell sx={{ fontWeight: 600 }}>
+                          NFE
                         </TableCell>
-                        <TableCell align="center" sx={{ fontWeight: 600 }}>
-                          Data Emissão
-                        </TableCell>
-                        <TableCell align="center" sx={{ fontWeight: 600 }}>
+                        <TableCell sx={{ fontWeight: 600 }}>
                           Fornecedor
                         </TableCell>
                         <TableCell align="center" sx={{ fontWeight: 600 }}>
-                          CNPJ
+                          Valor
                         </TableCell>
                         <TableCell align="center" sx={{ fontWeight: 600 }}>
-                          Valor Total
-                        </TableCell>
-                        <TableCell align="center" sx={{ fontWeight: 600 }}>
-                          Pedidos
+                          Atende ao pedido(s)
                         </TableCell>
                         <TableCell align="center" sx={{ fontWeight: 600 }}>
                           Ações
@@ -946,36 +1130,53 @@ const NFESearch = () => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {results.nfes.map((nfe) => (
-                        <React.Fragment key={nfe.id || nfe.chave}>
+                      {results.nfes.map((nfe) => {
+                        const nfeKey = nfe.id || nfe.chave || nfe.numero;
+                        const summary = getNfePurchaseSummary(nfe);
+                        return (
+                        <React.Fragment key={nfeKey}>
                           <TableRow
                             hover
                             sx={{
-                              bgcolor: expandedNfe[nfe.id]
+                              bgcolor: expandedNfe[nfeKey]
                                 ? "#e3f2fd"
                                 : "inherit",
                               "&:hover": { bgcolor: "#e3f2fd" },
                             }}
                           >
-                            <TableCell padding="checkbox">
-                              <IconButton
-                                size="small"
-                                onClick={() => toggleNfeExpanded(nfe.id)}
-                              >
-                                {expandedNfe[nfe.id] ? (
-                                  <KeyboardArrowUpIcon />
-                                ) : (
-                                  <KeyboardArrowDownIcon />
-                                )}
-                              </IconButton>
+                            <TableCell padding="checkbox" sx={{ width: 40 }}>
+                              {summary.uniqueOrderCount > 0 && (
+                                <Tooltip title="Ver/ocultar pedidos vinculados">
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => toggleNfeExpanded(nfeKey)}
+                                    sx={{
+                                      transform: expandedNfe[nfeKey]
+                                        ? "rotate(180deg)"
+                                        : "rotate(0deg)",
+                                      transition: "transform 0.3s ease",
+                                    }}
+                                  >
+                                    <KeyboardArrowDownIcon
+                                      fontSize="small"
+                                      sx={{ color: "primary.main" }}
+                                    />
+                                  </IconButton>
+                                </Tooltip>
+                              )}
                             </TableCell>
-                            <TableCell align="center">
-                              <Typography fontWeight={600}>
-                                {nfe.numero}
+                            <TableCell>
+                              <Typography fontWeight={700}>{nfe.numero}</Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Emissão: {formatDate(nfe.data_emissao)}
                               </Typography>
-                            </TableCell>
-                            <TableCell align="center">
-                              {formatDate(nfe.data_emissao)}
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ display: "block" }}
+                              >
+                                Chave: {(nfe.chave || "-").toString().slice(0, 16)}...
+                              </Typography>
                             </TableCell>
                             <TableCell>
                               <Tooltip title={nfe.fornecedor || "-"}>
@@ -989,120 +1190,136 @@ const NFESearch = () => {
                                   {nfe.fornecedor || "-"}
                                 </Typography>
                               </Tooltip>
-                            </TableCell>
-                            <TableCell align="center">
-                              {formatCNPJ(nfe.cnpj)}
+                              <Typography variant="caption" color="text.secondary">
+                                CNPJ: {formatCNPJ(nfe.cnpj)}
+                              </Typography>
                             </TableCell>
                             <TableCell align="center">
                               {formatCurrency(nfe.valor_total)}
                             </TableCell>
                             <TableCell align="center">
-                              {(() => {
-                                const allPurchases = [
-                                  ...(nfe.linked_purchases || []),
-                                  ...(nfe.estimated_purchases || []),
-                                ];
-                                const uniqueOrders = [
-                                  ...new Set(
-                                    allPurchases.map((p) => p.cod_pedc),
-                                  ),
-                                ];
-                                const hasEstimated =
-                                  (nfe.estimated_purchases || []).length > 0;
+                              {summary.uniqueOrderCount === 0 ? (
+                                <Chip
+                                  size="small"
+                                  label="Sem vínculo"
+                                  variant="outlined"
+                                  color="default"
+                                />
+                              ) : (
+                                (() => {
+                                  const groupedOrders = groupPurchasesByOrder(
+                                    summary.allPurchases,
+                                  );
+                                  const visibleOrders = groupedOrders.slice(0, 3);
+                                  const extraCount = groupedOrders.length - visibleOrders.length;
 
-                                if (uniqueOrders.length === 0) return "-";
-
-                                return (
-                                  <Box
-                                    sx={{
-                                      display: "flex",
-                                      flexWrap: "wrap",
-                                      gap: 0.5,
-                                      justifyContent: "center",
-                                    }}
-                                  >
-                                    {uniqueOrders
-                                      .slice(0, 3)
-                                      .map((orderId, idx) => (
-                                        <Chip
-                                          key={idx}
-                                          size="small"
-                                          label={orderId}
-                                          color="primary"
-                                          variant="outlined"
-                                          sx={{ fontSize: "0.7rem" }}
-                                        />
+                                  return (
+                                    <Stack
+                                      direction="row"
+                                      spacing={0.5}
+                                      justifyContent="center"
+                                      alignItems="center"
+                                      flexWrap="wrap"
+                                      useFlexGap
+                                    >
+                                      {visibleOrders.map((order) => (
+                                        <Tooltip
+                                          key={`${order.cod_emp1}-${order.cod_pedc}`}
+                                          title="Abrir detalhes do pedido"
+                                        >
+                                          <Chip
+                                            size="small"
+                                            label={`${order.cod_emp1 || "-"} / ${order.cod_pedc}`}
+                                            color="primary"
+                                            variant="outlined"
+                                            clickable
+                                            onClick={() =>
+                                              handleOpenPurchaseDetails(
+                                                nfeKey,
+                                                nfe,
+                                                order.cod_pedc,
+                                                order.cod_emp1,
+                                              )
+                                            }
+                                          />
+                                        </Tooltip>
                                       ))}
-                                    {uniqueOrders.length > 3 && (
-                                      <Tooltip
-                                        title={uniqueOrders.slice(3).join(", ")}
-                                      >
-                                        <Chip
-                                          size="small"
-                                          label={`+${uniqueOrders.length - 3}`}
-                                          color="default"
-                                          variant="outlined"
-                                          sx={{ fontSize: "0.7rem" }}
-                                        />
-                                      </Tooltip>
-                                    )}
-                                    {hasEstimated && (
-                                      <Tooltip title="Contém matches estimados">
-                                        <AutoAwesomeIcon
-                                          sx={{
-                                            fontSize: 16,
-                                            color: "secondary.main",
-                                            ml: 0.5,
-                                          }}
-                                        />
-                                      </Tooltip>
-                                    )}
-                                  </Box>
-                                );
-                              })()}
+                                      {extraCount > 0 && (
+                                        <Tooltip
+                                          title={groupedOrders
+                                            .slice(3)
+                                            .map(
+                                              (order) =>
+                                                `${order.cod_emp1 || "-"} / ${order.cod_pedc}`,
+                                            )
+                                            .join(", ")}
+                                        >
+                                          <Chip
+                                            size="small"
+                                            label={`+${extraCount}`}
+                                            variant="outlined"
+                                          />
+                                        </Tooltip>
+                                      )}
+                                      {summary.hasEstimated && (
+                                        <Tooltip title="Há itens com match estimado">
+                                          <AutoAwesomeIcon
+                                            sx={{ fontSize: 16, color: "secondary.main" }}
+                                          />
+                                        </Tooltip>
+                                      )}
+                                    </Stack>
+                                  );
+                                })()
+                              )}
                             </TableCell>
                             <TableCell align="center">
                               <Box
                                 sx={{
                                   display: "flex",
-                                  gap: 0.5,
                                   justifyContent: "center",
+                                  alignItems: "center",
+                                  columnGap: 0.5,
                                 }}
                               >
-                                <Tooltip title="Ver Detalhes">
-                                  <IconButton
-                                    size="small"
-                                    color="info"
-                                    onClick={() => {
-                                      setSelectedNfe(nfe);
-                                      setShowNfeDetails(true);
-                                    }}
-                                  >
-                                    <InfoOutlinedIcon fontSize="small" />
-                                  </IconButton>
-                                </Tooltip>
-                                <Tooltip title="Visualizar DANFE">
-                                  <IconButton
-                                    size="small"
-                                    color="primary"
-                                    onClick={() => handleViewDanfe(nfe)}
-                                    disabled={loadingDanfe === nfe.numero}
-                                  >
-                                    {loadingDanfe === nfe.numero ? (
-                                      <CircularProgress size={18} />
-                                    ) : (
-                                      <PictureAsPdfIcon fontSize="small" />
-                                    )}
-                                  </IconButton>
-                                </Tooltip>
+                                <Box sx={{ width: 32, display: "flex", justifyContent: "center" }}>
+                                  <Tooltip title="Ver Detalhes">
+                                    <IconButton
+                                      size="small"
+                                      color="info"
+                                      onClick={() => {
+                                        setSelectedNfe(nfe);
+                                        setShowNfeDetails(true);
+                                      }}
+                                    >
+                                      <InfoOutlinedIcon fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                </Box>
+                                <Box sx={{ width: 32, display: "flex", justifyContent: "center" }}>
+                                  <Tooltip title="Visualizar DANFE">
+                                    <IconButton
+                                      size="small"
+                                      color="primary"
+                                      onClick={() => handleViewDanfe(nfe)}
+                                      disabled={loadingDanfe === nfe.numero}
+                                    >
+                                      {loadingDanfe === nfe.numero ? (
+                                        <CircularProgress size={18} />
+                                      ) : (
+                                        <PictureAsPdfIcon fontSize="small" />
+                                      )}
+                                    </IconButton>
+                                  </Tooltip>
+                                </Box>
                               </Box>
                             </TableCell>
                           </TableRow>
                           {/* Expanded Row - Linked Purchase Orders */}
                           <TableRow>
-                            <TableCell colSpan={8} sx={{ py: 0, border: 0 }}>
+                            <TableCell colSpan={6} sx={{ py: 0, border: 0 }}>
                               <Collapse
-                                in={expandedNfe[nfe.id]}
+                                in={expandedNfe[nfeKey]}
                                 timeout="auto"
                                 unmountOnExit
                               >
@@ -1130,29 +1347,15 @@ const NFESearch = () => {
                                       );
                                     }
 
-                                    // Group purchases by order
-                                    const groupedOrders =
-                                      groupPurchasesByOrder(allPurchases);
+                                    // Group purchases by NFE item (item-first hierarchy)
+                                    const groupedNfeItems =
+                                      groupPurchasesByNfeItem(
+                                        allPurchases,
+                                        nfe.nfe_items || [],
+                                      );
 
                                     return (
                                       <Box>
-                                        <Typography
-                                          variant="subtitle2"
-                                          gutterBottom
-                                          sx={{
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: 1,
-                                          }}
-                                        >
-                                          <ReceiptIcon
-                                            fontSize="small"
-                                            color="primary"
-                                          />
-                                          Pedidos de Compra Vinculados (
-                                          {groupedOrders.length} pedido(s),{" "}
-                                          {allPurchases.length} item(s))
-                                        </Typography>
                                         <Table
                                           size="small"
                                           sx={{
@@ -1161,58 +1364,85 @@ const NFESearch = () => {
                                           }}
                                         >
                                           <TableHead>
-                                            <TableRow>
+                                            <TableRow sx={{ bgcolor: "#f8fafc" }}>
                                               <TableCell padding="checkbox" />
-                                              <TableCell>Pedido</TableCell>
-                                              <TableCell>Empresa</TableCell>
-                                              <TableCell>
-                                                Data Emissão
-                                              </TableCell>
-                                              <TableCell>Fornecedor</TableCell>
-                                              <TableCell>Comprador</TableCell>
-                                              <TableCell align="right">
-                                                Total Pedido
-                                              </TableCell>
+                                              <TableCell>Item NFE</TableCell>
                                               <TableCell align="center">
-                                                Itens
+                                                UN
+                                              </TableCell>
+                                              <TableCell align="right">
+                                                Qtde NFE
+                                              </TableCell>
+                                              {canViewFinancials && (
+                                                <>
+                                                  <TableCell align="right">
+                                                    Vlr Unit. NFE
+                                                  </TableCell>
+                                                  <TableCell align="right">
+                                                    Total NFE
+                                                  </TableCell>
+                                                </>
+                                              )}
+                                              <TableCell align="center">
+                                                Vinculacoes
                                               </TableCell>
                                             </TableRow>
                                           </TableHead>
                                           <TableBody>
-                                            {groupedOrders.map((order) => {
-                                              const orderKey = `nfe-${nfe.id}-${order.cod_pedc}-${order.cod_emp1}`;
+                                            {groupedNfeItems.map((nfeItem) => {
+                                              const nfeItemKey = buildNfeItemGroupKey(
+                                                nfeKey,
+                                                nfeItem.nfe_item_numero,
+                                                nfeItem.nfe_item_descricao,
+                                              );
+                                              const nfeTotal =
+                                                (Number(nfeItem.nfe_item_quantidade) || 0) *
+                                                (Number(nfeItem.nfe_item_preco) || 0);
                                               return (
-                                                <React.Fragment key={orderKey}>
+                                                <React.Fragment key={nfeItemKey}>
                                                   <TableRow
                                                     hover
+                                                    onClick={() =>
+                                                      toggleNfeItemGroupExpanded(
+                                                        nfeItemKey,
+                                                      )
+                                                    }
                                                     sx={{
-                                                      bgcolor:
-                                                        expandedPurchaseOrder[
-                                                          orderKey
-                                                        ]
-                                                          ? "#e8f5e9"
-                                                          : "inherit",
+                                                      bgcolor: expandedNfeItemGroups[
+                                                        nfeItemKey
+                                                      ]
+                                                        ? "#f0f9ff"
+                                                        : "#f8fafc",
                                                       "&:hover": {
-                                                        bgcolor: "#e8f5e9",
+                                                        bgcolor: "#f0f9ff",
+                                                        cursor: "pointer",
                                                       },
+                                                      borderBottom: "1px solid #e2e8f0",
+                                                      transition: "background-color 0.2s",
                                                     }}
                                                   >
-                                                    <TableCell padding="checkbox">
+                                                    <TableCell padding="checkbox" sx={{ width: 40 }}>
                                                       <IconButton
                                                         size="small"
-                                                        onClick={() =>
-                                                          togglePurchaseOrderExpanded(
-                                                            orderKey,
-                                                          )
-                                                        }
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          toggleNfeItemGroupExpanded(
+                                                            nfeItemKey,
+                                                          );
+                                                        }}
+                                                        sx={{
+                                                          transform: expandedNfeItemGroups[
+                                                            nfeItemKey
+                                                          ]
+                                                            ? "rotate(180deg)"
+                                                            : "rotate(0deg)",
+                                                          transition: "transform 0.3s ease",
+                                                        }}
                                                       >
-                                                        {expandedPurchaseOrder[
-                                                          orderKey
-                                                        ] ? (
-                                                          <KeyboardArrowUpIcon fontSize="small" />
-                                                        ) : (
-                                                          <KeyboardArrowDownIcon fontSize="small" />
-                                                        )}
+                                                        <KeyboardArrowDownIcon
+                                                          fontSize="small"
+                                                          sx={{ color: "primary.main" }}
+                                                        />
                                                       </IconButton>
                                                     </TableCell>
                                                     <TableCell>
@@ -1225,10 +1455,22 @@ const NFESearch = () => {
                                                       >
                                                         <Typography
                                                           fontWeight={600}
+                                                          variant="body2"
+                                                          sx={{
+                                                            maxWidth: 360,
+                                                            overflow: "hidden",
+                                                            textOverflow:
+                                                              "ellipsis",
+                                                            whiteSpace:
+                                                              "nowrap",
+                                                          }}
                                                         >
-                                                          {order.cod_pedc}
+                                                          {nfeItem.nfe_item_numero
+                                                            ? `#${nfeItem.nfe_item_numero} - `
+                                                            : ""}
+                                                          {nfeItem.nfe_item_descricao}
                                                         </Typography>
-                                                        {order.has_estimated && (
+                                                        {nfeItem.has_estimated && (
                                                           <Tooltip title="Contém itens com match estimado">
                                                             <AutoAwesomeIcon
                                                               sx={{
@@ -1241,54 +1483,43 @@ const NFESearch = () => {
                                                         )}
                                                       </Box>
                                                     </TableCell>
-                                                    <TableCell>
-                                                      {order.cod_emp1 || "-"}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                      {order.dt_emis
-                                                        ? formatDate(
-                                                            order.dt_emis,
-                                                          )
-                                                        : "-"}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                      <Tooltip
-                                                        title={
-                                                          order.fornecedor ||
-                                                          "-"
-                                                        }
-                                                      >
-                                                        <Typography
-                                                          sx={{
-                                                            textAlign: "center",
-                                                            maxWidth: 200,
-                                                            overflow: "hidden",
-                                                            textOverflow:
-                                                              "ellipsis",
-                                                            whiteSpace:
-                                                              "nowrap",
-                                                          }}
-                                                        >
-                                                          {order.fornecedor ||
-                                                            "-"}
-                                                        </Typography>
-                                                      </Tooltip>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                      {order.func_nome || "-"}
+                                                    <TableCell align="center">
+                                                      {nfeItem.nfe_item_unidade ||
+                                                        "-"}
                                                     </TableCell>
                                                     <TableCell align="right">
-                                                      {order.total_pedido
-                                                        ? formatCurrency(
-                                                            order.total_pedido,
-                                                          )
-                                                        : "-"}
+                                                      {formatQuantity(
+                                                        nfeItem.nfe_item_quantidade,
+                                                      )}
                                                     </TableCell>
+                                                    {canViewFinancials && (
+                                                      <>
+                                                        <TableCell align="right">
+                                                          {nfeItem.nfe_item_preco !=
+                                                          null
+                                                            ? formatCurrency(
+                                                                nfeItem.nfe_item_preco,
+                                                              )
+                                                            : "-"}
+                                                        </TableCell>
+                                                        <TableCell align="right">
+                                                          {nfeItem.nfe_item_preco !=
+                                                            null &&
+                                                          nfeItem.nfe_item_quantidade !=
+                                                            null
+                                                            ? formatCurrency(
+                                                                nfeTotal,
+                                                              )
+                                                            : "-"}
+                                                        </TableCell>
+                                                      </>
+                                                    )}
                                                     <TableCell align="center">
                                                       <Chip
                                                         size="small"
                                                         label={
-                                                          order.items.length
+                                                          nfeItem.fulfillments
+                                                            .length
                                                         }
                                                         color="primary"
                                                         variant="outlined"
@@ -1298,13 +1529,17 @@ const NFESearch = () => {
                                                   {/* Nested Items Row */}
                                                   <TableRow>
                                                     <TableCell
-                                                      colSpan={8}
-                                                      sx={{ py: 0, border: 0 }}
+                                                      colSpan={
+                                                        canViewFinancials
+                                                          ? 7
+                                                          : 5
+                                                      }
+                                                      sx={{ py: 0, border: 0, bgcolor: "transparent" }}
                                                     >
                                                       <Collapse
                                                         in={
-                                                          expandedPurchaseOrder[
-                                                            orderKey
+                                                          expandedNfeItemGroups[
+                                                            nfeItemKey
                                                           ]
                                                         }
                                                         timeout="auto"
@@ -1312,189 +1547,219 @@ const NFESearch = () => {
                                                       >
                                                         <Box
                                                           sx={{
-                                                            py: 1,
-                                                            pl: 6,
+                                                            py: 2,
+                                                            pl: 8,
                                                             pr: 2,
-                                                            bgcolor: "#f5f5f5",
+                                                            bgcolor: "#ffffff",
+                                                            borderLeft: "3px solid #3b82f6",
                                                           }}
                                                         >
-                                                          <Typography
-                                                            variant="caption"
-                                                            color="text.secondary"
-                                                            sx={{
-                                                              fontWeight: 600,
-                                                              mb: 1,
-                                                              display: "block",
-                                                            }}
-                                                          >
-                                                            Itens do Pedido:
-                                                          </Typography>
                                                           <Table
                                                             size="small"
                                                             sx={{
-                                                              bgcolor: "#fff",
+                                                              bgcolor: "#f9fafb",
                                                               borderRadius: 1,
+                                                              border: "1px solid #e5e7eb",
                                                             }}
                                                           >
                                                             <TableHead>
                                                               <TableRow
                                                                 sx={{
                                                                   bgcolor:
-                                                                    "#fafafa",
+                                                                    "#f3f4f6",
+                                                                  borderBottom: "2px solid #d1d5db",
                                                                 }}
                                                               >
                                                                 <TableCell
                                                                   sx={{
-                                                                    width: 50,
+                                                                    fontSize: "0.70rem",
+                                                                    fontWeight: 600,
+                                                                    color: "#6b7280",
+                                                                    textTransform: "uppercase",
+                                                                    letterSpacing: "0.5px",
+                                                                    py: 1,
                                                                   }}
                                                                 >
-                                                                  Linha
+                                                                  Pedido
                                                                 </TableCell>
-                                                                <TableCell>
-                                                                  Descrição
+                                                                <TableCell
+                                                                  sx={{
+                                                                    fontSize: "0.70rem",
+                                                                    fontWeight: 600,
+                                                                    color: "#6b7280",
+                                                                    textTransform: "uppercase",
+                                                                    letterSpacing: "0.5px",
+                                                                    py: 1,
+                                                                  }}
+                                                                >
+                                                                  Item do Pedido
                                                                 </TableCell>
-                                                                <TableCell align="right">
-                                                                  Qtde
+                                                                <TableCell
+                                                                  align="right"
+                                                                  sx={{
+                                                                    fontSize: "0.70rem",
+                                                                    fontWeight: 600,
+                                                                    color: "#6b7280",
+                                                                    textTransform: "uppercase",
+                                                                    letterSpacing: "0.5px",
+                                                                    py: 1,
+                                                                  }}
+                                                                >
+                                                                  Comprador
                                                                 </TableCell>
-                                                                <TableCell align="center">
-                                                                  UN
+                                                                <TableCell
+                                                                  align="right"
+                                                                  sx={{
+                                                                    fontSize: "0.70rem",
+                                                                    fontWeight: 600,
+                                                                    color: "#6b7280",
+                                                                    textTransform: "uppercase",
+                                                                    letterSpacing: "0.5px",
+                                                                    py: 1,
+                                                                  }}
+                                                                >
+                                                                  Qtde Pedido
                                                                 </TableCell>
                                                                 {canViewFinancials && (
                                                                   <>
-                                                                    <TableCell align="right">
-                                                                      Preço Unit.
+                                                                    <TableCell
+                                                                      align="right"
+                                                                      sx={{
+                                                                        fontSize: "0.70rem",
+                                                                        fontWeight: 600,
+                                                                        color: "#6b7280",
+                                                                        textTransform: "uppercase",
+                                                                        letterSpacing: "0.5px",
+                                                                        py: 1,
+                                                                      }}
+                                                                    >
+                                                                      Preço Unit. Pedido
                                                                     </TableCell>
-                                                                    <TableCell align="right">
-                                                                      Total
+                                                                    <TableCell
+                                                                      align="right"
+                                                                      sx={{
+                                                                        fontSize: "0.70rem",
+                                                                        fontWeight: 600,
+                                                                        color: "#6b7280",
+                                                                        textTransform: "uppercase",
+                                                                        letterSpacing: "0.5px",
+                                                                        py: 1,
+                                                                      }}
+                                                                    >
+                                                                      Total Pedido
                                                                     </TableCell>
                                                                   </>
                                                                 )}
-                                                                <TableCell align="right">
-                                                                  Atendida
-                                                                </TableCell>
-
-                                                                <TableCell>
-                                                                  Entrega
-                                                                </TableCell>
                                                               </TableRow>
                                                             </TableHead>
                                                             <TableBody>
-                                                              {order.items.map(
-                                                                (item, idx) => (
+                                                              {nfeItem.fulfillments.map(
+                                                                (purchaseItem) => {
+                                                                return (
                                                                   <TableRow
-                                                                    key={idx}
+                                                                    key={
+                                                                      purchaseItem.id
+                                                                    }
+                                                                    sx={{
+                                                                      "&:hover": {
+                                                                        bgcolor: "#f3f4f6",
+                                                                      },
+                                                                      borderBottom: "1px solid #e5e7eb",
+                                                                      transition: "background-color 0.2s",
+                                                                    }}
                                                                   >
                                                                     <TableCell
                                                                       sx={{
-                                                                        width: 50,
+                                                                        fontSize: "0.875rem",
+                                                                        py: 1,
                                                                       }}
                                                                     >
-                                                                      <Box
+                                                                      <Typography
+                                                                        variant="body2"
                                                                         sx={{
-                                                                          display:
-                                                                            "flex",
-                                                                          alignItems:
-                                                                            "center",
-                                                                          gap: 0.5,
+                                                                          fontWeight: 500,
+                                                                          color: "#1f2937",
                                                                         }}
                                                                       >
-                                                                        {item.linha ||
-                                                                          "-"}
-                                                                        {item.is_estimated && (
-                                                                          <Tooltip
-                                                                            title={`Match estimado (${
-                                                                              item.match_score
-                                                                                ? Math.round(
-                                                                                    item.match_score,
-                                                                                  ) +
-                                                                                  "%"
-                                                                                : ""
-                                                                            })`}
-                                                                          >
-                                                                            <AutoAwesomeIcon
-                                                                              sx={{
-                                                                                fontSize: 14,
-                                                                                color:
-                                                                                  "secondary.main",
-                                                                              }}
-                                                                            />
-                                                                          </Tooltip>
-                                                                        )}
-                                                                      </Box>
+                                                                        {`${purchaseItem.cod_emp1 || "-"} / ${purchaseItem.cod_pedc || "-"}`}
+                                                                      </Typography>
                                                                     </TableCell>
-                                                                    <TableCell>
-                                                                      <Tooltip
-                                                                        title={
-                                                                          item.item_descricao ||
-                                                                          "-"
-                                                                        }
+                                                                    <TableCell
+                                                                      sx={{
+                                                                        fontSize: "0.875rem",
+                                                                        py: 1,
+                                                                      }}
+                                                                    >
+                                                                      <Typography
+                                                                        variant="body2"
+                                                                        sx={{
+                                                                          maxWidth: 420,
+                                                                          overflow:
+                                                                            "hidden",
+                                                                          textOverflow:
+                                                                            "ellipsis",
+                                                                          whiteSpace:
+                                                                            "nowrap",
+                                                                          color: "#374151",
+                                                                        }}
                                                                       >
-                                                                        <Typography
-                                                                          sx={{
-                                                                            maxWidth: 250,
-                                                                            overflow:
-                                                                              "hidden",
-                                                                            textOverflow:
-                                                                              "ellipsis",
-                                                                            whiteSpace:
-                                                                              "nowrap",
-                                                                          }}
-                                                                        >
-                                                                          {item.item_descricao ||
-                                                                            "-"}
-                                                                        </Typography>
-                                                                      </Tooltip>
+                                                                        {`L${purchaseItem.linha || "-"} - ${purchaseItem.item_descricao || "-"}`}
+                                                                      </Typography>
                                                                     </TableCell>
-                                                                    <TableCell align="right">
-                                                                      {item.quantidade !=
-                                                                      null
-                                                                        ? item.quantidade.toLocaleString(
-                                                                            "pt-BR",
-                                                                          )
-                                                                        : "-"}
+                                                                    <TableCell
+                                                                      align="right"
+                                                                      sx={{
+                                                                        fontSize: "0.875rem",
+                                                                        py: 1,
+                                                                      }}
+                                                                    >
+                                                                      <Typography variant="body2">
+                                                                        {purchaseItem.func_nome ||
+                                                                          "-"}
+                                                                      </Typography>
                                                                     </TableCell>
-                                                                    <TableCell align="center">
-                                                                      {item.unidade_medida ||
-                                                                        "-"}
+                                                                    <TableCell
+                                                                      align="right"
+                                                                      sx={{
+                                                                        fontSize: "0.875rem",
+                                                                        py: 1,
+                                                                      }}
+                                                                    >
+                                                                      {formatQuantity(
+                                                                        purchaseItem.quantidade,
+                                                                      )}
                                                                     </TableCell>
                                                                     {canViewFinancials && (
                                                                       <>
-                                                                        <TableCell align="right">
-                                                                          {item.preco_unitario !=
-                                                                          null
-                                                                            ? formatCurrency(
-                                                                                item.preco_unitario,
-                                                                              )
-                                                                            : "-"}
+                                                                        <TableCell
+                                                                          align="right"
+                                                                          sx={{
+                                                                            fontSize: "0.875rem",
+                                                                            py: 1,
+                                                                          }}
+                                                                        >
+                                                                          {formatCurrency(
+                                                                            purchaseItem.preco_unitario,
+                                                                          )}
                                                                         </TableCell>
-                                                                        <TableCell align="right">
-                                                                          {item.total_item !=
-                                                                          null
-                                                                            ? formatCurrency(
-                                                                                item.total_item,
-                                                                              )
-                                                                            : "-"}
+                                                                        <TableCell
+                                                                          align="right"
+                                                                          sx={{
+                                                                            fontSize: "0.875rem",
+                                                                            py: 1,
+                                                                            fontWeight: 600,
+                                                                            color: "#1f2937",
+                                                                          }}
+                                                                        >
+                                                                          {formatCurrency(
+                                                                            purchaseItem.total_item,
+                                                                          )}
                                                                         </TableCell>
                                                                       </>
                                                                     )}
-                                                                    <TableCell align="right">
-                                                                      {item.qtde_atendida !=
-                                                                      null
-                                                                        ? item.qtde_atendida.toLocaleString(
-                                                                            "pt-BR",
-                                                                          )
-                                                                        : "-"}
-                                                                    </TableCell>
-
-                                                                    <TableCell>
-                                                                      {item.dt_entrega
-                                                                        ? formatDate(
-                                                                            item.dt_entrega,
-                                                                          )
-                                                                        : "-"}
-                                                                    </TableCell>
                                                                   </TableRow>
-                                                                ),
+                                                                );
+                                                                },
                                                               )}
                                                             </TableBody>
                                                           </Table>
@@ -1515,7 +1780,7 @@ const NFESearch = () => {
                             </TableCell>
                           </TableRow>
                         </React.Fragment>
-                      ))}
+                      )})}
                     </TableBody>
                   </Table>
                 </TableContainer>
@@ -1553,8 +1818,8 @@ const NFESearch = () => {
                               }}
                             >
                               <ReceiptIcon color="warning" />
-                              Pedidos contendo "{results.query}" mas sem NFE
-                              correspondente ({groupedUnlinked.length}{" "}
+                              Pedidos atendidos no sistema com "{results.query}" mas sem danfe correspondente
+                               ({groupedUnlinked.length}{" "}
                               pedido(s),{" "}
                               {results.unlinked_purchase_orders.length} item(s))
                             </Typography>

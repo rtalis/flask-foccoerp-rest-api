@@ -1275,6 +1275,212 @@ def search_nfe():
         
         for nfe in nfes:
             emitente = NFEEmitente.query.filter_by(nfe_id=nfe.id).first()
+            nfe_items = NFEItem.query.filter_by(nfe_id=nfe.id).all()
+            nfe_items_by_numero = {
+                item.numero_item: item for item in nfe_items if item.numero_item is not None
+            }
+
+            def _resolve_nfe_item_for_purchase(entry, purchase_item, match_obj=None):
+                """
+                Resolve NFE item for a purchase line with robust fallbacks:
+                1) explicit match object nfe_item_id,
+                2) saved PurchaseItemNFEMatch for this PO line + NFE number,
+                3) weighted score using description + price + quantity (+ line hint).
+                """
+                if match_obj and match_obj.nfe_item_id:
+                    nfe_item_from_match = db.session.get(NFEItem, match_obj.nfe_item_id)
+                    if nfe_item_from_match:
+                        return nfe_item_from_match
+
+                if purchase_item and purchase_item.linha is not None and nfe.numero:
+                    best_saved_match = PurchaseItemNFEMatch.query.filter(
+                        PurchaseItemNFEMatch.cod_pedc == purchase_item.cod_pedc,
+                        PurchaseItemNFEMatch.cod_emp1 == purchase_item.cod_emp1,
+                        PurchaseItemNFEMatch.item_seq == purchase_item.linha,
+                        PurchaseItemNFEMatch.nfe_numero == nfe.numero
+                    ).order_by(PurchaseItemNFEMatch.match_score.desc()).first()
+                    if best_saved_match and best_saved_match.nfe_item_id:
+                        nfe_item_from_saved_match = db.session.get(
+                            NFEItem, best_saved_match.nfe_item_id
+                        )
+                        if nfe_item_from_saved_match:
+                            return nfe_item_from_saved_match
+
+                linha_candidates = []
+                if entry and entry.linha is not None:
+                    try:
+                        linha_candidates.append(int(entry.linha))
+                    except (TypeError, ValueError):
+                        pass
+                if purchase_item and purchase_item.linha is not None:
+                    try:
+                        linha_candidates.append(int(purchase_item.linha))
+                    except (TypeError, ValueError):
+                        pass
+
+                if purchase_item and nfe_items:
+                    po_desc = (purchase_item.descricao or "").lower()
+                    po_price = (
+                        float(purchase_item.preco_unitario)
+                        if purchase_item.preco_unitario is not None
+                        else None
+                    )
+                    po_qty = (
+                        float(purchase_item.quantidade)
+                        if purchase_item.quantidade is not None
+                        else None
+                    )
+                    po_item_code_raw = (purchase_item.item_id or "").strip()
+
+                    def _closeness(a, b):
+                        if a is None or b is None:
+                            return None
+                        a = float(a)
+                        b = float(b)
+                        if a <= 0 or b <= 0:
+                            return None
+                        diff_ratio = abs(a - b) / max(a, b)
+                        return max(0.0, 1.0 - diff_ratio)
+
+                    def _normalize_code(code_value):
+                        if not code_value:
+                            return None
+                        normalized = "".join(
+                            ch for ch in str(code_value).upper() if ch.isalnum()
+                        )
+                        return normalized or None
+
+                    def _is_valid_code(code_value):
+                        normalized = _normalize_code(code_value)
+                        if not normalized:
+                            return False
+                        invalid_tokens = {
+                            "SEMGTIN",
+                            "NOGTIN",
+                            "NA",
+                            "NONE",
+                            "NULL",
+                            "0",
+                            "000",
+                            "0000",
+                        }
+                        if normalized in invalid_tokens:
+                            return False
+                        return len(normalized) >= 3
+
+                    po_item_code = (
+                        _normalize_code(po_item_code_raw)
+                        if _is_valid_code(po_item_code_raw)
+                        else None
+                    )
+
+                    def _code_match_score(po_code, nfe_code):
+                        if not po_code or not _is_valid_code(nfe_code):
+                            return None
+                        normalized_nfe_code = _normalize_code(nfe_code)
+                        if po_code == normalized_nfe_code:
+                            return 1.0
+                        # Allow strong partial match for structured material codes
+                        if (
+                            len(po_code) >= 6
+                            and len(normalized_nfe_code) >= 6
+                            and (
+                                po_code.endswith(normalized_nfe_code)
+                                or normalized_nfe_code.endswith(po_code)
+                                or po_code in normalized_nfe_code
+                                or normalized_nfe_code in po_code
+                            )
+                        ):
+                            return 0.9
+                        return 0.0
+
+                    best_item = None
+                    best_weighted_score = -1
+                    best_desc_score = 0
+                    best_price_score = 0
+
+                    for nfe_item_candidate in nfe_items:
+                        candidate_desc = (nfe_item_candidate.descricao or "").lower()
+                        desc_score = (
+                            fuzz.token_set_ratio(po_desc, candidate_desc) / 100.0
+                            if po_desc and candidate_desc
+                            else 0.0
+                        )
+                        price_score = _closeness(
+                            po_price, nfe_item_candidate.valor_unitario_comercial
+                        )
+                        qty_score = _closeness(
+                            po_qty, nfe_item_candidate.quantidade_comercial
+                        )
+                        code_score = _code_match_score(
+                            po_item_code, nfe_item_candidate.codigo
+                        )
+                        line_score = (
+                            1.0
+                            if nfe_item_candidate.numero_item in linha_candidates
+                            else 0.0
+                        )
+
+                        # Price gets higher priority when descriptions diverge,
+                        # since unit prices usually vary little for the same item.
+                        if price_score is not None and price_score >= 0.98 and desc_score < 0.45:
+                            weight_desc = 0.15
+                            weight_price = 0.65
+                            weight_code = 0.15
+                            weight_qty = 0.05
+                        else:
+                            weight_desc = 0.45
+                            weight_price = 0.35
+                            weight_code = 0.15
+                            weight_qty = 0.05
+
+                        weighted_sum = desc_score * weight_desc
+                        weight_total = weight_desc
+
+                        if price_score is not None:
+                            weighted_sum += price_score * weight_price
+                            weight_total += weight_price
+                        if code_score is not None:
+                            weighted_sum += code_score * weight_code
+                            weight_total += weight_code
+                        if qty_score is not None:
+                            weighted_sum += qty_score * weight_qty
+                            weight_total += weight_qty
+
+                        # Soft tie-breaker bonus for matching line number.
+                        if linha_candidates:
+                            weighted_sum += line_score * 0.03
+                            weight_total += 0.03
+
+                        final_score = (
+                            (weighted_sum / weight_total) if weight_total > 0 else 0.0
+                        )
+
+                        if final_score > best_weighted_score:
+                            best_weighted_score = final_score
+                            best_desc_score = desc_score
+                            best_price_score = price_score or 0.0
+                            best_item = nfe_item_candidate
+
+                    # Accept high-confidence code match quickly.
+                    if best_item and po_item_code and _is_valid_code(best_item.codigo):
+                        if _normalize_code(best_item.codigo) == po_item_code:
+                            return best_item
+
+                    # Require reasonable confidence; allow price-led match when price is almost exact.
+                    if best_item and (
+                        best_desc_score >= 0.60
+                        or best_weighted_score >= 0.72
+                        or (best_price_score >= 0.99 and best_weighted_score >= 0.64)
+                    ):
+                        return best_item
+
+                # Last fallback: strict line/item number mapping when present
+                for linha_cand in linha_candidates:
+                    if linha_cand in nfe_items_by_numero:
+                        return nfe_items_by_numero[linha_cand]
+
+                return None
             # Get matched items if searching by item
             matched_items = []
             if search_by_item:
@@ -1302,12 +1508,12 @@ def search_nfe():
                         cod_emp1=entry.cod_emp1
                     ).first()
                     if po:
-
                         item = PurchaseItem.query.filter_by(
                             cod_pedc=entry.cod_pedc,
                             cod_emp1=entry.cod_emp1,
                             linha=str(entry.linha) if entry.linha else None
                         ).first()
+                        nfe_item = _resolve_nfe_item_for_purchase(entry, item)
 
                         # Calculate adjusted total from adjustments
                         adjustments = getattr(po, 'adjustments', [])
@@ -1332,6 +1538,11 @@ def search_nfe():
                             'dt_entrega': item.dt_entrega.isoformat() if item and item.dt_entrega else None,
                             'nfe_numero': nfe.numero,
                             'is_estimated': False,
+                            'nfe_item_numero': nfe_item.numero_item if nfe_item else None,
+                            'nfe_item_descricao': nfe_item.descricao if nfe_item else None,
+                            'nfe_item_quantidade': nfe_item.quantidade_comercial if nfe_item else None,
+                            'nfe_item_unidade': nfe_item.unidade_comercial if nfe_item else None,
+                            'nfe_item_preco': nfe_item.valor_unitario_comercial if nfe_item else None,
                         }
                         
                         key = (po.cod_pedc, po.cod_emp1, entry.linha)
@@ -1363,6 +1574,7 @@ def search_nfe():
                                     for p in linked_purchases
                                 )
                                 if not already_linked:
+                                    nfe_item = _resolve_nfe_item_for_purchase(None, item, match)
                                     purchase_info = {
                                         'cod_pedc': po.cod_pedc,
                                         'cod_emp1': po.cod_emp1,
@@ -1382,6 +1594,11 @@ def search_nfe():
                                         'nfe_numero': nfe.numero,
                                         'is_estimated': True,
                                         'match_score': match.match_score,
+                                        'nfe_item_numero': nfe_item.numero_item if nfe_item else None,
+                                        'nfe_item_descricao': match.nfe_item_descricao or (nfe_item.descricao if nfe_item else None),
+                                        'nfe_item_quantidade': match.nfe_item_quantidade,
+                                        'nfe_item_unidade': nfe_item.unidade_comercial if nfe_item else None,
+                                        'nfe_item_preco': match.nfe_item_preco,
                                     }
                                     estimated_purchases.append(purchase_info)
             
@@ -1396,6 +1613,14 @@ def search_nfe():
                 'matched_items': matched_items,
                 'linked_purchases': linked_purchases,
                 'estimated_purchases': estimated_purchases,
+                'nfe_items': [{
+                    'id': item.id,
+                    'numero_item': item.numero_item,
+                    'descricao': item.descricao,
+                    'unidade': item.unidade_comercial,
+                    'quantidade': item.quantidade_comercial,
+                    'preco_unitario': item.valor_unitario_comercial,
+                } for item in nfe_items],
             })
             if nfe.numero:
                 nfe_numbers.add(nfe.numero)
@@ -1580,6 +1805,7 @@ def search_nfe():
                         }
                         # Also add to nfe_results if not already there and is_linked
                         if is_linked and not any(n['id'] == nfe_data.id for n in nfe_results):
+                            nfe_data_items = NFEItem.query.filter_by(nfe_id=nfe_data.id).all()
                             nfe_results.append({
                                 'id': nfe_data.id,
                                 'numero': nfe_data.numero,
@@ -1596,6 +1822,15 @@ def search_nfe():
                                     'item_descricao': item.descricao if item else None,
                                     'linha': entry.linha,
                                 }],
+                                'estimated_purchases': [],
+                                'nfe_items': [{
+                                    'id': nfe_item.id,
+                                    'numero_item': nfe_item.numero_item,
+                                    'descricao': nfe_item.descricao,
+                                    'unidade': nfe_item.unidade_comercial,
+                                    'quantidade': nfe_item.quantidade_comercial,
+                                    'preco_unitario': nfe_item.valor_unitario_comercial,
+                                } for nfe_item in nfe_data_items],
                             })
                 
                 purchase_orders.append({
