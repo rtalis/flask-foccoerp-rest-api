@@ -171,7 +171,20 @@
     </div>
 
     <script>
-      let adminEmail = 'admin@roxel.dev';
+      // Get API URL from environment or construct from current domain
+      function getApiUrl() {
+        // Try to get from sessionStorage (set by React app)
+        const stored = sessionStorage.getItem('VITE_API_URL');
+        if (stored) return stored;
+        
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+          return 'http://localhost:5000';
+        }
+        
+        return `https://${window.location.hostname}`;
+      }
+
+      const API_URL = getApiUrl();
       let errorData = {};
       const xmlKey = new URLSearchParams(window.location.search).get('xmlKey');
       let pdfRendered = false;
@@ -213,10 +226,14 @@
       // Fetch admin email from API
       async function loadAdminEmail() {
         try {
-          const response = await fetch('/api/config/admin-email');
+          const response = await fetch(`${API_URL}/api/config/admin-email`, {
+            method: 'GET',
+            credentials: 'include',
+            headers: { Accept: 'application/json' },
+          });
           if (response && response.ok) {
             const data = await response.json();
-            adminEmail = data.email || 'admin@roxel.dev';
+            adminEmail = data.email || '';
           }
         } catch (err) {
           console.warn('Could not fetch admin email:', err);
@@ -256,7 +273,7 @@
 
         try {
           const retryResponse = await fetch(
-            `/api/get_danfe_pdf?xmlKey=${encodeURIComponent(xmlKey)}&retry=true`,
+            `${API_URL}/api/get_danfe_pdf?xmlKey=${encodeURIComponent(xmlKey)}&retry=true`,
             {
               method: 'GET',
               credentials: 'include',

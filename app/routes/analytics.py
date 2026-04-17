@@ -106,6 +106,7 @@ def usage_report():
 
 
 @bp.route('/config/admin-email', methods=['GET'])
+@login_required
 def get_admin_email():
     """Return the admin email address for frontend use."""
     admin_email = current_app.config.get('ADMIN_EMAIL', '')
