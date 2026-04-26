@@ -5,6 +5,7 @@ import ItemScreen from "./ItemScreen";
 import "./UnifiedSearch.css";
 
 import { exportPurchaseOrdersToExcel } from "../utils/exportPurchaseOrdersExcel";
+import { getHighlightedText, shouldHighlightField } from "../utils/highlightUtils";
 
 import {
   Table,
@@ -72,6 +73,10 @@ function PurchaseRow(props) {
     codEmp1Options = [],
     canViewFinancials = true,
     canViewNfes = true,
+    searchQuery = "",
+    searchParams = {},
+    ignoreDiacritics = false,
+    usingEnhanced = false,
   } = props;
 
   const formatCompanyShort = (codEmp1) => {
@@ -438,9 +443,9 @@ function PurchaseRow(props) {
             px: { xs: 1, sm: 2 },
           }}
         >
-          Pedido de Compra: {purchase.order.cod_pedc}~{" "}
+          Pedido de Compra: {shouldHighlightField("cod_pedc", searchParams, usingEnhanced) ? getHighlightedText(purchase.order.cod_pedc, searchQuery, ignoreDiacritics) : purchase.order.cod_pedc}~{" "}
           {purchase.order.fornecedor_id}{" "}
-          {getFirstWords(purchase.order.fornecedor_descricao, 4)}
+          {shouldHighlightField("fornecedor_descricao", searchParams, usingEnhanced) ? getHighlightedText(getFirstWords(purchase.order.fornecedor_descricao, 4), searchQuery, ignoreDiacritics) : getFirstWords(purchase.order.fornecedor_descricao, 4)}
           {canViewFinancials && (
             <>
               {" - "}
@@ -613,7 +618,7 @@ function PurchaseRow(props) {
                               : {}),
                           }}
                         >
-                          {item.item_id}
+                          {shouldHighlightField("item_id", searchParams, usingEnhanced) ? getHighlightedText(item.item_id, searchQuery, ignoreDiacritics) : item.item_id}
                         </TableCell>
                         <TableCell
                           align="center"
@@ -626,7 +631,7 @@ function PurchaseRow(props) {
                               : {}
                           }
                         >
-                          {item.descricao}
+                          {shouldHighlightField("descricao", searchParams, usingEnhanced) ? getHighlightedText(item.descricao, searchQuery, ignoreDiacritics) : item.descricao}
                         </TableCell>
                         <TableCell
                           align="center"
@@ -760,7 +765,7 @@ function PurchaseRow(props) {
                                           gap: "4px",
                                         }}
                                       >
-                                        <span>{nf.num_nf}</span>
+                                        <span>{shouldHighlightField("num_nf", searchParams, usingEnhanced) ? getHighlightedText(nf.num_nf, searchQuery, ignoreDiacritics) : nf.num_nf}</span>
                                         <Tooltip
                                           title={
                                             loadingDanfeNf === nf.num_nf
@@ -944,7 +949,7 @@ function PurchaseRow(props) {
                             color: "#1a1f2e",
                           }}
                         >
-                          Observação: {purchase.order.observacao}
+                          Observação: {shouldHighlightField("observacao", searchParams, usingEnhanced) ? getHighlightedText(purchase.order.observacao, searchQuery, ignoreDiacritics) : purchase.order.observacao}
                         </Typography>
                         {canViewFinancials && (
                           <Typography
@@ -2686,6 +2691,10 @@ const UnifiedSearch = () => {
                     codEmp1Options={codEmp1Options}
                     canViewFinancials={canViewFinancials}
                     canViewNfes={canViewNfes}
+                    searchQuery={searchParams.query}
+                    searchParams={searchParams}
+                    ignoreDiacritics={searchParams.ignoreDiacritics}
+                    usingEnhanced={usingEnhanced}
                   />
                 ))}
               </TableBody>
