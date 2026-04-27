@@ -1,12 +1,6 @@
 [
 
-  {
-    "version": "2.0.9",
-    "notes": [
-      "Adicionada busca por CNPJ - Quando um numero completo de CNPJ é inserido, o sistema irá buscar pelos pedidos correspondentes.",
-      "Consertado erro quando o sistema tentava buscar uma nota inexistente na base e a data de emissão era anterior a data do pedido de compra."
-    ]
-  },
+
   {
     "version": "2.1.0",
     "notes": [
@@ -24,5 +18,12 @@
       "Adicionados testes abrangentes para funcionalidade de busca de NFE.",
       "Refatorado código para melhor legibilidade e manutenibilidade."
     ]
+  }, {
+    "version": "2.2.1",
+    "notes": [
+      "Adicionado marcação para melhor visualização do termo buscado nos resultados.",
+      "Adicionado botão para indicar que existem outros itens compondo um determinado pedido de compra e mostra-los"
+    ]
   }
+
 ]

@@ -103,6 +103,32 @@ function PurchaseRow(props) {
   const [loadingDanfeNf, setLoadingDanfeNf] = useState(null);
   const [nfeChecked, setNfeChecked] = useState({});
   const [matchingInProgress, setMatchingInProgress] = useState(false);
+  
+  const [localItems, setLocalItems] = useState(purchase.items);
+  const [loadingAllItems, setLoadingAllItems] = useState(false);
+  
+  useEffect(() => {
+    setLocalItems(purchase.items);
+  }, [purchase.items]);
+
+  const handleFetchAllItems = async () => {
+    try {
+      setLoadingAllItems(true);
+      const response = await axios.get(
+        `${import.meta.env.VITE_API_URL}/api/purchase_order/${purchase.order.order_id}/all_items`,
+        { withCredentials: true }
+      );
+      const orderPayload = response.data?.purchases?.[0];
+      if (orderPayload && orderPayload.items) {
+        setLocalItems(orderPayload.items);
+      }
+    } catch (error) {
+      console.error("Error fetching all items for purchase:", error);
+      alert("Erro ao carregar todos os itens deste pedido.");
+    } finally {
+      setLoadingAllItems(false);
+    }
+  };
 
   const normalizeNumber = (value) => {
     if (value === null || value === undefined) {
@@ -545,7 +571,7 @@ function PurchaseRow(props) {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {purchase.items.map((item) => {
+                  {localItems.map((item) => {
                     const qty = normalizeNumber(item?.quantidade);
                     const attended = normalizeNumber(item?.qtde_atendida);
                     const canceled = normalizeNumber(item?.qtde_canc);
@@ -928,6 +954,54 @@ function PurchaseRow(props) {
                       </TableRow>
                     );
                   })}
+                  {purchase.order.total_items_in_order > localItems.length && (
+                    <TableRow
+                      sx={{
+                        backgroundColor: "#fafbfc",
+                        "&:hover": {
+                          backgroundColor: "#f0f3f7",
+                        },
+                        transition: "background-color 0.2s ease",
+                      }}
+                    >
+                      <TableCell colSpan={11} align="center" sx={{ py: 2, px: 2 }}>
+                        <Button
+                          onClick={handleFetchAllItems}
+                          disabled={loadingAllItems}
+                          startIcon={loadingAllItems ? <CircularProgress size={18} color="inherit" /> : <ExpandMoreIcon />}
+                          sx={{
+                            textTransform: "none",
+                            fontSize: "0.85rem",
+                            fontWeight: 500,
+                            color: "#506581ff",
+                            bgcolor: "transparent",
+                            border: "none",
+                            transition: "all 0.3s ease",
+                            "&:hover:not(:disabled)": {
+                              bgcolor: "rgba(80, 101, 129, 0.06)",
+                              color: "#44566eff",
+                              transform: "translateY(-1px)",
+                            },
+                            "&:disabled": {
+                              color: "#b0b8c1",
+                            },
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 1,
+                            padding: 1,
+                            margin: "0 auto",
+                          }}
+                        >
+                          <span>
+                            {loadingAllItems
+                              ? "Carregando..."
+                              : `Mostrar outros ${purchase.order.total_items_in_order - localItems.length} itens desse pedido`}
+                          </span>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
                 {/* Footer */}
                 <TableFooter>
