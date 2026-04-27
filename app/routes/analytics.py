@@ -22,11 +22,20 @@ def usage_report():
     
     if start_date_str and end_date_str:
         try:
+            # Try parsing as ISO format first (with time component)
             start_date = datetime.fromisoformat(start_date_str)
             end_date = datetime.fromisoformat(end_date_str)
         except (ValueError, TypeError):
-            start_date = datetime.now() - timedelta(days=30)
-            end_date = datetime.now()
+            try:
+                # Try parsing as date-only format (YYYY-MM-DD)
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+                # Add one day to end_date to include the entire day
+                end_date = end_date + timedelta(days=1)
+            except (ValueError, TypeError):
+                # Fallback to default
+                start_date = datetime.now() - timedelta(days=30)
+                end_date = datetime.now()
     else:
         days = request.args.get('days', 30, type=int)
         if days < 1 or days > 365:
@@ -44,7 +53,7 @@ def usage_report():
         .outerjoin(LoginHistory, and_(
             LoginHistory.user_id == User.id,
             LoginHistory.login_time >= start_date,
-            LoginHistory.login_time <= end_date
+            LoginHistory.login_time < end_date
         ))
         .group_by(User.id, User.username, User.email)
         .all()
@@ -59,7 +68,7 @@ def usage_report():
         .outerjoin(RequestLog, and_(
             RequestLog.user_id == User.id,
             RequestLog.timestamp >= start_date,
-            RequestLog.timestamp <= end_date
+            RequestLog.timestamp < end_date
         ))
         .group_by(User.id, User.username)
         .all()
@@ -70,7 +79,7 @@ def usage_report():
             func.date_trunc('day', LoginHistory.login_time).label('day'),
             func.count(LoginHistory.id).label('count')
         )
-        .filter(and_(LoginHistory.login_time >= start_date, LoginHistory.login_time <= end_date))
+        .filter(and_(LoginHistory.login_time >= start_date, LoginHistory.login_time < end_date))
         .group_by('day')
         .order_by('day')
         .all()
@@ -81,7 +90,7 @@ def usage_report():
             func.date_trunc('day', RequestLog.timestamp).label('day'),
             func.count(RequestLog.id).label('count')
         )
-        .filter(and_(RequestLog.timestamp >= start_date, RequestLog.timestamp <= end_date))
+        .filter(and_(RequestLog.timestamp >= start_date, RequestLog.timestamp < end_date))
         .group_by('day')
         .order_by('day')
         .all()
@@ -93,7 +102,7 @@ def usage_report():
             RequestLog.method,
             func.count(RequestLog.id).label('count')
         )
-        .filter(and_(RequestLog.timestamp >= start_date, RequestLog.timestamp <= end_date))
+        .filter(and_(RequestLog.timestamp >= start_date, RequestLog.timestamp < end_date))
     )
     
     # Filter out api/import by default

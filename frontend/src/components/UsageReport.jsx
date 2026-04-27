@@ -192,23 +192,12 @@ const UsageReport = () => {
   );
 
   // Charts
-  const dailyActivityChart = useMemo(() => {
-    if (!data) return null;
-    const allDates = new Set([
-      ...(data.daily_logins || []).map((d) => d.date),
-      ...(data.daily_requests || []).map((d) => d.date),
-    ]);
-    const sorted = [...allDates].sort();
-    const loginsMap = Object.fromEntries(
-      (data.daily_logins || []).map((d) => [d.date, d.count]),
-    );
-    const requestsMap = Object.fromEntries(
-      (data.daily_requests || []).map((d) => [d.date, d.count]),
-    );
-
+  const dailyRequestsChart = useMemo(() => {
+    if (!data?.daily_requests) return null;
+    const sorted = [...data.daily_requests].sort((a, b) => new Date(a.date) - new Date(b.date));
     return {
       labels: sorted.map((d) => {
-        const date = new Date(d);
+        const date = new Date(d.date);
         return date.toLocaleDateString("pt-BR", {
           day: "2-digit",
           month: "2-digit",
@@ -217,25 +206,43 @@ const UsageReport = () => {
       datasets: [
         {
           label: "Requisições",
-          data: sorted.map((d) => requestsMap[d] || 0),
+          data: sorted.map((d) => d.count),
           borderColor: "#2196f3",
           backgroundColor: "rgba(33, 150, 243, 0.1)",
           fill: true,
           tension: 0.4,
-        },
-        {
-          label: "Logins",
-          data: sorted.map((d) => loginsMap[d] || 0),
-          borderColor: "#4caf50",
-          backgroundColor: "rgba(76, 175, 80, 0.1)",
-          fill: true,
-          tension: 0.4,
+          borderWidth: 2,
         },
       ],
     };
   }, [data]);
 
-  const usersBarChart = useMemo(() => {
+  const dailyLoginsChart = useMemo(() => {
+    if (!data?.daily_logins) return null;
+    const sorted = [...data.daily_logins].sort((a, b) => new Date(a.date) - new Date(b.date));
+    return {
+      labels: sorted.map((d) => {
+        const date = new Date(d.date);
+        return date.toLocaleDateString("pt-BR", {
+          day: "2-digit",
+          month: "2-digit",
+        });
+      }),
+      datasets: [
+        {
+          label: "Logins",
+          data: sorted.map((d) => d.count),
+          borderColor: "#4caf50",
+          backgroundColor: "rgba(76, 175, 80, 0.1)",
+          fill: true,
+          tension: 0.4,
+          borderWidth: 2,
+        },
+      ],
+    };
+  }, [data]);
+
+  const usersRequestsChart = useMemo(() => {
     if (!data?.users) return null;
     const top = [...data.users]
       .sort((a, b) => b.request_count - a.request_count)
@@ -249,6 +256,18 @@ const UsageReport = () => {
           backgroundColor: "rgba(33, 150, 243, 0.7)",
           borderRadius: 6,
         },
+      ],
+    };
+  }, [data]);
+
+  const usersLoginsChart = useMemo(() => {
+    if (!data?.users) return null;
+    const top = [...data.users]
+      .sort((a, b) => b.login_count - a.login_count)
+      .slice(0, 10);
+    return {
+      labels: top.map((u) => u.username),
+      datasets: [
         {
           label: "Logins",
           data: top.map((u) => u.login_count),
@@ -450,9 +469,9 @@ const UsageReport = () => {
 
       {data && (
         <>
-          {/* Charts */}
+          {/* Atividade Diária - Daily Activity Charts */}
           <Grid container spacing={2} sx={{ mb: 3 }}>
-            <Grid size={{ xs: 12, md: 8 }}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Paper
                 elevation={0}
                 sx={{
@@ -464,16 +483,41 @@ const UsageReport = () => {
                 }}
               >
                 <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                  Atividade Diária
+                  Atividade Diária - Requisições
                 </Typography>
-                {dailyActivityChart && (
+                {dailyRequestsChart && (
                   <Box sx={{ height: 310 }}>
-                    <Line data={dailyActivityChart} options={chartOptions} />
+                    <Line data={dailyRequestsChart} options={chartOptions} />
                   </Box>
                 )}
               </Paper>
             </Grid>
-            <Grid size={{ xs: 12, md: 4 }}>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 3,
+                  borderRadius: 3,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  height: 380,
+                }}
+              >
+                <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                  Atividade Diária - Logins
+                </Typography>
+                {dailyLoginsChart && (
+                  <Box sx={{ height: 310 }}>
+                    <Line data={dailyLoginsChart} options={chartOptions} />
+                  </Box>
+                )}
+              </Paper>
+            </Grid>
+          </Grid>
+
+          {/* Top Endpoints Doughnut Chart */}
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Grid size={{ xs: 12 }}>
               <Paper
                 elevation={0}
                 sx={{
@@ -520,9 +564,9 @@ const UsageReport = () => {
             </Grid>
           </Grid>
 
-          {/* Bar chart - users */}
+          {/* Uso por Usuário - User Usage Charts */}
           <Grid container spacing={2} sx={{ mb: 3 }}>
-            <Grid size={{ xs: 12 }}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Paper
                 elevation={0}
                 sx={{
@@ -541,12 +585,41 @@ const UsageReport = () => {
                 >
                   <BarChartIcon color="primary" />
                   <Typography variant="subtitle1" fontWeight={600}>
-                    Uso por Usuário (Top 10)
+                    Uso por Usuário (Top 10) - Requisições
                   </Typography>
                 </Stack>
-                {usersBarChart && (
+                {usersRequestsChart && (
                   <Box sx={{ height: 310 }}>
-                    <Bar data={usersBarChart} options={chartOptions} />
+                    <Bar data={usersRequestsChart} options={chartOptions} />
+                  </Box>
+                )}
+              </Paper>
+            </Grid>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 3,
+                  borderRadius: 3,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  height: 380,
+                }}
+              >
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  spacing={1}
+                  sx={{ mb: 1 }}
+                >
+                  <LoginIcon color="success" />
+                  <Typography variant="subtitle1" fontWeight={600}>
+                    Uso por Usuário (Top 10) - Logins
+                  </Typography>
+                </Stack>
+                {usersLoginsChart && (
+                  <Box sx={{ height: 310 }}>
+                    <Bar data={usersLoginsChart} options={chartOptions} />
                   </Box>
                 )}
               </Paper>
