@@ -140,6 +140,7 @@ def _build_purchase_payload(items):
                     'cf_pgto': order.cf_pgto,
                     'is_fulfilled': order.is_fulfilled,
                     'cod_emp1': order.cod_emp1,
+                    'total_items_in_order': len(order.items),
                     'nfes': [
                         {
                             'num_nf': nf_entry.num_nf if can_view_nfes else None,
@@ -963,4 +964,15 @@ def search_combined():
         'total_pages': total_pages,
         'current_page': current_page,
         'total_results': total_results
+    }), 200
+
+@bp.route('/purchase_order/<int:order_id>/all_items', methods=['GET'])
+@login_required
+def get_all_purchase_order_items(order_id):
+    """Returns a payload containing all items for a given PurchaseOrder ID."""
+    order = PurchaseOrder.query.get_or_404(order_id)
+    purchases_payload = _build_purchase_payload(order.items)
+    
+    return jsonify({
+        'purchases': purchases_payload
     }), 200
