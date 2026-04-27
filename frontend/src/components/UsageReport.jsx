@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
 import axios from "axios";
 import {
   Box,
@@ -24,6 +24,9 @@ import {
   TableRow,
   TableSortLabel,
   Chip,
+  TextField,
+  FormControlLabel,
+  Checkbox,
 } from "@mui/material";
 import {
   People as PeopleIcon,
@@ -109,6 +112,9 @@ const UsageReport = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [days, setDays] = useState(30);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [includeImport, setIncludeImport] = useState(false);
   const [sortField, setSortField] = useState("request_count");
   const [sortDirection, setSortDirection] = useState("desc");
 
@@ -118,7 +124,19 @@ const UsageReport = () => {
     setLoading(true);
     setError("");
     try {
-      const res = await axios.get(`${apiUrl}/api/usage_report?days=${days}`, {
+      const params = new URLSearchParams();
+      
+      if (startDate && endDate) {
+        params.append("start_date", startDate);
+        params.append("end_date", endDate);
+      } else {
+        params.append("days", days);
+      }
+      
+      // Always explicitly send the include_import parameter
+      params.append("include_import", includeImport ? "true" : "false");
+      
+      const res = await axios.get(`${apiUrl}/api/usage_report?${params}`, {
         withCredentials: true,
       });
       setData(res.data);
@@ -131,7 +149,14 @@ const UsageReport = () => {
     } finally {
       setLoading(false);
     }
-  }, [apiUrl, days]);
+  }, [apiUrl, days, startDate, endDate, includeImport]);
+
+  // Auto-fetch when includeImport checkbox changes (if we have existing data)
+  useEffect(() => {
+    if (data) {
+      fetchReport();
+    }
+  }, [includeImport]);
 
   const handleSort = (field) => {
     if (sortField === field) {
@@ -285,7 +310,7 @@ const UsageReport = () => {
       <Stack
         direction={{ xs: "column", sm: "row" }}
         justifyContent="space-between"
-        alignItems={{ xs: "stretch", sm: "center" }}
+        alignItems={{ xs: "stretch", sm: "flex-start" }}
         spacing={2}
         sx={{ mb: 3 }}
       >
@@ -297,32 +322,81 @@ const UsageReport = () => {
             Acompanhe a atividade dos usuários no sistema
           </Typography>
         </Box>
-        <Stack direction="row" spacing={2} alignItems="center">
-          <FormControl size="small" sx={{ minWidth: 140 }}>
-            <InputLabel>Período</InputLabel>
-            <Select
-              value={days}
-              label="Período"
-              onChange={(e) => setDays(e.target.value)}
+        <Stack spacing={2} sx={{ width: { xs: "100%", sm: "auto" } }}>
+          {/* Period Selector */}
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ xs: "stretch", sm: "center" }}>
+            <FormControl size="small" sx={{ minWidth: 140 }}>
+              <InputLabel>Período Padrão</InputLabel>
+              <Select
+                value={days}
+                label="Período Padrão"
+                onChange={(e) => {
+                  const newDays = e.target.value;
+                  setDays(newDays);
+                  // Calculate date range from days
+                  const today = new Date();
+                  const start = new Date(today.getTime() - newDays * 24 * 60 * 60 * 1000);
+                  setStartDate(start.toISOString().split("T")[0]);
+                  setEndDate(today.toISOString().split("T")[0]);
+                }}
+              >
+                <MenuItem value={7}>Últimos 7 dias</MenuItem>
+                <MenuItem value={15}>Últimos 15 dias</MenuItem>
+                <MenuItem value={30}>Últimos 30 dias</MenuItem>
+                <MenuItem value={60}>Últimos 60 dias</MenuItem>
+                <MenuItem value={90}>Últimos 90 dias</MenuItem>
+                <MenuItem value={180}>Últimos 180 dias</MenuItem>
+                <MenuItem value={365}>Último ano</MenuItem>
+              </Select>
+            </FormControl>
+            <Typography variant="body2" color="text.secondary" sx={{ display: { xs: "none", sm: "block" } }}>
+              ou
+            </Typography>
+          </Stack>
+
+          {/* Date Range Selectors */}
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ xs: "stretch", sm: "center" }}>
+            <TextField
+              size="small"
+              type="date"
+              label="Data Inicial"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              sx={{ minWidth: 130 }}
+            />
+            <TextField
+              size="small"
+              type="date"
+              label="Data Final"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              sx={{ minWidth: 130 }}
+            />
+            <Button
+              variant="contained"
+              startIcon={<PlayArrowIcon />}
+              onClick={fetchReport}
+              disabled={loading}
+              sx={{ borderRadius: 2, textTransform: "none", fontWeight: 600 }}
             >
-              <MenuItem value={7}>Últimos 7 dias</MenuItem>
-              <MenuItem value={15}>Últimos 15 dias</MenuItem>
-              <MenuItem value={30}>Últimos 30 dias</MenuItem>
-              <MenuItem value={60}>Últimos 60 dias</MenuItem>
-              <MenuItem value={90}>Últimos 90 dias</MenuItem>
-              <MenuItem value={180}>Últimos 180 dias</MenuItem>
-              <MenuItem value={365}>Último ano</MenuItem>
-            </Select>
-          </FormControl>
-          <Button
-            variant="contained"
-            startIcon={<PlayArrowIcon />}
-            onClick={fetchReport}
-            disabled={loading}
-            sx={{ borderRadius: 2, textTransform: "none", fontWeight: 600 }}
-          >
-            {loading ? "Carregando..." : "Gerar Relatório"}
-          </Button>
+              {loading ? "Carregando..." : "Gerar Relatório"}
+            </Button>
+          </Stack>
+
+          {/* Include Import Checkbox */}
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={includeImport}
+                onChange={(e) => setIncludeImport(e.target.checked)}
+                size="small"
+              />
+            }
+            label="Incluir endpoint /api/import"
+            sx={{ ml: 0 }}
+          />
         </Stack>
       </Stack>
 

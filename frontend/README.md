@@ -2,7 +2,7 @@
 
 ![Search Interface](public/search.png)
 
-This React frontend provides a comprehensive interface for managing and searching FoccoERP data. It was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+This React frontend provides a comprehensive interface for managing and searching FoccoERP data. Built with [Vite](https://vitejs.dev/) for fast development and optimized builds.
 
 ## Features
 
@@ -17,24 +17,22 @@ This React frontend provides a comprehensive interface for managing and searchin
 
 In the project directory, you can run:
 
-### `npm start`
+### `npm run dev`
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+Runs the app in development mode with hot module replacement (HMR).\
+Open [http://localhost:5173](http://localhost:5173) to view it in your browser.
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
-
-### `npm test`
-
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+The page will automatically update when you make changes.
 
 ### `npm run build`
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+Builds the app for production to the `dist` folder.\
+Vite optimizes the build with tree-shaking, code-splitting, and minification for the best performance.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+The build is optimized and ready to be deployed!
+
+### `npm run preview`
+
+Preview the production build locally.\
+Useful for testing the optimized build before deployment.
 

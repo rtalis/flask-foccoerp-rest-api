@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import current_app, jsonify, request
 from flask_login import current_user, login_required
@@ -15,10 +15,24 @@ def usage_report():
     if getattr(current_user, 'role', 'viewer') != 'admin':
         return jsonify({'error': 'Forbidden'}), 403
 
-    days = request.args.get('days', 30, type=int)
-    if days < 1 or days > 365:
-        days = 30
-    cutoff = datetime.now() - __import__('datetime').timedelta(days=days)
+    # Parse date parameters
+    start_date_str = request.args.get('start_date')
+    end_date_str = request.args.get('end_date')
+    include_import = request.args.get('include_import', 'false').lower() == 'true'
+    
+    if start_date_str and end_date_str:
+        try:
+            start_date = datetime.fromisoformat(start_date_str)
+            end_date = datetime.fromisoformat(end_date_str)
+        except (ValueError, TypeError):
+            start_date = datetime.now() - timedelta(days=30)
+            end_date = datetime.now()
+    else:
+        days = request.args.get('days', 30, type=int)
+        if days < 1 or days > 365:
+            days = 30
+        start_date = datetime.now() - timedelta(days=days)
+        end_date = datetime.now()
 
     logins_query = (
         db.session.query(
@@ -29,7 +43,8 @@ def usage_report():
         )
         .outerjoin(LoginHistory, and_(
             LoginHistory.user_id == User.id,
-            LoginHistory.login_time >= cutoff
+            LoginHistory.login_time >= start_date,
+            LoginHistory.login_time <= end_date
         ))
         .group_by(User.id, User.username, User.email)
         .all()
@@ -43,7 +58,8 @@ def usage_report():
         )
         .outerjoin(RequestLog, and_(
             RequestLog.user_id == User.id,
-            RequestLog.timestamp >= cutoff
+            RequestLog.timestamp >= start_date,
+            RequestLog.timestamp <= end_date
         ))
         .group_by(User.id, User.username)
         .all()
@@ -54,7 +70,7 @@ def usage_report():
             func.date_trunc('day', LoginHistory.login_time).label('day'),
             func.count(LoginHistory.id).label('count')
         )
-        .filter(LoginHistory.login_time >= cutoff)
+        .filter(and_(LoginHistory.login_time >= start_date, LoginHistory.login_time <= end_date))
         .group_by('day')
         .order_by('day')
         .all()
@@ -65,19 +81,27 @@ def usage_report():
             func.date_trunc('day', RequestLog.timestamp).label('day'),
             func.count(RequestLog.id).label('count')
         )
-        .filter(RequestLog.timestamp >= cutoff)
+        .filter(and_(RequestLog.timestamp >= start_date, RequestLog.timestamp <= end_date))
         .group_by('day')
         .order_by('day')
         .all()
     )
 
-    top_endpoints = (
+    top_endpoints_query = (
         db.session.query(
             RequestLog.endpoint,
             RequestLog.method,
             func.count(RequestLog.id).label('count')
         )
-        .filter(RequestLog.timestamp >= cutoff)
+        .filter(and_(RequestLog.timestamp >= start_date, RequestLog.timestamp <= end_date))
+    )
+    
+    # Filter out api/import by default
+    if not include_import:
+        top_endpoints_query = top_endpoints_query.filter(RequestLog.endpoint != '/api/import')
+    
+    top_endpoints = (
+        top_endpoints_query
         .group_by(RequestLog.endpoint, RequestLog.method)
         .order_by(func.count(RequestLog.id).desc())
         .limit(10)
@@ -101,7 +125,9 @@ def usage_report():
         'daily_logins': [{'date': d.day.isoformat(), 'count': d.count} for d in daily_logins],
         'daily_requests': [{'date': d.day.isoformat(), 'count': d.count} for d in daily_requests],
         'top_endpoints': [{'endpoint': e.endpoint, 'method': e.method, 'count': e.count} for e in top_endpoints],
-        'period_days': days,
+        'start_date': start_date.isoformat(),
+        'end_date': end_date.isoformat(),
+        'include_import': include_import,
     }), 200
 
 
