@@ -77,6 +77,7 @@ function PurchaseRow(props) {
     searchParams = {},
     ignoreDiacritics = false,
     usingEnhanced = false,
+    highlightEnabled = true,
   } = props;
 
   const formatCompanyShort = (codEmp1) => {
@@ -443,9 +444,9 @@ function PurchaseRow(props) {
             px: { xs: 1, sm: 2 },
           }}
         >
-          Pedido de Compra: {shouldHighlightField("cod_pedc", searchParams, usingEnhanced) ? getHighlightedText(purchase.order.cod_pedc, searchQuery, ignoreDiacritics) : purchase.order.cod_pedc}~{" "}
+          Pedido de Compra: {shouldHighlightField("cod_pedc", searchParams, usingEnhanced) ? getHighlightedText(purchase.order.cod_pedc, searchQuery, ignoreDiacritics, highlightEnabled) : purchase.order.cod_pedc}~{" "}
           {purchase.order.fornecedor_id}{" "}
-          {shouldHighlightField("fornecedor_descricao", searchParams, usingEnhanced) ? getHighlightedText(getFirstWords(purchase.order.fornecedor_descricao, 4), searchQuery, ignoreDiacritics) : getFirstWords(purchase.order.fornecedor_descricao, 4)}
+          {shouldHighlightField("fornecedor_descricao", searchParams, usingEnhanced) ? getHighlightedText(getFirstWords(purchase.order.fornecedor_descricao, 4), searchQuery, ignoreDiacritics, highlightEnabled) : getFirstWords(purchase.order.fornecedor_descricao, 4)}
           {canViewFinancials && (
             <>
               {" - "}
@@ -618,7 +619,7 @@ function PurchaseRow(props) {
                               : {}),
                           }}
                         >
-                          {shouldHighlightField("item_id", searchParams, usingEnhanced) ? getHighlightedText(item.item_id, searchQuery, ignoreDiacritics) : item.item_id}
+                          {shouldHighlightField("item_id", searchParams, usingEnhanced) ? getHighlightedText(item.item_id, searchQuery, ignoreDiacritics, highlightEnabled) : item.item_id}
                         </TableCell>
                         <TableCell
                           align="center"
@@ -631,7 +632,7 @@ function PurchaseRow(props) {
                               : {}
                           }
                         >
-                          {shouldHighlightField("descricao", searchParams, usingEnhanced) ? getHighlightedText(item.descricao, searchQuery, ignoreDiacritics) : item.descricao}
+                          {shouldHighlightField("descricao", searchParams, usingEnhanced) ? getHighlightedText(item.descricao, searchQuery, ignoreDiacritics, highlightEnabled) : item.descricao}
                         </TableCell>
                         <TableCell
                           align="center"
@@ -765,7 +766,7 @@ function PurchaseRow(props) {
                                           gap: "4px",
                                         }}
                                       >
-                                        <span>{shouldHighlightField("num_nf", searchParams, usingEnhanced) ? getHighlightedText(nf.num_nf, searchQuery, ignoreDiacritics) : nf.num_nf}</span>
+                                        <span>{shouldHighlightField("num_nf", searchParams, usingEnhanced) ? getHighlightedText(nf.num_nf, searchQuery, ignoreDiacritics, highlightEnabled) : nf.num_nf}</span>
                                         <Tooltip
                                           title={
                                             loadingDanfeNf === nf.num_nf
@@ -949,7 +950,7 @@ function PurchaseRow(props) {
                             color: "#1a1f2e",
                           }}
                         >
-                          Observação: {shouldHighlightField("observacao", searchParams, usingEnhanced) ? getHighlightedText(purchase.order.observacao, searchQuery, ignoreDiacritics) : purchase.order.observacao}
+                          Observação: {shouldHighlightField("observacao", searchParams, usingEnhanced) ? getHighlightedText(purchase.order.observacao, searchQuery, ignoreDiacritics, highlightEnabled) : purchase.order.observacao}
                         </Typography>
                         {canViewFinancials && (
                           <Typography
@@ -1241,6 +1242,7 @@ const UnifiedSearch = () => {
     ignoreDiacritics: true,
     exactSearch: false,
     hideCancelled: false,
+    enableHighlight: true,
   };
 
   const getStoredSearchParams = () => {
@@ -1292,8 +1294,10 @@ const UnifiedSearch = () => {
   const [showFulfilled, setShowFulfilled] = useState(true);
   const [hasSearched, setHasSearched] = useState(false);
   const [nfeFoundForTerm, setNfeFoundForTerm] = useState(null);
+  const [appliedSearchQuery, setAppliedSearchQuery] = useState("");
 
   const usingEnhanced = searchMode === "enhanced";
+  const highlightEnabled = searchParams.enableHighlight !== false;
 
   // Helper: get list of filters that differ from defaults
   const getNonDefaultFilters = () => {
@@ -1671,6 +1675,7 @@ const UnifiedSearch = () => {
     const trimmedQuery = (searchParams.query || "").trim();
     const perPageToUse = perPageOverride ?? perPage;
     setHasSearched(true);
+    setAppliedSearchQuery(trimmedQuery);
     setNfeFoundForTerm(null);
     setNfeBadge?.(false);
 
@@ -2411,6 +2416,21 @@ const UnifiedSearch = () => {
                         </Typography>
                       }
                     />
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          name="enableHighlight"
+                          checked={searchParams.enableHighlight}
+                          onChange={handleChange}
+                          size="small"
+                        />
+                      }
+                      label={
+                        <Typography variant="body2">
+                          Destacar termos buscados
+                        </Typography>
+                      }
+                    />
                   </>
                 )}
               </Grid>
@@ -2463,9 +2483,9 @@ const UnifiedSearch = () => {
             </Typography>
 
             {/* Show search term */}
-            {searchParams.query?.trim() && (
+            {appliedSearchQuery && (
               <Typography variant="body1" color="text.secondary" sx={{ mt: 1 }}>
-                Termo pesquisado: <strong>"{searchParams.query.trim()}"</strong>
+                Termo pesquisado: <strong>"{appliedSearchQuery}"</strong>
               </Typography>
             )}
 
@@ -2691,10 +2711,11 @@ const UnifiedSearch = () => {
                     codEmp1Options={codEmp1Options}
                     canViewFinancials={canViewFinancials}
                     canViewNfes={canViewNfes}
-                    searchQuery={searchParams.query}
+                    searchQuery={appliedSearchQuery}
                     searchParams={searchParams}
                     ignoreDiacritics={searchParams.ignoreDiacritics}
                     usingEnhanced={usingEnhanced}
+                    highlightEnabled={highlightEnabled}
                   />
                 ))}
               </TableBody>

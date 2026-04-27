@@ -22,8 +22,13 @@ const removeDiacritics = (str) => {
  * @param {boolean} ignoreDiacritics - Whether to ignore diacritics in matching
  * @returns {React.ReactNode[]} - Array of text and mark elements
  */
-export const getHighlightedText = (text, searchTerm, ignoreDiacritics = false) => {
-  if (!text || !searchTerm) {
+export const getHighlightedText = (
+  text,
+  searchTerm,
+  ignoreDiacritics = false,
+  enabled = true,
+) => {
+  if (!enabled || !text || !searchTerm) {
     return [text];
   }
 
@@ -35,15 +40,29 @@ export const getHighlightedText = (text, searchTerm, ignoreDiacritics = false) =
   }
 
   let compareText = textStr;
-  let searchTerms = searchStr.split(/\s+/); // Split by whitespace to handle multiple terms
+  let searchTerms = searchStr.split(/\s+/).filter(Boolean); // Split by whitespace to handle multiple terms
 
   if (ignoreDiacritics) {
     compareText = removeDiacritics(textStr);
-    searchTerms = searchTerms.map(term => removeDiacritics(term));
+    searchTerms = searchTerms.map((term) => removeDiacritics(term));
+  }
+
+  if (searchTerms.length === 0) {
+    return [textStr];
+  }
+
+  // Only highlight when all query terms are present in the same text.
+  const compareTextLower = compareText.toLowerCase();
+  const normalizedTerms = [...new Set(searchTerms.map((term) => term.toLowerCase()))];
+  const hasAllTerms = normalizedTerms.every((term) => compareTextLower.includes(term));
+  if (!hasAllTerms) {
+    return [textStr];
   }
 
   // Build regex to match any of the search terms (non-ordered search)
-  const escapedTerms = searchTerms.map(term => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const escapedTerms = normalizedTerms
+    .sort((a, b) => b.length - a.length)
+    .map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const regex = new RegExp(`(${escapedTerms.join("|")})`, "gi");
   
   if (!regex.test(compareText)) {

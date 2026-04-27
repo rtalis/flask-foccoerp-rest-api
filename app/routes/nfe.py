@@ -1374,6 +1374,11 @@ def search_nfe():
                         else None
                     )
 
+                    # Calculate total item price for PO
+                    po_total_price = None
+                    if po_price is not None and po_qty is not None and po_price > 0 and po_qty > 0:
+                        po_total_price = po_price * po_qty
+
                     def _code_match_score(po_code, nfe_code):
                         if not po_code or not _is_valid_code(nfe_code):
                             return None
@@ -1421,14 +1426,40 @@ def search_nfe():
                             else 0.0
                         )
 
-                        # Price gets higher priority when descriptions diverge,
-                        # since unit prices usually vary little for the same item.
-                        if price_score is not None and price_score >= 0.98 and desc_score < 0.45:
+                        # Calculate total item price for NFE
+                        nfe_total_price = None
+                        nfe_qty = (
+                            float(nfe_item_candidate.quantidade_comercial)
+                            if nfe_item_candidate.quantidade_comercial is not None
+                            else None
+                        )
+                        nfe_unit_price = (
+                            float(nfe_item_candidate.valor_unitario_comercial)
+                            if nfe_item_candidate.valor_unitario_comercial is not None
+                            else None
+                        )
+                        if (nfe_unit_price is not None and nfe_qty is not None 
+                            and nfe_unit_price > 0 and nfe_qty > 0):
+                            nfe_total_price = nfe_unit_price * nfe_qty
+
+                        # Calculate total price match score
+                        total_price_score = _closeness(po_total_price, nfe_total_price)
+
+                        # Dynamic weighting: boost price weight when total price matches perfectly
+                        if total_price_score is not None and total_price_score >= 0.99:
+                            # Perfect or near-perfect total price match: give price dominant weight
+                            weight_desc = 0.10
+                            weight_price = 0.75
+                            weight_code = 0.10
+                            weight_qty = 0.05
+                        elif price_score is not None and price_score >= 0.98 and desc_score < 0.45:
+                            # High unit price match with diverging description
                             weight_desc = 0.15
                             weight_price = 0.65
                             weight_code = 0.15
                             weight_qty = 0.05
                         else:
+                            # Default weights
                             weight_desc = 0.45
                             weight_price = 0.35
                             weight_code = 0.15
