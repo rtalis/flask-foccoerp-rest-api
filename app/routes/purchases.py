@@ -18,6 +18,22 @@ def _parse_date(date_obj):
     return str(date_obj)
 
 
+def _format_date_br(date_obj):
+    if not date_obj:
+        return ""
+    if hasattr(date_obj, "strftime"):
+        return date_obj.strftime("%d/%m/%y")
+    return str(date_obj)
+
+
+def _format_datetime_br(date_obj):
+    if not date_obj:
+        return ""
+    if hasattr(date_obj, "strftime"):
+        return date_obj.strftime("%d/%m/%Y %H:%M:%S")
+    return str(date_obj)
+
+
 # PHASE 7 ENDPOINTS
 
 @bp.route('/purchasers', methods=['GET'])
@@ -134,6 +150,112 @@ def search_cod_pedc():
         }
         result.append(order_data)
     return jsonify(result), 200
+
+
+@bp.route('/purchase_report_data', methods=['GET'])
+@login_required
+def get_purchase_report_data():
+    """Return purchase order data optimized for the Oracle-like report."""
+    cod_pedc = request.args.get('cod_pedc')
+    cod_emp1 = request.args.get('cod_emp1')
+
+    if not cod_pedc:
+        return jsonify({'error': 'cod_pedc is required'}), 400
+
+    order_query = PurchaseOrder.query.filter_by(cod_pedc=cod_pedc)
+    if cod_emp1:
+        order_query = order_query.filter_by(cod_emp1=cod_emp1)
+
+    order = order_query.order_by(PurchaseOrder.dt_emis.desc()).first()
+    if not order:
+        return jsonify({'error': 'Purchase order not found'}), 404
+
+    company = Company.query.filter_by(cod_emp1=order.cod_emp1).first()
+    items = (
+        PurchaseItem.query.filter_by(purchase_order_id=order.id)
+        .order_by(PurchaseItem.linha.asc())
+        .all()
+    )
+
+    total_descontos = sum((item.tot_descontos or 0) for item in items)
+    total_acrescimos = sum((item.tot_acrescimos or 0) for item in items)
+    total_frete = 0
+    total_ipi = 0
+
+    item_rows = []
+    for item in items:
+        item_rows.append({
+            'emp': order.cod_emp1 or '',
+            'linha': item.linha,
+            'codigo': item.item_id,
+            'descricao': item.descricao,
+            'unidade_medida': item.unidade_medida,
+            'quantidade': item.quantidade,
+            'qtde_atendida': item.qtde_atendida,
+            'qtde_canc': item.qtde_canc,
+            'preco_unitario': item.preco_unitario,
+            'preco_total': item.total,
+            'dt_entrega': _format_date_br(item.dt_entrega),
+            'perc_ipi': item.perc_ipi,
+            'observacao': '',
+        })
+
+    payload = {
+        'report': {
+            'name': 'RPDC0250_RUAH',
+            'generated_at': _format_datetime_br(datetime.now()),
+            'page': '001',
+            'pages': '001',
+        },
+        'company': {
+            'name': company.name if company else '',
+            'cnpj': company.cnpj if company else '',
+            'inscricao_estadual': company.inscricao_estadual if company else '',
+            'address': company.address if company else '',
+            'city': company.city if company else '',
+            'state': company.state if company else '',
+            'zip_code': company.zip_code if company else '',
+            'phone': company.phone if company else '',
+            'email': company.email if company else '',
+            'cod_emp1': order.cod_emp1,
+        },
+        'order': {
+            'cod_pedc': order.cod_pedc,
+            'dt_emis': _format_date_br(order.dt_emis),
+            'moeda': 'REAL',
+            'fornecedor_id': order.fornecedor_id,
+            'fornecedor_descricao': order.fornecedor_descricao,
+            'fornecedor_cnpj': '',
+            'fornecedor_uf': '',
+            'transportadora': '',
+            'tipo_frete': 'Fob-Contrat.',
+            'tipo_valor': '',
+            'valor_frete': total_frete,
+            'redespacho': '',
+            'comprador': order.func_nome,
+            'contato': order.contato,
+            'talao': '',
+            'observacao': order.observacao,
+            'cf_pgto': order.cf_pgto,
+            'total_bruto': order.total_bruto,
+            'total_liquido': order.total_liquido,
+            'total_final': order.total_pedido_com_ipi or order.total_liquido_ipi or order.total_liquido,
+            'total_ipi': total_ipi,
+            'total_descontos': total_descontos,
+            'total_acrescimos': total_acrescimos,
+            'total_icms_st': 0,
+            'total_frete': total_frete,
+            'items': item_rows,
+        },
+        'observacoes': [
+            f"E mail para XML: {(company.email if company else '') or ''}",
+            'Na observacao da NFE deve constar o numero do pedido de compra.',
+            'A NFE deve ser o espelho do pedido(Constar nosso codigo e descricao dos itens)',
+            'A cobranca bancaria deve acompanhar a NFE.',
+        ],
+    }
+
+    return jsonify(payload), 200
 
 
 @bp.route('/item_details/<id>', methods=['GET'])

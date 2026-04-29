@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Emissão dos Pedidos de Compra</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      background: #fff;
+      color: #000;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 11px;
+    }
+    .page {
+      width: 760px;
+      margin: 0 auto;
+      padding: 10px 20px;
+    }
+    
+    /* Header Structure */
+    .header-grid {
+      display: grid;
+      grid-template-columns: 200px 1fr 200px;
+      align-items: start;
+      margin-bottom: 15px;
+    }
+    
+    /* Updated Logo CSS for Image */
+    .logo {
+      max-width: 160px;
+      max-height: 30px;
+      object-fit: contain;
+      object-position: left top;
+      margin-top: 2px;
+    }
+    
+    .page-title {
+      font-size: 22px;
+      font-weight: bold;
+      text-align: center;
+      margin-top: 0;
+    }
+    .meta-info {
+      text-align: right;
+      font-size: 10px;
+      font-weight: bold;
+      line-height: 1.3;
+    }
+    .meta-info span {
+      font-weight: normal;
+    }
+
+    /* Company Info */
+    .company-info {
+      font-size: 11px;
+      line-height: 1.3;
+      margin-bottom: 5px;
+    }
+    .inline-block {
+      display: inline-block;
+      margin-right: 25px;
+    }
+
+    /* Divider */
+    hr.solid-line {
+      border: none;
+      border-top: 1.5px solid #000;
+      margin: 8px 0;
+    }
+
+    /* Pedido Number */
+    .po-header {
+      font-size: 12px;
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+    .po-header .po-number {
+      color: red;
+      font-size: 14px;
+      margin-left: 30px;
+    }
+
+    /* Main Data Box */
+    .main-box {
+      border: 1.5px solid #000;
+      display: flex;
+      flex-direction: column;
+    }
+    .box-row {
+      display: flex;
+      border-bottom: 1px solid #000;
+      padding: 2px 4px;
+      min-height: 18px;
+    }
+    .box-row:last-child {
+      border-bottom: none;
+    }
+    .col-flex {
+      display: flex;
+      align-items: baseline;
+    }
+    .flex-1 { flex: 1; }
+    .flex-2 { flex: 2; }
+    .flex-3 { flex: 3; }
+    
+    .label {
+      font-weight: bold;
+      margin-right: 4px;
+    }
+    .val {
+      font-weight: normal;
+    }
+
+    /* Totals Box */
+    .totals-wrapper {
+      display: flex;
+      padding: 4px 0;
+      border-top: 1px solid #000;
+      border-bottom: 1px solid #000;
+    }
+    .tot-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 0 10px;
+    }
+    .tot-line {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 2px;
+    }
+    .tot-line .val {
+      text-align: right;
+    }
+    .tot-final-box {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      justify-content: center;
+      flex: 0.8;
+      padding-right: 10px;
+    }
+    .tot-final-box .label {
+      font-size: 13px;
+      margin-bottom: 2px;
+    }
+    .tot-final-box .final-val {
+      color: #0000cc;
+      font-size: 15px;
+      font-weight: bold;
+    }
+
+    /* Vencimentos Table */
+    .venc-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1.5px solid #000;
+      border-top: none;
+      margin-bottom: 10px;
+    }
+    .venc-table thead th {
+      background-color: #e0e0e0;
+      text-align: left;
+      font-weight: bold;
+      padding: 2px 4px;
+      vertical-align: bottom;
+      border-bottom: 1px solid #000;
+    }
+    .venc-table tbody td {
+      padding: 2px 4px;
+      vertical-align: top;
+    }
+
+    /* Items Table */
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      border: 1.5px solid #000;
+    }
+    .items-table thead th {
+      background-color: #e0e0e0;
+      border-bottom: 1.5px solid #000;
+      text-align: left;
+      font-weight: bold;
+      padding: 2px 4px;
+      vertical-align: bottom;
+    }
+    .items-table tbody td {
+      padding: 2px 4px;
+      vertical-align: top;
+    }
+    /* Add line between separate items */
+    .item-separator td {
+      border-bottom: 1px solid #000;
+      padding-bottom: 5px;
+    }
+    .item-start td {
+      padding-top: 5px;
+    }
+    
+    .text-center { text-align: center !important; }
+    .text-right { text-align: right !important; }
+
+    /* Footer / Signatures */
+    .footer-notes {
+      margin-top: 15px;
+      font-weight: bold;
+      line-height: 1.4;
+    }
+    .footer-notes .content {
+      font-weight: normal;
+    }
+
+    .error-msg { display: none; color: red; margin-top: 20px; font-weight: bold; }
+
+    @media print { 
+      @page { size: A4 portrait; margin: 5mm; } 
+      body { margin: 0; } 
+      .page { width: 100%; margin: 0; padding: 0; } 
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    
+    <div class="header-grid">
+      <img class="logo" src="logo.gif" alt="Jacauna" />
+      
+      <div class="page-title">Emissão dos Pedidos de Compra</div>
+      <div class="meta-info">
+        FoccoERP &nbsp; &nbsp; <span id="report-name">RPDC0250_RUAH</span><br>
+        Data: <span id="report-datetime">-</span><br>
+        Pág.: <span id="report-page">001</span> de <span id="report-pages">001</span>
+      </div>
+    </div>
+
+    <div class="company-info">
+      <div>Empresa: <span id="cmp-name">RUAH INDUSTRIA E COMERCIO DE MOVEIS LTDA (1)</span></div>
+      <div>CNPJ <span id="cmp-cnpj">03.875.890/0001-73</span></div>
+      <div>Insc. Estadual: <span id="cmp-ie">062989898</span></div>
+      <div>Endereço: <span id="cmp-address">BR 402 KM 01 GALPÃO 01, SN</span></div>
+      <div>
+        <span class="inline-block">Cidade: <span id="cmp-city">MARCO - CE</span></span>
+        <span class="inline-block">CEP: <span id="cmp-cep">62560000</span></span>
+        <span class="inline-block">Fone: <span id="cmp-phone">88 36641818</span></span>
+      </div>
+      <div>Fax: </div>
+      <div>E-Mail: <span id="cmp-email">nfe@jacauna.com.br</span></div>
+    </div>
+
+    <hr class="solid-line" />
+
+    <div class="po-header">
+      Pedido Compra : <span class="po-number" id="po-cod">-</span>
+    </div>
+
+    <div class="main-box">
+      <div class="box-row">
+        <div class="col-flex flex-2"><span class="label">Emissão :</span> <span class="val" id="po-emissao">-</span></div>
+        <div class="col-flex flex-1 text-right" style="justify-content: flex-end; padding-right: 40px;"><span class="label">Moeda :</span> <span class="val" id="po-moeda">REAL</span></div>
+      </div>
+      
+      <div class="box-row">
+        <div class="col-flex flex-3"><span class="label">Fornecedor :</span> <span class="val" id="fornecedor">-</span></div>
+        <div class="col-flex flex-2"><span class="label">CNPJ :</span> <span class="val" id="fornecedor-cnpj">-</span></div>
+        <div class="col-flex text-center" style="width: 40px;" id="fornecedor-uf"></div>
+      </div>
+      
+      <div class="box-row">
+        <div class="col-flex flex-3"><span class="label">Transportadora :</span> <span class="val" id="transportadora"></span></div>
+        <div class="col-flex text-center" style="width: 40px;" id="transportadora-uf"></div>
+      </div>
+      <div class="box-row">
+        <div class="col-flex flex-1" style="padding-left: 10px;"><span class="label">Tipo de Frete :</span> <span class="val" id="tipo-frete"></span></div>
+        <div class="col-flex flex-1"><span class="label">Tipo de Valor :</span> <span class="val" id="tipo-valor"></span></div>
+        <div class="col-flex flex-1"><span class="label">Valor Frete :</span> <span class="val" id="valor-frete"></span></div>
+      </div>
+      
+      <div class="box-row">
+        <div class="col-flex"><span class="label">Redespacho :</span> <span class="val" id="redespacho"></span></div>
+      </div>
+      <div class="box-row">
+        <div class="col-flex flex-1" style="padding-left: 10px;"><span class="label">Tipo de Frete :</span> <span class="val" id="tipo-frete-2"></span></div>
+        <div class="col-flex flex-1"><span class="label">Tipo de Valor :</span> <span class="val" id="tipo-valor-2"></span></div>
+        <div class="col-flex flex-1"><span class="label">Valor Frete :</span> <span class="val" id="valor-frete-2"></span></div>
+      </div>
+      
+      <div class="box-row">
+        <div class="col-flex flex-2"><span class="label">Comprador :</span> <span class="val" id="comprador">-</span></div>
+        <div class="col-flex flex-1"><span class="label">Contato :</span> <span class="val" id="contato">-</span></div>
+      </div>
+      
+      <div class="box-row" style="align-items: flex-start; padding-bottom: 5px;">
+        <div class="col-flex flex-2" style="align-items: flex-start;">
+            <span class="label">Observação :</span> 
+            <span class="val" id="obs" style="white-space: pre-wrap; margin-left: 4px; margin-top: 1px;">-</span>
+        </div>
+        <div class="col-flex flex-1" style="align-items: flex-start;">
+            <span class="label">Talão :</span> <span class="val" id="talao">-</span>
+        </div>
+      </div>
+      
+      <div class="box-row">
+        <div class="col-flex"><span class="label">Condição Pgto. :</span> <span class="val" id="cond-pgto">-</span></div>
+      </div>
+
+      <div class="box-row totals-wrapper">
+        <div class="tot-col">
+          <div class="tot-line"><span class="label">Total Bruto :</span> <span class="val" id="tot-bruto">0,00</span></div>
+          <div class="tot-line"><span class="label">Total Líquido :</span> <span class="val" id="tot-liq">0,00</span></div>
+        </div>
+        <div class="tot-col">
+          <div class="tot-line"><span class="label">IPI :</span> <span class="val" id="tot-ipi">0,00</span></div>
+          <div class="tot-line"><span class="label">Frete :</span> <span class="val" id="tot-frete">0,00</span></div>
+          <div class="tot-line"><span class="label">ICMS ST :</span> <span class="val" id="tot-icms">0,0000</span></div>
+        </div>
+        <div class="tot-col">
+          <div class="tot-line"><span class="label">Descontos :</span> <span class="val" id="tot-desc">0,00</span></div>
+          <div class="tot-line"><span class="label">Acréscimos :</span> <span class="val" id="tot-acr">0,00</span></div>
+        </div>
+        <div class="tot-final-box">
+          <div class="label">Total Final</div>
+          <div class="final-val" id="tot-final">0,00</div>
+        </div>
+      </div>
+    </div>
+
+    <table class="venc-table">
+      <thead>
+        <tr>
+          <th>Dias</th>
+          <th>Vencimento</th>
+          <th>Tipo<br>Desconto</th>
+          <th>Tipo valor<br>Valor</th>
+          <th>Aplicado<br>Pedido</th>
+          <th class="text-right">Valor</th>
+        </tr>
+      </thead>
+      <tbody id="venc-body">
+        </tbody>
+    </table>
+
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th style="width: 5%;">Emp.<br>Obs.:</th>
+          <th style="width: 6%;">Linha</th>
+          <th style="width: 8%;">Código</th>
+          <th style="width: 25%;">Descrição Técnica</th>
+          <th class="text-center" style="width: 10%;">Entrega</th>
+          <th class="text-center" style="width: 6%;">UM<br>%IPI</th>
+          <th class="text-right" style="width: 12%;">Qtde Total<br>Qtde. Atend.</th>
+          <th class="text-right" style="width: 14%;">Preço Unitário<br>Qtde. Canc.</th>
+          <th class="text-right" style="width: 14%;">Preço Total</th>
+        </tr>
+      </thead>
+      <tbody id="items-body">
+        </tbody>
+    </table>
+
+    <div class="footer-notes">
+      <div>Observações:</div>
+      <div id="notes" class="content"></div>
+    </div>
+
+    <div id="error" class="error-msg"></div>
+  </div>
+
+  <script>
+    const qs = new URLSearchParams(window.location.search);
+    const codPedc = qs.get("cod_pedc");
+    const codEmp1 = qs.get("cod_emp1");
+    const apiUrl = (qs.get("apiUrl") || "").replace(/\/$/, "");
+
+    const brMoney = (value, minDigits = 2) => Number(value || 0).toLocaleString("pt-BR", { minimumFractionDigits: minDigits, maximumFractionDigits: minDigits });
+    const text = (value) => (value === null || value === undefined || value === "" ? "" : String(value));
+    const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+    const showError = (message) => { const error = document.getElementById("error"); error.style.display = "block"; error.textContent = message; };
+
+    const renderVencimentos = (vencimentos) => {
+      const tbody = document.getElementById("venc-body");
+      tbody.innerHTML = "";
+      
+      if (!vencimentos || !vencimentos.length) return;
+
+      vencimentos.forEach((v) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${text(v.dias)}</td>
+          <td>${text(v.vencimento)}</td>
+          <td>${text(v.tipo_desconto)}</td>
+          <td>${text(v.tipo_valor)}</td>
+          <td>${text(v.aplicado)}</td>
+          <td class="text-right">${brMoney(v.valor, 2)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    };
+
+    const renderItems = (items) => {
+      const tbody = document.getElementById("items-body");
+      tbody.innerHTML = "";
+      
+      if (!items || !items.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center" style="padding:15px;">Nenhum item encontrado.</td></tr>';
+        return;
+      }
+      
+      items.forEach((item, index) => {
+        const tr1 = document.createElement("tr");
+        tr1.className = "item-start";
+        tr1.innerHTML = `
+          <td>${text(item.emp)}</td>
+          <td>${text(item.linha)}</td>
+          <td>${text(item.codigo)}</td>
+          <td style="white-space: pre-wrap;">${text(item.descricao)}</td>
+          <td class="text-center"></td>
+          <td class="text-center">${text(item.unidade_medida)}</td>
+          <td class="text-right">${brMoney(item.quantidade, 6)}</td>
+          <td class="text-right">${brMoney(item.preco_unitario, 6)}</td>
+          <td class="text-right">${brMoney(item.preco_total, 2)}</td>
+        `;
+        
+        const tr2 = document.createElement("tr");
+        tr2.className = "item-separator";
+        tr2.innerHTML = `
+          <td colspan="4"></td>
+          <td class="text-center">${text(item.dt_entrega)}</td>
+          <td class="text-center">${text(item.perc_ipi ?? 0)}</td>
+          <td class="text-right">${brMoney(item.qtde_atendida, 6)}</td>
+          <td class="text-right">${brMoney(item.qtde_canc, 6)}</td>
+          <td></td>
+        `;
+        
+        tbody.appendChild(tr1);
+        tbody.appendChild(tr2);
+      });
+    };
+
+    const renderNotes = (notes) => {
+      const container = document.getElementById("notes");
+      container.innerHTML = "";
+      (notes || []).forEach((line) => {
+        const div = document.createElement("div");
+        div.textContent = line;
+        container.appendChild(div);
+      });
+    };
+
+    const buildUrl = () => {
+      if (!apiUrl) return null;
+      const query = new URLSearchParams({ cod_pedc: codPedc || "" });
+      if (codEmp1) query.set("cod_emp1", codEmp1);
+      return `${apiUrl}/api/purchase_report_data?${query.toString()}`;
+    };
+
+    const loadReport = async () => {
+      if (!codPedc) return showError("Parâmetro cod_pedc ausente.");
+      const url = buildUrl();
+      if (!url) return showError("Parâmetro apiUrl ausente.");
+
+      try {
+        const res = await fetch(url, { credentials: "include" });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || "Erro ao carregar dados do relatório");
+        }
+
+        const data = await res.json();
+        const report = data.report || {};
+        const company = data.company || {};
+        const order = data.order || {};
+
+        setText("report-name", text(report.name));
+        setText("report-datetime", text(report.generated_at));
+        setText("report-page", text(report.page || "001"));
+        setText("report-pages", text(report.pages || "001"));
+
+        setText("cmp-name", text(company.name));
+        setText("cmp-cnpj", text(company.cnpj));
+        setText("cmp-ie", text(company.inscricao_estadual));
+        setText("cmp-address", text(company.address));
+        setText("cmp-city", `${text(company.city)}${company.state ? ` - ${company.state}` : ""}`);
+        setText("cmp-cep", text(company.zip_code));
+        setText("cmp-phone", text(company.phone));
+        setText("cmp-email", text(company.email));
+
+        setText("po-cod", text(order.cod_pedc));
+        setText("po-emissao", text(order.dt_emis));
+        setText("po-moeda", text(order.moeda || "REAL"));
+
+        setText("fornecedor", `${text(order.fornecedor_id)} ${text(order.fornecedor_descricao)}`.trim());
+        setText("fornecedor-cnpj", text(order.fornecedor_cnpj));
+        setText("fornecedor-uf", text(order.fornecedor_uf));
+        
+        setText("transportadora", text(order.transportadora));
+        setText("transportadora-uf", text(order.transportadora_uf));
+        setText("tipo-frete", text(order.tipo_frete));
+        setText("tipo-valor", text(order.tipo_valor));
+        setText("valor-frete", text(order.valor_frete) ? brMoney(order.valor_frete, 2) : "");
+        
+        setText("redespacho", text(order.redespacho));
+        setText("tipo-frete-2", text(order.tipo_frete));
+        setText("tipo-valor-2", text(order.tipo_valor));
+        setText("valor-frete-2", text(order.valor_frete) ? brMoney(order.valor_frete, 2) : "");
+        
+        setText("comprador", text(order.comprador));
+        setText("contato", text(order.contato));
+        setText("talao", text(order.talao));
+        setText("obs", text(order.observacao));
+        setText("cond-pgto", text(order.cf_pgto));
+
+        setText("tot-bruto", brMoney(order.total_bruto, 2));
+        setText("tot-ipi", brMoney(order.total_ipi, 2));
+        setText("tot-desc", brMoney(order.total_descontos, 2));
+        setText("tot-liq", brMoney(order.total_liquido, 2));
+        setText("tot-frete", brMoney(order.total_frete, 2));
+        setText("tot-acr", brMoney(order.total_acrescimos, 2));
+        setText("tot-icms", brMoney(order.total_icms_st, 4));
+        setText("tot-final", brMoney(order.total_final, 2));
+
+        renderVencimentos(order.vencimentos || []);
+        renderItems(order.items || []);
+        renderNotes(data.observacoes || []);
+      } catch (err) {
+        showError(err.message || "Falha ao montar relatório");
+      }
+    };
+
+    loadReport();
+  </script>
+</body>
+</html>

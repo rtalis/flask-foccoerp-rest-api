@@ -38,8 +38,10 @@ import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import ReceiptIcon from "@mui/icons-material/Receipt";
 import SettingsIcon from "@mui/icons-material/Settings";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import TrackedCompanies from "./TrackedCompanies";
 import NFEDetails from "./NFEDetails";
+import { openPurchaseOrderReport } from "../utils/openPurchaseOrderReport";
 
 const NFESearch = () => {
   // LocalStorage keys
@@ -425,6 +427,18 @@ const NFESearch = () => {
       setError("Erro ao carregar DANFE");
     } finally {
       setLoadingDanfe(null);
+    }
+  };
+
+  const handleOpenPurchaseReport = (codPedc, codEmp1) => {
+    try {
+      openPurchaseOrderReport({
+        codPedc,
+        codEmp1,
+        apiUrl: import.meta.env.VITE_API_URL,
+      });
+    } catch (err) {
+      setError(err.message || "Erro ao abrir relatorio do pedido");
     }
   };
 
@@ -1215,34 +1229,58 @@ const NFESearch = () => {
 
                                   return (
                                     <Stack
-                                      direction="row"
+                                      direction="column"
                                       spacing={0.5}
                                       justifyContent="center"
                                       alignItems="center"
-                                      flexWrap="wrap"
                                       useFlexGap
                                     >
                                       {visibleOrders.map((order) => (
-                                        <Tooltip
+                                        <Box
                                           key={`${order.cod_emp1}-${order.cod_pedc}`}
-                                          title="Abrir detalhes do pedido"
+                                          sx={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 0.5,
+                                          }}
                                         >
-                                          <Chip
-                                            size="small"
-                                            label={`${order.cod_emp1 || "-"} / ${order.cod_pedc}`}
-                                            color="primary"
-                                            variant="outlined"
-                                            clickable
-                                            onClick={() =>
-                                              handleOpenPurchaseDetails(
-                                                nfeKey,
-                                                nfe,
-                                                order.cod_pedc,
-                                                order.cod_emp1,
-                                              )
-                                            }
-                                          />
-                                        </Tooltip>
+                                          {order.has_estimated && (
+                                            <AutoAwesomeIcon
+                                              sx={{ fontSize: 16, color: "warning.main" }}
+                                            />
+                                          )}
+                                          <Tooltip title="Abrir detalhes do pedido">
+                                            <Chip
+                                              size="small"
+                                              label={`${order.cod_emp1 || "-"} / ${order.cod_pedc}`}
+                                              color={order.has_estimated ? "warning" : "primary"}
+                                              variant="outlined"
+                                              clickable
+                                              onClick={() =>
+                                                handleOpenPurchaseDetails(
+                                                  nfeKey,
+                                                  nfe,
+                                                  order.cod_pedc,
+                                                  order.cod_emp1,
+                                                )
+                                              }
+                                            />
+                                          </Tooltip>
+                                          <Tooltip title="Abrir relatorio do pedido">
+                                            <IconButton
+                                              size="small"
+                                              color="primary"
+                                              onClick={() =>
+                                                handleOpenPurchaseReport(
+                                                  order.cod_pedc,
+                                                  order.cod_emp1,
+                                                )
+                                              }
+                                            >
+                                              <DescriptionOutlinedIcon sx={{ fontSize: 16 }} />
+                                            </IconButton>
+                                          </Tooltip>
+                                        </Box>
                                       ))}
                                       {extraCount > 0 && (
                                         <Tooltip
@@ -1258,13 +1296,6 @@ const NFESearch = () => {
                                             size="small"
                                             label={`+${extraCount}`}
                                             variant="outlined"
-                                          />
-                                        </Tooltip>
-                                      )}
-                                      {summary.hasEstimated && (
-                                        <Tooltip title="Há itens com match estimado">
-                                          <AutoAwesomeIcon
-                                            sx={{ fontSize: 16, color: "secondary.main" }}
                                           />
                                         </Tooltip>
                                       )}
