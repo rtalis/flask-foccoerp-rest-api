@@ -196,6 +196,21 @@ class PurchaseAdjustment(db.Model):
     
     purchase_order = db.relationship('PurchaseOrder', backref=db.backref('adjustments', lazy=True))
 
+class PurchasePaymentInstallment(db.Model):
+    __tablename__ = 'purchase_payment_installments'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    purchase_order_id = db.Column(db.Integer, db.ForeignKey('purchase_orders.id'), nullable=False)
+    cod_emp1 = db.Column(db.String(50), nullable=True)
+    cod_pedc = db.Column(db.String(50), nullable=True)
+    num_dias = db.Column(db.Integer, nullable=True)
+    dt_vcto = db.Column(db.Date, nullable=True)
+    tpedc_id1 = db.Column(db.String(50), nullable=True)
+    id3 = db.Column(db.String(50), nullable=True)
+    
+    purchase_order = db.relationship('PurchaseOrder', backref=db.backref('installments', lazy=True, cascade="all, delete-orphan"))
+
+
 
 
 class NFEData(db.Model):

@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="pt-BR">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -8,6 +9,7 @@
     * {
       box-sizing: border-box;
     }
+
     body {
       margin: 0;
       background: #fff;
@@ -15,12 +17,13 @@
       font-family: Arial, Helvetica, sans-serif;
       font-size: 11px;
     }
+
     .page {
       width: 760px;
       margin: 0 auto;
       padding: 10px 20px;
     }
-    
+
     /* Header Structure */
     .header-grid {
       display: grid;
@@ -28,8 +31,7 @@
       align-items: start;
       margin-bottom: 15px;
     }
-    
-    /* Updated Logo CSS for Image */
+
     .logo {
       max-width: 160px;
       max-height: 30px;
@@ -37,19 +39,21 @@
       object-position: left top;
       margin-top: 2px;
     }
-    
+
     .page-title {
       font-size: 22px;
       font-weight: bold;
       text-align: center;
       margin-top: 0;
     }
+
     .meta-info {
       text-align: right;
       font-size: 10px;
       font-weight: bold;
       line-height: 1.3;
     }
+
     .meta-info span {
       font-weight: normal;
     }
@@ -60,6 +64,7 @@
       line-height: 1.3;
       margin-bottom: 5px;
     }
+
     .inline-block {
       display: inline-block;
       margin-right: 25px;
@@ -68,7 +73,7 @@
     /* Divider */
     hr.solid-line {
       border: none;
-      border-top: 1.5px solid #000;
+      border-top: 1px solid #000;
       margin: 8px 0;
     }
 
@@ -78,6 +83,7 @@
       font-weight: bold;
       margin-bottom: 8px;
     }
+
     .po-header .po-number {
       color: red;
       font-size: 14px;
@@ -86,31 +92,46 @@
 
     /* Main Data Box */
     .main-box {
-      border: 1.5px solid #000;
+      border: 1px solid #000;
       display: flex;
       flex-direction: column;
+      /* Ensures seamless connection to Vencimentos table */
+      margin-bottom: 0;
     }
+
     .box-row {
       display: flex;
       border-bottom: 1px solid #000;
       padding: 2px 4px;
       min-height: 18px;
     }
+
     .box-row:last-child {
       border-bottom: none;
     }
+
     .col-flex {
       display: flex;
       align-items: baseline;
     }
-    .flex-1 { flex: 1; }
-    .flex-2 { flex: 2; }
-    .flex-3 { flex: 3; }
-    
+
+    .flex-1 {
+      flex: 1;
+    }
+
+    .flex-2 {
+      flex: 2;
+    }
+
+    .flex-3 {
+      flex: 3;
+    }
+
     .label {
       font-weight: bold;
       margin-right: 4px;
     }
+
     .val {
       font-weight: normal;
     }
@@ -120,22 +141,27 @@
       display: flex;
       padding: 4px 0;
       border-top: 1px solid #000;
-      border-bottom: 1px solid #000;
+      /* Removes bottom border so it shares seamlessly with venc-table */
+      border-bottom: none;
     }
+
     .tot-col {
       flex: 1;
       display: flex;
       flex-direction: column;
       padding: 0 10px;
     }
+
     .tot-line {
       display: flex;
       justify-content: space-between;
       margin-bottom: 2px;
     }
+
     .tot-line .val {
       text-align: right;
     }
+
     .tot-final-box {
       display: flex;
       flex-direction: column;
@@ -144,10 +170,12 @@
       flex: 0.8;
       padding-right: 10px;
     }
+
     .tot-final-box .label {
       font-size: 13px;
       margin-bottom: 2px;
     }
+
     .tot-final-box .final-val {
       color: #0000cc;
       font-size: 15px;
@@ -158,10 +186,11 @@
     .venc-table {
       width: 100%;
       border-collapse: collapse;
-      border: 1.5px solid #000;
-      border-top: none;
+      border: 1px solid #000;
+      border-top: 1px solid #000;
       margin-bottom: 10px;
     }
+
     .venc-table thead th {
       background-color: #e0e0e0;
       text-align: left;
@@ -170,6 +199,7 @@
       vertical-align: bottom;
       border-bottom: 1px solid #000;
     }
+
     .venc-table tbody td {
       padding: 2px 4px;
       vertical-align: top;
@@ -180,57 +210,84 @@
       width: 100%;
       border-collapse: collapse;
       margin-top: 10px;
-      border: 1.5px solid #000;
+      border: 1px solid #000;
     }
+
     .items-table thead th {
       background-color: #e0e0e0;
-      border-bottom: 1.5px solid #000;
+      border-bottom: 1px solid #000;
       text-align: left;
       font-weight: bold;
       padding: 2px 4px;
       vertical-align: bottom;
     }
+
     .items-table tbody td {
       padding: 2px 4px;
       vertical-align: top;
     }
-    /* Add line between separate items */
+
     .item-separator td {
       border-bottom: 1px solid #000;
       padding-bottom: 5px;
     }
+
     .item-start td {
       padding-top: 5px;
     }
-    
-    .text-center { text-align: center !important; }
-    .text-right { text-align: right !important; }
 
-    /* Footer / Signatures */
+    .text-center {
+      text-align: center !important;
+    }
+
+    .text-right {
+      text-align: right !important;
+    }
+
+    /* Footer Notes */
     .footer-notes {
       margin-top: 15px;
       font-weight: bold;
       line-height: 1.4;
     }
+
     .footer-notes .content {
       font-weight: normal;
     }
 
-    .error-msg { display: none; color: red; margin-top: 20px; font-weight: bold; }
 
-    @media print { 
-      @page { size: A4 portrait; margin: 5mm; } 
-      body { margin: 0; } 
-      .page { width: 100%; margin: 0; padding: 0; } 
+    .error-msg {
+      display: none;
+      color: red;
+      margin-top: 20px;
+      font-weight: bold;
+    }
+
+    @media print {
+      @page {
+        size: A4 portrait;
+        margin: 5mm;
+      }
+
+      body {
+        margin: 0;
+      }
+
+      .page {
+        width: 100%;
+        margin: 0;
+        padding: 0;
+      }
     }
   </style>
 </head>
+
 <body>
   <div class="page">
-    
+
     <div class="header-grid">
       <img class="logo" src="logo.gif" alt="Jacauna" />
-      
+
       <div class="page-title">Emissão dos Pedidos de Compra</div>
       <div class="meta-info">
         FoccoERP &nbsp; &nbsp; <span id="report-name">RPDC0250_RUAH</span><br>
@@ -261,58 +318,73 @@
 
     <div class="main-box">
       <div class="box-row">
-        <div class="col-flex flex-2"><span class="label">Emissão :</span> <span class="val" id="po-emissao">-</span></div>
-        <div class="col-flex flex-1 text-right" style="justify-content: flex-end; padding-right: 40px;"><span class="label">Moeda :</span> <span class="val" id="po-moeda">REAL</span></div>
+        <div class="col-flex flex-2"><span class="label">Emissão :</span> <span class="val" id="po-emissao">-</span>
+        </div>
+        <div class="col-flex flex-1 text-right" style="justify-content: flex-end; padding-right: 40px;"><span
+            class="label">Moeda :</span> <span class="val" id="po-moeda">REAL</span></div>
       </div>
-      
+
       <div class="box-row">
-        <div class="col-flex flex-3"><span class="label">Fornecedor :</span> <span class="val" id="fornecedor">-</span></div>
-        <div class="col-flex flex-2"><span class="label">CNPJ :</span> <span class="val" id="fornecedor-cnpj">-</span></div>
+        <div class="col-flex flex-3"><span class="label">Fornecedor :</span> <span class="val" id="fornecedor">-</span>
+        </div>
+        <div class="col-flex flex-2"><span class="label">CNPJ :</span> <span class="val" id="fornecedor-cnpj">-</span>
+        </div>
         <div class="col-flex text-center" style="width: 40px;" id="fornecedor-uf"></div>
       </div>
-      
+
       <div class="box-row">
-        <div class="col-flex flex-3"><span class="label">Transportadora :</span> <span class="val" id="transportadora"></span></div>
+        <div class="col-flex flex-3"><span class="label">Transportadora :</span> <span class="val"
+            id="transportadora"></span></div>
         <div class="col-flex text-center" style="width: 40px;" id="transportadora-uf"></div>
       </div>
       <div class="box-row">
-        <div class="col-flex flex-1" style="padding-left: 10px;"><span class="label">Tipo de Frete :</span> <span class="val" id="tipo-frete"></span></div>
-        <div class="col-flex flex-1"><span class="label">Tipo de Valor :</span> <span class="val" id="tipo-valor"></span></div>
-        <div class="col-flex flex-1"><span class="label">Valor Frete :</span> <span class="val" id="valor-frete"></span></div>
+        <div class="col-flex flex-1" style="padding-left: 10px;"><span class="label">Tipo de Frete :</span> <span
+            class="val" id="tipo-frete"></span></div>
+        <div class="col-flex flex-1"><span class="label">Tipo de Valor :</span> <span class="val"
+            id="tipo-valor"></span></div>
+        <div class="col-flex flex-1"><span class="label">Valor Frete :</span> <span class="val" id="valor-frete"></span>
+        </div>
       </div>
-      
+
       <div class="box-row">
         <div class="col-flex"><span class="label">Redespacho :</span> <span class="val" id="redespacho"></span></div>
       </div>
       <div class="box-row">
-        <div class="col-flex flex-1" style="padding-left: 10px;"><span class="label">Tipo de Frete :</span> <span class="val" id="tipo-frete-2"></span></div>
-        <div class="col-flex flex-1"><span class="label">Tipo de Valor :</span> <span class="val" id="tipo-valor-2"></span></div>
-        <div class="col-flex flex-1"><span class="label">Valor Frete :</span> <span class="val" id="valor-frete-2"></span></div>
+        <div class="col-flex flex-1" style="padding-left: 10px;"><span class="label">Tipo de Frete :</span> <span
+            class="val" id="tipo-frete-2"></span></div>
+        <div class="col-flex flex-1"><span class="label">Tipo de Valor :</span> <span class="val"
+            id="tipo-valor-2"></span></div>
+        <div class="col-flex flex-1"><span class="label">Valor Frete :</span> <span class="val"
+            id="valor-frete-2"></span></div>
       </div>
-      
+
       <div class="box-row">
-        <div class="col-flex flex-2"><span class="label">Comprador :</span> <span class="val" id="comprador">-</span></div>
+        <div class="col-flex flex-2"><span class="label">Comprador :</span> <span class="val" id="comprador">-</span>
+        </div>
         <div class="col-flex flex-1"><span class="label">Contato :</span> <span class="val" id="contato">-</span></div>
       </div>
-      
+
       <div class="box-row" style="align-items: flex-start; padding-bottom: 5px;">
         <div class="col-flex flex-2" style="align-items: flex-start;">
-            <span class="label">Observação :</span> 
-            <span class="val" id="obs" style="white-space: pre-wrap; margin-left: 4px; margin-top: 1px;">-</span>
+          <span class="label">Observação :</span>
+          <span class="val" id="obs" style="white-space: pre-wrap; margin-left: 4px; margin-top: 1px;">-</span>
         </div>
         <div class="col-flex flex-1" style="align-items: flex-start;">
-            <span class="label">Talão :</span> <span class="val" id="talao">-</span>
+          <span class="label">Talão :</span> <span class="val" id="talao">-</span>
         </div>
       </div>
-      
+
       <div class="box-row">
-        <div class="col-flex"><span class="label">Condição Pgto. :</span> <span class="val" id="cond-pgto">-</span></div>
+        <div class="col-flex"><span class="label">Condição Pgto. :</span> <span class="val" id="cond-pgto">-</span>
+        </div>
       </div>
 
       <div class="box-row totals-wrapper">
         <div class="tot-col">
-          <div class="tot-line"><span class="label">Total Bruto :</span> <span class="val" id="tot-bruto">0,00</span></div>
-          <div class="tot-line"><span class="label">Total Líquido :</span> <span class="val" id="tot-liq">0,00</span></div>
+          <div class="tot-line"><span class="label">Total Bruto :</span> <span class="val" id="tot-bruto">0,00</span>
+          </div>
+          <div class="tot-line"><span class="label">Total Líquido :</span> <span class="val" id="tot-liq">0,00</span>
+          </div>
         </div>
         <div class="tot-col">
           <div class="tot-line"><span class="label">IPI :</span> <span class="val" id="tot-ipi">0,00</span></div>
@@ -331,6 +403,14 @@
     </div>
 
     <table class="venc-table">
+      <colgroup>
+        <col style="width: 8%;" />
+        <col style="width: 25%;" />
+        <col style="width: 15%;" />
+        <col style="width: 17%;" />
+        <col style="width: 15%;" />
+        <col style="width: 20%;" />
+      </colgroup>
       <thead>
         <tr>
           <th>Dias</th>
@@ -342,7 +422,7 @@
         </tr>
       </thead>
       <tbody id="venc-body">
-        </tbody>
+      </tbody>
     </table>
 
     <table class="items-table">
@@ -360,7 +440,7 @@
         </tr>
       </thead>
       <tbody id="items-body">
-        </tbody>
+      </tbody>
     </table>
 
     <div class="footer-notes">
@@ -385,7 +465,7 @@
     const renderVencimentos = (vencimentos) => {
       const tbody = document.getElementById("venc-body");
       tbody.innerHTML = "";
-      
+
       if (!vencimentos || !vencimentos.length) return;
 
       vencimentos.forEach((v) => {
@@ -396,7 +476,7 @@
           <td>${text(v.tipo_desconto)}</td>
           <td>${text(v.tipo_valor)}</td>
           <td>${text(v.aplicado)}</td>
-          <td class="text-right">${brMoney(v.valor, 2)}</td>
+          <td class="text-right">${v.valor ? brMoney(v.valor, 2) : ''}</td>
         `;
         tbody.appendChild(tr);
       });
@@ -405,12 +485,12 @@
     const renderItems = (items) => {
       const tbody = document.getElementById("items-body");
       tbody.innerHTML = "";
-      
+
       if (!items || !items.length) {
         tbody.innerHTML = '<tr><td colspan="9" class="text-center" style="padding:15px;">Nenhum item encontrado.</td></tr>';
         return;
       }
-      
+
       items.forEach((item, index) => {
         const tr1 = document.createElement("tr");
         tr1.className = "item-start";
@@ -425,7 +505,7 @@
           <td class="text-right">${brMoney(item.preco_unitario, 6)}</td>
           <td class="text-right">${brMoney(item.preco_total, 2)}</td>
         `;
-        
+
         const tr2 = document.createElement("tr");
         tr2.className = "item-separator";
         tr2.innerHTML = `
@@ -436,14 +516,15 @@
           <td class="text-right">${brMoney(item.qtde_canc, 6)}</td>
           <td></td>
         `;
-        
+
         tbody.appendChild(tr1);
         tbody.appendChild(tr2);
       });
     };
-
+    
     const renderNotes = (notes) => {
       const container = document.getElementById("notes");
+      if (!container) return;
       container.innerHTML = "";
       (notes || []).forEach((line) => {
         const div = document.createElement("div");
@@ -451,6 +532,7 @@
         container.appendChild(div);
       });
     };
+
 
     const buildUrl = () => {
       if (!apiUrl) return null;
@@ -497,18 +579,18 @@
         setText("fornecedor", `${text(order.fornecedor_id)} ${text(order.fornecedor_descricao)}`.trim());
         setText("fornecedor-cnpj", text(order.fornecedor_cnpj));
         setText("fornecedor-uf", text(order.fornecedor_uf));
-        
+
         setText("transportadora", text(order.transportadora));
         setText("transportadora-uf", text(order.transportadora_uf));
         setText("tipo-frete", text(order.tipo_frete));
         setText("tipo-valor", text(order.tipo_valor));
         setText("valor-frete", text(order.valor_frete) ? brMoney(order.valor_frete, 2) : "");
-        
+
         setText("redespacho", text(order.redespacho));
         setText("tipo-frete-2", text(order.tipo_frete));
         setText("tipo-valor-2", text(order.tipo_valor));
         setText("valor-frete-2", text(order.valor_frete) ? brMoney(order.valor_frete, 2) : "");
-        
+
         setText("comprador", text(order.comprador));
         setText("contato", text(order.contato));
         setText("talao", text(order.talao));
@@ -535,4 +617,5 @@
     loadReport();
   </script>
 </body>
+
 </html>

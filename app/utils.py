@@ -59,16 +59,26 @@ def parse_xml(xml_data):
                 import re
                 name = re.sub(r'\s*\(\d+\)\s*$', '', name).strip()
                 
+                cnpj_val = g_cod_emp1.find('CNPJ1').text if g_cod_emp1.find('CNPJ1') is not None else (g_cod_emp1.find('CNPJ').text if g_cod_emp1.find('CNPJ') is not None else None)
+                
+                phone_val = g_cod_emp1.find('CF_TEL').text if g_cod_emp1.find('CF_TEL') is not None else None
+                if phone_val:
+                    phone_val = re.sub(r'^Fone:\s*', '', phone_val).strip()
+                    
+                email_val = g_cod_emp1.find('CF_EMAIL').text if g_cod_emp1.find('CF_EMAIL') is not None else None
+
                 company_data = {
                     'cod_emp1': empr_id.strip(),
                     'name': name,
-                    'cnpj': g_cod_emp1.find('CNPJ').text if g_cod_emp1.find('CNPJ') is not None else None,
+                    'cnpj': cnpj_val,
                     'address': g_cod_emp1.find('ENDERECO').text if g_cod_emp1.find('ENDERECO') is not None else None,
                     'neighborhood': g_cod_emp1.find('BAIRRO').text if g_cod_emp1.find('BAIRRO') is not None else None,
                     'city': g_cod_emp1.find('CIDADE').text if g_cod_emp1.find('CIDADE') is not None else None,
                     'state': g_cod_emp1.find('UF').text if g_cod_emp1.find('UF') is not None else None,
                     'zip_code': g_cod_emp1.find('CEP').text if g_cod_emp1.find('CEP') is not None else None,
                     'inscricao_estadual': g_cod_emp1.find('INSEST').text if g_cod_emp1.find('INSEST') is not None else None,
+                    'phone': phone_val,
+                    'email': email_val,
                 }
                 companies.append(company_data)
 
@@ -86,6 +96,23 @@ def parse_xml(xml_data):
                         'vlr1': float(dctacr.find('VLR1').text.replace(',', '.')) if dctacr.find('VLR1') is not None and dctacr.find('VLR1').text else None,
                         'order_index': idx,
                     })
+            installments = []
+            pgto_list = order.find('LIST_TPEDC_PGTO')
+            if pgto_list is not None:
+                for pgto in pgto_list.findall('TPEDC_PGTO'):
+                    num_dias = pgto.find('NUM_DIAS').text if pgto.find('NUM_DIAS') is not None else None
+                    if num_dias:
+                        try:
+                            num_dias = int(num_dias)
+                        except ValueError:
+                            num_dias = None
+                    installments.append({
+                        'num_dias': num_dias,
+                        'dt_vcto': pgto.find('DT_VCTO').text if pgto.find('DT_VCTO') is not None else None,
+                        'tpedc_id1': pgto.find('TPEDC_ID1').text if pgto.find('TPEDC_ID1') is not None else None,
+                        'id3': pgto.find('ID3').text if pgto.find('ID3') is not None else None,
+                    })
+
             order_data = {
                 'cod_pedc': cod_pedc,
                 'dt_emis': order.find('DT_EMIS').text if order.find('DT_EMIS') is not None else None,
@@ -103,6 +130,7 @@ def parse_xml(xml_data):
                 'cf_pgto': order.find('CF_PGTO').text if order.find('CF_PGTO') is not None else None,
                 'cod_emp1': order.find('EMPR_ID').text if order.find('EMPR_ID') is not None else None,
                 'adjustments': adjustments,
+                'installments': installments,
                 'items': []
             }
 
@@ -148,6 +176,7 @@ def format_for_db(data):
     formatted_orders = []
     formatted_items = []
     formatted_adjustments = []
+    formatted_installments = []
 
     try:
 
@@ -181,6 +210,17 @@ def format_for_db(data):
                     **adj
                 })
 
+            for inst in order.get('installments', []):
+                dt_vcto = _parse_date(inst.get('dt_vcto'))
+                formatted_installments.append({
+                    'cod_pedc': cod_pedc,
+                    'cod_emp1': order['cod_emp1'],
+                    'num_dias': inst.get('num_dias'),
+                    'dt_vcto': dt_vcto,
+                    'tpedc_id1': inst.get('tpedc_id1'),
+                    'id3': inst.get('id3'),
+                })
+
             for item in order['items']:
                 item_delivered = _parse_date(item.get('dt_entrega'))
                 formatted_items.append({
@@ -207,7 +247,7 @@ def format_for_db(data):
                     'cod_emp1': item['cod_emp1']
                 })
 
-        return formatted_orders, formatted_items, formatted_adjustments
+        return formatted_orders, formatted_items, formatted_adjustments, formatted_installments
     except Exception:
         raise Exception('Failed to format data for DB')
 
@@ -264,7 +304,7 @@ def import_ruah(file_content):
     try:
         data = parse_xml(file_content)
 
-        # Process company data - create if not exists
+        # Process company data - create or update
         companies_data = data.get('companies', [])
         if companies_data:
             cod_emp1_list = [c['cod_emp1'] for c in companies_data if c.get('cod_emp1')]
@@ -288,11 +328,24 @@ def import_ruah(file_content):
                         state=company_data.get('state'),
                         zip_code=company_data.get('zip_code'),
                         inscricao_estadual=company_data.get('inscricao_estadual'),
+                        phone=company_data.get('phone'),
+                        email=company_data.get('email'),
                     )
                     db.session.add(company)
                     companies_created += 1
+                else:
+                    comp = existing_companies_map[cod_emp1]
+                    comp.name = company_data.get('name') or comp.name
+                    comp.cnpj = company_data.get('cnpj') or comp.cnpj
+                    comp.phone = company_data.get('phone') or comp.phone
+                    comp.email = company_data.get('email') or comp.email
+                    comp.address = company_data.get('address') or comp.address
+                    comp.city = company_data.get('city') or comp.city
+                    comp.state = company_data.get('state') or comp.state
+                    comp.zip_code = company_data.get('zip_code') or comp.zip_code
+                    comp.inscricao_estadual = company_data.get('inscricao_estadual') or comp.inscricao_estadual
 
-        formatted_orders, formatted_items, formatted_adjustments = format_for_db(data)
+        formatted_orders, formatted_items, formatted_adjustments, formatted_installments = format_for_db(data)
 
         # Group items and adjustments once to avoid repeatedly scanning entire lists per order.
         items_by_key = defaultdict(list)
@@ -304,6 +357,11 @@ def import_ruah(file_content):
         for adj in formatted_adjustments:
             key = (adj['cod_pedc'], adj['cod_emp1'])
             adjustments_by_key[key].append(adj)
+
+        installments_by_key = defaultdict(list)
+        for inst in formatted_installments:
+            key = (inst['cod_pedc'], inst['cod_emp1'])
+            installments_by_key[key].append(inst)
 
         # Bulk fetch existing orders - need to match by both cod_pedc AND cod_emp1
         incoming_keys = [(o['cod_pedc'], o['cod_emp1']) for o in formatted_orders]
@@ -361,6 +419,8 @@ def import_ruah(file_content):
         if orders_to_update_ids:
             PurchaseItem.query.filter(PurchaseItem.purchase_order_id.in_(orders_to_update_ids)).delete(synchronize_session=False)
             PurchaseAdjustment.query.filter(PurchaseAdjustment.purchase_order_id.in_(orders_to_update_ids)).delete(synchronize_session=False)
+            from app.models import PurchasePaymentInstallment
+            PurchasePaymentInstallment.query.filter(PurchasePaymentInstallment.purchase_order_id.in_(orders_to_update_ids)).delete(synchronize_session=False)
         
         # Flush to ensure new orders get proper IDs
         db.session.flush()
@@ -409,6 +469,20 @@ def import_ruah(file_content):
                     order_index=adj_data['order_index']
                 )
                 db.session.add(adjustment)
+
+            order_installments = installments_by_key.get(order_key, [])
+            for inst_data in order_installments:
+                from app.models import PurchasePaymentInstallment
+                installment = PurchasePaymentInstallment(
+                    purchase_order=order,
+                    cod_pedc=inst_data['cod_pedc'],
+                    cod_emp1=inst_data['cod_emp1'],
+                    num_dias=inst_data['num_dias'],
+                    dt_vcto=inst_data['dt_vcto'],
+                    tpedc_id1=inst_data['tpedc_id1'],
+                    id3=inst_data['id3']
+                )
+                db.session.add(installment)
 
             order.is_fulfilled = check_order_fulfillment_memory(order_items)
 

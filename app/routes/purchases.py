@@ -200,6 +200,30 @@ def get_purchase_report_data():
             'observacao': '',
         })
 
+    from app.models import PurchasePaymentInstallment, PurchaseAdjustment
+    installments_query = PurchasePaymentInstallment.query.filter_by(purchase_order_id=order.id).order_by(PurchasePaymentInstallment.num_dias).all()
+    adjustments_query = PurchaseAdjustment.query.filter_by(purchase_order_id=order.id).all()
+    
+    vencimentos_list = []
+    for inst in installments_query:
+        vencimentos_list.append({
+            'dias': inst.num_dias,
+            'vencimento': _format_date_br(inst.dt_vcto) if inst.dt_vcto else '',
+            'tipo_desconto': '',
+            'tipo_valor': '',
+            'aplicado': '',
+            'valor': ''
+        })
+    for adj in adjustments_query:
+        vencimentos_list.append({
+            'dias': '',
+            'vencimento': '',
+            'tipo_desconto': adj.tp_dctacr1 or '',
+            'tipo_valor': adj.tp_vlr1 or '',
+            'aplicado': adj.tp_apl or '',
+            'valor': adj.vlr1 or 0
+        })
+
     payload = {
         'report': {
             'name': 'RPDC0250_RUAH',
@@ -246,12 +270,16 @@ def get_purchase_report_data():
             'total_icms_st': 0,
             'total_frete': total_frete,
             'items': item_rows,
+            'vencimentos': vencimentos_list,
         },
         'observacoes': [
             f"E mail para XML: {(company.email if company else '') or ''}",
             'Na observacao da NFE deve constar o numero do pedido de compra.',
             'A NFE deve ser o espelho do pedido(Constar nosso codigo e descricao dos itens)',
             'A cobranca bancaria deve acompanhar a NFE.',
+            'O pedido só deve ser faturado no dia da coleta/embarque do material, caso ocorra diferença a mesma deve ser considerada nos vencimentos dos títulos, realizando a postergação do mesmo.',
+            'A Data de Entrega indica quando o material deve ser entregue na Ruah, desconsiderando sua Logística, favor contatar o transportador/setor de compras Ruah para que a mesma esteja disponível conforme programado.',
+            'O não cumprimento da Data de Entrega pode incidir em penalização do Fornecedor em caso de parada de produção, repassando o custo da mesma.'
         ],
     }
 

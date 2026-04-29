@@ -111,6 +111,7 @@ def get_quotation_items():
                 'item_id': quotation.item_id,
                 'descricao': quotation.descricao,
                 'quantidade': quotation.quantidade,
+                'unidade_medida': quotation.unidade_medida,
                 'dt_emissao': quotation.dt_emissao,
                 'last_purchase': last_purchase_data,
                 'fornecedores': []
