@@ -210,8 +210,8 @@ def get_purchase_report_data():
     installments_query = PurchasePaymentInstallment.query.filter_by(purchase_order_id=order.id).order_by(PurchasePaymentInstallment.num_dias).all()
     adjustments_query = PurchaseAdjustment.query.filter_by(purchase_order_id=order.id).all()
     
-    total_descontos = sum((item.tot_descontos or 0) for item in items)
-    total_acrescimos = sum((item.tot_acrescimos or 0) for item in items)
+    total_descontos = 0
+    total_acrescimos = 0
     base_value = sum((item.total or 0) for item in items)
 
     for adj in adjustments_query:
