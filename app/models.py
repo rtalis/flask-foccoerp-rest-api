@@ -70,6 +70,7 @@ class PurchaseItem(db.Model):
     qtde_atendida = db.Column(db.Float, nullable=True)
     qtde_saldo = db.Column(db.Float, nullable=True)
     cod_emp1 = db.Column(db.String, nullable=True)
+    observacao = db.Column(db.String, nullable=True)
 
     
 class NFEntry(db.Model):

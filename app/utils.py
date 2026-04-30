@@ -178,7 +178,8 @@ def parse_xml(xml_data):
                     'perc_toler': float(item.find('PERC_TOLER').text.replace(',', '.')) if item.find('PERC_TOLER') is not None and item.find('PERC_TOLER').text else None,
                     'qtde_atendida': float(item.find('QTDE_ATENDIDA').text.replace(',', '.')) if item.find('QTDE_ATENDIDA') is not None and item.find('QTDE_ATENDIDA').text else None,
                     'qtde_saldo': float(item.find('QTDE_SALDO').text.replace(',', '.')) if item.find('QTDE_SALDO') is not None and item.find('QTDE_SALDO').text else None,
-                    'cod_emp1': item.find('COD_EMP1').text if item.find('COD_EMP1') is not None else None
+                    'cod_emp1': item.find('COD_EMP1').text if item.find('COD_EMP1') is not None else None,
+                    'observacao': item.find('OBS').text if item.find('OBS') is not None else None
                 }
                 order_data['items'].append(item_data)
 
@@ -282,7 +283,8 @@ def format_for_db(data):
                     'qtde_atendida': item['qtde_atendida'],
                     'qtde_saldo': item['qtde_saldo'],
                     'purchase_order_id': cod_pedc,
-                    'cod_emp1': item['cod_emp1']
+                    'cod_emp1': item['cod_emp1'],
+                    'observacao': item.get('observacao')
                 })
 
         return formatted_orders, formatted_items, formatted_adjustments, formatted_installments
@@ -509,7 +511,8 @@ def import_ruah(file_content):
                     perc_toler=item_data['perc_toler'],
                     qtde_atendida=item_data['qtde_atendida'],
                     qtde_saldo=item_data['qtde_saldo'],
-                    cod_emp1=item_data['cod_emp1']
+                    cod_emp1=item_data['cod_emp1'],
+                    observacao=item_data.get('observacao')
                 )
                 itemcount += 1
                 db.session.add(item)

@@ -203,7 +203,7 @@ def get_purchase_report_data():
             'preco_total': item.total,
             'dt_entrega': _format_date_br(item.dt_entrega),
             'perc_ipi': item.perc_ipi,
-            'observacao': '',
+            'observacao': item.observacao or '',
         })
 
     from app.models import PurchasePaymentInstallment, PurchaseAdjustment
@@ -231,15 +231,12 @@ def get_purchase_report_data():
         vencimentos_list.append({
             'dias': inst.num_dias,
             'vencimento': _format_date_br(inst.dt_vcto) if inst.dt_vcto else '',
-            'tipo_desconto': '',
-            'tipo_valor': '',
-            'aplicado': '',
             'valor': ''
         })
+
+    ajustes_list = []
     for adj in adjustments_query:
-        vencimentos_list.append({
-            'dias': '',
-            'vencimento': '',
+        ajustes_list.append({
             'tipo_desconto': adj.tp_dctacr1 or '',
             'tipo_valor': adj.tp_vlr1 or '',
             'aplicado': adj.tp_apl or '',
@@ -297,6 +294,7 @@ def get_purchase_report_data():
             'total_frete': total_frete,
             'items': item_rows,
             'vencimentos': vencimentos_list,
+            'ajustes': ajustes_list,
         },
         'observacoes': [
             f"E mail para XML: {(company.email if company else '') or ''}",
