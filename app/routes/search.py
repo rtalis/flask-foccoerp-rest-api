@@ -108,7 +108,7 @@ def _build_purchase_payload(items):
         if order_key not in grouped_results:
             adjustments = getattr(order, 'adjustments', [])
             base_total = order.total_pedido_com_ipi or 0
-            adjusted_total = apply_adjustments(base_total, adjustments)
+            adjusted_total = apply_adjustments(base_total, adjustments) + (order.vlr_frete_tra or 0)
 
             grouped_results[order_key] = {
                 'order': {
@@ -140,6 +140,25 @@ def _build_purchase_payload(items):
                     'cf_pgto': order.cf_pgto,
                     'is_fulfilled': order.is_fulfilled,
                     'cod_emp1': order.cod_emp1,
+                    'vlr_icms_st': order.vlr_icms_st,
+                    'moeped': order.moeped,
+                    'for_uf': order.for_uf,
+                    'tra_cod': order.tra_cod,
+                    'tra_descricao': order.tra_descricao,
+                    'tra_uf': order.tra_uf,
+                    'red_cod': order.red_cod,
+                    'red_descricao2': order.red_descricao2,
+                    'red_uf': order.red_uf,
+                    'tp_frete_tra': order.tp_frete_tra,
+                    'tp_vlr_frete_tra': order.tp_vlr_frete_tra,
+                    'moetra': order.moetra,
+                    'vlr_frete_tra': order.vlr_frete_tra,
+                    'tp_frete_red': order.tp_frete_red,
+                    'tp_vlr_frete_red': order.tp_vlr_frete_red,
+                    'moered': order.moered,
+                    'vlr_frete_red': order.vlr_frete_red,
+                    'num_talao': order.num_talao,
+                    'tipo': order.tipo,
                     'total_items_in_order': len(order.items),
                     'nfes': [
                         {

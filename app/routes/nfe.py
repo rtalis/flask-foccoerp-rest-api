@@ -1549,7 +1549,7 @@ def search_nfe():
                         # Calculate adjusted total from adjustments
                         adjustments = getattr(po, 'adjustments', [])
                         base_total = po.total_pedido_com_ipi or 0
-                        adjusted_total = apply_adjustments(base_total, adjustments)
+                        adjusted_total = apply_adjustments(base_total, adjustments) + (po.vlr_frete_tra or 0)
                         
                         purchase_info = {
                             'cod_pedc': po.cod_pedc,
@@ -1558,6 +1558,25 @@ def search_nfe():
                             'dt_emis': po.dt_emis.isoformat() if po.dt_emis else None,
                             'total_pedido': adjusted_total,
                             'func_nome': po.func_nome,
+                            'vlr_icms_st': po.vlr_icms_st,
+                            'moeped': po.moeped,
+                            'for_uf': po.for_uf,
+                            'tra_cod': po.tra_cod,
+                            'tra_descricao': po.tra_descricao,
+                            'tra_uf': po.tra_uf,
+                            'red_cod': po.red_cod,
+                            'red_descricao2': po.red_descricao2,
+                            'red_uf': po.red_uf,
+                            'tp_frete_tra': po.tp_frete_tra,
+                            'tp_vlr_frete_tra': po.tp_vlr_frete_tra,
+                            'moetra': po.moetra,
+                            'vlr_frete_tra': po.vlr_frete_tra,
+                            'tp_frete_red': po.tp_frete_red,
+                            'tp_vlr_frete_red': po.tp_vlr_frete_red,
+                            'moered': po.moered,
+                            'vlr_frete_red': po.vlr_frete_red,
+                            'num_talao': po.num_talao,
+                            'tipo': po.tipo,
                             'item_descricao': item.descricao if item else None,
                             'linha': entry.linha,
                             'quantidade': item.quantidade if item else None,

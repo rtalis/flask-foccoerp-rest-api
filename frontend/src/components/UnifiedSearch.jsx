@@ -103,10 +103,10 @@ function PurchaseRow(props) {
   const [loadingDanfeNf, setLoadingDanfeNf] = useState(null);
   const [nfeChecked, setNfeChecked] = useState({});
   const [matchingInProgress, setMatchingInProgress] = useState(false);
-  
+
   const [localItems, setLocalItems] = useState(purchase.items);
   const [loadingAllItems, setLoadingAllItems] = useState(false);
-  
+
   useEffect(() => {
     setLocalItems(purchase.items);
   }, [purchase.items]);
@@ -169,9 +169,9 @@ function PurchaseRow(props) {
   const fetchNfeData = async () => {
     setLoadingNfe(true);
     try {
-      
+
       const response = await axios.get(
-        `${import.meta.env.VITE_API_URL}/api/nfe_by_purchase`, 
+        `${import.meta.env.VITE_API_URL}/api/nfe_by_purchase`,
         {
           params: {
             cod_pedc: purchase.order.cod_pedc,
@@ -417,8 +417,7 @@ function PurchaseRow(props) {
           [nfe.id]: false,
         }));
         alert(
-          `Erro ao confirmar a nota fiscal: ${
-            error.response?.data?.error || error.message
+          `Erro ao confirmar a nota fiscal: ${error.response?.data?.error || error.message
           }`,
         );
       } finally {
@@ -623,9 +622,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}
                           }
                         >
@@ -639,9 +638,9 @@ function PurchaseRow(props) {
                             "&:hover": { textDecoration: "underline" },
                             ...(isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}),
                           }}
                         >
@@ -652,9 +651,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}
                           }
                         >
@@ -665,9 +664,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}
                           }
                         >
@@ -680,9 +679,9 @@ function PurchaseRow(props) {
                               sx={
                                 isFullyCanceled
                                   ? {
-                                      textDecoration: "line-through",
-                                      color: "#9e9e9e",
-                                    }
+                                    textDecoration: "line-through",
+                                    color: "#9e9e9e",
+                                  }
                                   : {}
                               }
                             >
@@ -693,9 +692,9 @@ function PurchaseRow(props) {
                               sx={
                                 isFullyCanceled
                                   ? {
-                                      textDecoration: "line-through",
-                                      color: "#9e9e9e",
-                                    }
+                                    textDecoration: "line-through",
+                                    color: "#9e9e9e",
+                                  }
                                   : {}
                               }
                             >
@@ -708,9 +707,9 @@ function PurchaseRow(props) {
                               sx={
                                 isFullyCanceled
                                   ? {
-                                      textDecoration: "line-through",
-                                      color: "#9e9e9e",
-                                    }
+                                    textDecoration: "line-through",
+                                    color: "#9e9e9e",
+                                  }
                                   : {}
                               }
                             >
@@ -723,9 +722,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}
                           }
                         >
@@ -736,9 +735,9 @@ function PurchaseRow(props) {
                           sx={
                             isFullyCanceled
                               ? {
-                                  textDecoration: "line-through",
-                                  color: "#9e9e9e",
-                                }
+                                textDecoration: "line-through",
+                                color: "#9e9e9e",
+                              }
                               : {}
                           }
                         >
@@ -749,8 +748,8 @@ function PurchaseRow(props) {
                                   {nf.dt_ent ? formatDate(nf.dt_ent) : ""}
                                   {nf.qtde
                                     ? ` (${formatNumber(
-                                        normalizeNumber(nf?.qtde),
-                                      )} ${item.unidade_medida})`
+                                      normalizeNumber(nf?.qtde),
+                                    )} ${item.unidade_medida})`
                                     : ""}
                                 </>
                               )}
@@ -763,9 +762,9 @@ function PurchaseRow(props) {
                             sx={
                               isFullyCanceled
                                 ? {
-                                    textDecoration: "line-through",
-                                    color: "#9e9e9e",
-                                  }
+                                  textDecoration: "line-through",
+                                  color: "#9e9e9e",
+                                }
                                 : {}
                             }
                           >
@@ -854,11 +853,10 @@ function PurchaseRow(props) {
                                         <Tooltip
                                           title={`NF estimada por IA (${item.estimated_nfe.match_score?.toFixed(
                                             0,
-                                          )}% match)${
-                                            item.estimated_nfe.nfe_fornecedor
-                                              ? ` - ${item.estimated_nfe.nfe_fornecedor}`
-                                              : ""
-                                          }`}
+                                          )}% match)${item.estimated_nfe.nfe_fornecedor
+                                            ? ` - ${item.estimated_nfe.nfe_fornecedor}`
+                                            : ""
+                                            }`}
                                         >
                                           <span
                                             style={{
@@ -896,7 +894,7 @@ function PurchaseRow(props) {
                                               sx={{ padding: "2px" }}
                                             >
                                               {loadingDanfeNf ===
-                                              nfeNum.trim() ? (
+                                                nfeNum.trim() ? (
                                                 <CircularProgress size={16} />
                                               ) : (
                                                 <PictureAsPdfIcon
@@ -1036,9 +1034,9 @@ function PurchaseRow(props) {
                               color: "#1a1f2e",
                             }}
                           >
+                            Valor itens:{" "}
+                            {formatCurrency(purchase.order.total_pedido_com_ipi)}{" | "}
                             Valor total:{" "}
-                            {formatCurrency(purchase.order.total_pedido_com_ipi)}{" "}
-                            Valor com ajustes:{" "}
                             {formatCurrency(purchase.order.adjusted_total)}
                           </Typography>
                         )}
@@ -1090,8 +1088,8 @@ function PurchaseRow(props) {
                           <strong>Data Emissão:</strong>{" "}
                           {nfe.data_emissao
                             ? new Date(nfe.data_emissao).toLocaleDateString(
-                                "pt-BR",
-                              )
+                              "pt-BR",
+                            )
                             : ""}
                         </Typography>
                         <Typography variant="body2">
@@ -1240,7 +1238,7 @@ const UnifiedSearch = () => {
         setUserCapabilities(['view_financials', 'view_nfes']);
       }
     } else {
-        setUserCapabilities(['view_financials', 'view_nfes']); // Fallback to all if not set yet
+      setUserCapabilities(['view_financials', 'view_nfes']); // Fallback to all if not set yet
     }
 
     const storedFilters = localStorage.getItem('userDataFilters');
@@ -2730,7 +2728,7 @@ const UnifiedSearch = () => {
               )}
               {hasDataFilters && (
                 <span style={{ color: "#d32f2f", marginLeft: "8px", fontWeight: "bold" }}>
-                   - Há limitações de resultados para esse usuário.
+                  - Há limitações de resultados para esse usuário.
                 </span>
               )}
             </Typography>
