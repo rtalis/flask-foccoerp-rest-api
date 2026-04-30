@@ -27,7 +27,7 @@
     /* Header Structure */
     .header-grid {
       display: grid;
-      grid-template-columns: 200px 1fr 200px;
+      grid-template-columns: 200px 1fr 220px;
       align-items: start;
       margin-bottom: 15px;
     }
@@ -41,7 +41,7 @@
     }
 
     .page-title {
-      font-size: 22px;
+      font-size: 19px;
       font-weight: bold;
       text-align: center;
       margin-top: 0;
@@ -521,7 +521,7 @@
         tbody.appendChild(tr2);
       });
     };
-    
+
     const renderNotes = (notes) => {
       const container = document.getElementById("notes");
       if (!container) return;
@@ -587,9 +587,9 @@
         setText("valor-frete", text(order.valor_frete) ? brMoney(order.valor_frete, 2) : "");
 
         setText("redespacho", text(order.redespacho));
-        setText("tipo-frete-2", text(order.tipo_frete));
-        setText("tipo-valor-2", text(order.tipo_valor));
-        setText("valor-frete-2", text(order.valor_frete) ? brMoney(order.valor_frete, 2) : "");
+        setText("tipo-frete-2", text(order.tipo_frete_2));
+        setText("tipo-valor-2", text(order.tipo_valor_2));
+        setText("valor-frete-2", text(order.valor_frete_2) ? brMoney(order.valor_frete_2, 2) : "");
 
         setText("comprador", text(order.comprador));
         setText("contato", text(order.contato));

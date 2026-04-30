@@ -170,17 +170,23 @@ def get_purchase_report_data():
     if not order:
         return jsonify({'error': 'Purchase order not found'}), 404
 
+    from app.models import Supplier
     company = Company.query.filter_by(cod_emp1=order.cod_emp1).first()
+    supplier = None
+    if order.fornecedor_id:
+        supplier = Supplier.query.filter(
+            (Supplier.id_for == order.fornecedor_id) |
+            (Supplier.cod_for == str(order.fornecedor_id))
+        ).first()
     items = (
         PurchaseItem.query.filter_by(purchase_order_id=order.id)
         .order_by(PurchaseItem.linha.asc())
         .all()
     )
 
-    total_descontos = sum((item.tot_descontos or 0) for item in items)
-    total_acrescimos = sum((item.tot_acrescimos or 0) for item in items)
-    total_frete = 0
-    total_ipi = 0
+    # total_descontos and total_acrescimos will be calculated with adjustments below
+    total_frete = (order.vlr_frete_tra or 0) + (order.vlr_frete_red or 0)
+    total_ipi = sum(((item.total or 0) * (item.perc_ipi or 0) / 100) for item in items)
 
     item_rows = []
     for item in items:
@@ -203,6 +209,22 @@ def get_purchase_report_data():
     from app.models import PurchasePaymentInstallment, PurchaseAdjustment
     installments_query = PurchasePaymentInstallment.query.filter_by(purchase_order_id=order.id).order_by(PurchasePaymentInstallment.num_dias).all()
     adjustments_query = PurchaseAdjustment.query.filter_by(purchase_order_id=order.id).all()
+    
+    total_descontos = sum((item.tot_descontos or 0) for item in items)
+    total_acrescimos = sum((item.tot_acrescimos or 0) for item in items)
+    base_value = sum((item.total or 0) for item in items)
+
+    for adj in adjustments_query:
+        amount = 0
+        if adj.tp_vlr1 == 'Percentual':
+            amount = base_value * ((adj.vlr1 or 0) / 100)
+        elif adj.tp_vlr1 == 'Valor':
+            amount = adj.vlr1 or 0
+            
+        if adj.tp_dctacr1 == 'Desconto':
+            total_descontos += amount
+        elif adj.tp_dctacr1 == 'Acréscimo':
+            total_acrescimos += amount
     
     vencimentos_list = []
     for inst in installments_query:
@@ -246,28 +268,32 @@ def get_purchase_report_data():
         'order': {
             'cod_pedc': order.cod_pedc,
             'dt_emis': _format_date_br(order.dt_emis),
-            'moeda': 'REAL',
+            'moeda': order.moeped or 'REAL',
             'fornecedor_id': order.fornecedor_id,
             'fornecedor_descricao': order.fornecedor_descricao,
-            'fornecedor_cnpj': '',
-            'fornecedor_uf': '',
-            'transportadora': '',
-            'tipo_frete': 'Fob-Contrat.',
-            'tipo_valor': '',
-            'valor_frete': total_frete,
-            'redespacho': '',
+            'fornecedor_cnpj': supplier.nvl_forn_cnpj_forn_cpf if supplier else '',
+            'fornecedor_uf': order.for_uf or '',
+            'transportadora': f"{order.tra_cod}  {order.tra_descricao}".strip() if order.tra_cod else (order.tra_descricao or ''),
+            'transportadora_uf': order.tra_uf or '',
+            'tipo_frete': order.tp_frete_tra or '',
+            'tipo_valor': order.tp_vlr_frete_tra or '',
+            'valor_frete': order.vlr_frete_tra or total_frete,
+            'redespacho': f"{order.red_cod}  {order.red_descricao2}".strip() if order.red_cod else (order.red_descricao2 or ''),
+            'tipo_frete_2': order.tp_frete_red or '',
+            'tipo_valor_2': order.tp_vlr_frete_red or '',
+            'valor_frete_2': order.vlr_frete_red or '',
             'comprador': order.func_nome,
             'contato': order.contato,
-            'talao': '',
+            'talao': order.num_talao or '',
             'observacao': order.observacao,
             'cf_pgto': order.cf_pgto,
             'total_bruto': order.total_bruto,
             'total_liquido': order.total_liquido,
-            'total_final': order.total_pedido_com_ipi or order.total_liquido_ipi or order.total_liquido,
+            'total_final': (order.total_pedido_com_ipi or order.total_liquido_ipi or order.total_liquido or 0) + (order.vlr_frete_tra or 0),
             'total_ipi': total_ipi,
             'total_descontos': total_descontos,
             'total_acrescimos': total_acrescimos,
-            'total_icms_st': 0,
+            'total_icms_st': order.vlr_icms_st or 0,
             'total_frete': total_frete,
             'items': item_rows,
             'vencimentos': vencimentos_list,

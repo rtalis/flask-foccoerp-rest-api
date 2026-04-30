@@ -6,6 +6,7 @@ import "./UnifiedSearch.css";
 
 import { exportPurchaseOrdersToExcel } from "../utils/exportPurchaseOrdersExcel";
 import { getHighlightedText, shouldHighlightField } from "../utils/highlightUtils";
+import { openPurchaseOrderReport } from "../utils/openPurchaseOrderReport";
 
 import {
   Table,
@@ -46,6 +47,7 @@ import {
   AccordionDetails,
   Skeleton,
   Tooltip,
+  SvgIcon,
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
@@ -60,6 +62,12 @@ import TuneIcon from "@mui/icons-material/Tune";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import ScheduleIcon from "@mui/icons-material/Schedule";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
+
+const PedIcon = (props) => (
+  <SvgIcon {...props} viewBox="0 0 24 24">
+    <path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z M11.5 9.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5z M12.5 7h3v1h-1.5v1.5h1.5v1h-1.5v1.5h1.5v1h-3z M21.5 11.5c0 .83-.67 1.5-1.5 1.5h-2.5V7H20c.83 0 1.5.67 1.5 1.5z M9 9.5h1v-1H9z M19 11.5h1v-3h-1z M4 6H2v14c0 1.1.9 2 2 2h14v-2H4z" />
+  </SvgIcon>
+);
 
 function PurchaseRow(props) {
   const {
@@ -1032,12 +1040,41 @@ function PurchaseRow(props) {
                               fontWeight: "bold",
                               textAlign: "right",
                               color: "#1a1f2e",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 1,
                             }}
                           >
                             Valor itens:{" "}
                             {formatCurrency(purchase.order.total_pedido_com_ipi)}{" | "}
                             Valor total:{" "}
                             {formatCurrency(purchase.order.adjusted_total)}
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<PedIcon />}
+                              onClick={() => {
+                                try {
+                                  openPurchaseOrderReport({
+                                    codPedc: purchase.order.cod_pedc,
+                                    codEmp1: purchase.order.cod_emp1,
+                                    apiUrl: import.meta.env.VITE_API_URL,
+                                  });
+                                } catch (e) {
+                                  alert(e.message);
+                                }
+                              }}
+                              sx={{
+                                textTransform: "none",
+                                fontSize: "11px",
+                                padding: "2px 8px",
+                                minWidth: "auto",
+                                whiteSpace: "nowrap",
+                                ml: 1,
+                              }}
+                            >
+                              Ver pedido de compra
+                            </Button>
                           </Typography>
                         )}
                       </Box>
