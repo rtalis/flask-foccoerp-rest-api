@@ -1058,7 +1058,6 @@ function PurchaseRow(props) {
                                   openPurchaseOrderReport({
                                     codPedc: purchase.order.cod_pedc,
                                     codEmp1: purchase.order.cod_emp1,
-                                    apiUrl: import.meta.env.VITE_API_URL,
                                   });
                                 } catch (e) {
                                   alert(e.message);

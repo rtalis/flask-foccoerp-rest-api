@@ -516,7 +516,20 @@
     const qs = new URLSearchParams(window.location.search);
     const codPedc = qs.get("cod_pedc");
     const codEmp1 = qs.get("cod_emp1");
-    const apiUrl = (qs.get("apiUrl") || "").replace(/\/$/, "");
+    function getApiUrl() {
+      const stored = localStorage.getItem('VITE_API_URL') || sessionStorage.getItem('VITE_API_URL');
+      if (stored && (stored.startsWith('http://localhost') || stored.startsWith('http://127.0.0.1') || stored.startsWith('https://'))) {
+        return stored.replace(/\/$/, "");
+      }
+
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return 'http://localhost:5000';
+      }
+
+      return `https://${window.location.hostname}`;
+    }
+
+    const apiUrl = getApiUrl();
 
     const brMoney = (value, minDigits = 2) => Number(value || 0).toLocaleString("pt-BR", { minimumFractionDigits: minDigits, maximumFractionDigits: minDigits });
     const text = (value) => (value === null || value === undefined || value === "" ? "" : String(value));
