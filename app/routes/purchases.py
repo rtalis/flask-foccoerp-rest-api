@@ -186,7 +186,9 @@ def get_purchase_report_data():
 
     # total_descontos and total_acrescimos will be calculated with adjustments below
     total_frete = (order.vlr_frete_tra or 0) + (order.vlr_frete_red or 0)
-    total_ipi = sum(((item.total or 0) * (item.perc_ipi or 0) / 100) for item in items)
+
+    total_ipi = order.total_liquido_ipi
+
 
     item_rows = []
     for item in items:
@@ -242,6 +244,9 @@ def get_purchase_report_data():
             'aplicado': adj.tp_apl or '',
             'valor': adj.vlr1 or 0
         })
+    
+    adjusted_total = apply_adjustments(base_value, adjustments_query) + (order.vlr_frete_tra or 0) + total_ipi
+
 
     payload = {
         'report': {
@@ -286,7 +291,7 @@ def get_purchase_report_data():
             'cf_pgto': order.cf_pgto,
             'total_bruto': order.total_bruto,
             'total_liquido': order.total_liquido,
-            'total_final': (order.total_pedido_com_ipi or order.total_liquido_ipi or order.total_liquido or 0) + (order.vlr_frete_tra or 0),
+            'total_final': adjusted_total,
             'total_ipi': total_ipi,
             'total_descontos': total_descontos,
             'total_acrescimos': total_acrescimos,
@@ -304,6 +309,14 @@ def get_purchase_report_data():
             'O pedido só deve ser faturado no dia da coleta/embarque do material, caso ocorra diferença a mesma deve ser considerada nos vencimentos dos títulos, realizando a postergação do mesmo.',
             'A Data de Entrega indica quando o material deve ser entregue na Ruah, desconsiderando sua Logística, favor contatar o transportador/setor de compras Ruah para que a mesma esteja disponível conforme programado.',
             'O não cumprimento da Data de Entrega pode incidir em penalização do Fornecedor em caso de parada de produção, repassando o custo da mesma.'
+            '.',
+            '.',
+            '.',
+            '.',
+            '.',
+            '__________________________________________________________',
+            f'{company.name if company else ""}'   
+
         ],
     }
 

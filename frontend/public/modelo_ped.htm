@@ -16,6 +16,8 @@
       color: #000;
       font-family: Arial, Helvetica, sans-serif;
       font-size: 10px;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
 
     .page {
@@ -281,14 +283,45 @@
       font-weight: bold;
     }
 
+    /* Floating Print Button */
+    .fab-print {
+      position: fixed;
+      bottom: 30px;
+      right: 30px;
+      width: 60px;
+      height: 60px;
+      background-color: #0056b3;
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+      cursor: pointer;
+      border: none;
+      z-index: 1000;
+      transition: background-color 0.3s;
+    }
+
+    .fab-print:hover {
+      background-color: #004494;
+    }
+
+    .fab-print svg {
+      width: 28px;
+      height: 28px;
+      fill: currentColor;
+    }
+
     @media print {
       @page {
         size: A4 portrait;
-        margin: 5mm;
+        margin: 0;
+        /* Hides default browser header and footer */
       }
 
       body {
-        margin: 0;
+        margin: 5mm;
       }
 
       .page {
@@ -296,11 +329,21 @@
         margin: 0;
         padding: 0;
       }
+
+      .fab-print {
+        display: none !important;
+      }
     }
   </style>
 </head>
 
 <body>
+  <button class="fab-print" onclick="window.print()" title="Imprimir Pedido" aria-label="Imprimir Pedido">
+    <svg viewBox="0 0 24 24">
+      <path
+        d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z" />
+    </svg>
+  </button>
   <div class="page">
 
     <div class="header-grid">
@@ -492,33 +535,32 @@
 
       table.classList.add("visible");
 
-      // Render installments
-      vencimentos.forEach((v) => {
+      const maxLen = Math.max(vencimentos.length, ajustes.length);
+
+      for (let i = 0; i < maxLen; i++) {
+        const v = vencimentos[i] || {};
+        const a = ajustes[i] || {};
+
+        let valStr = "";
+        if (v.valor && a.valor) {
+          valStr = `${brMoney(v.valor, 2)}<br>${brMoney(a.valor, 2)}`;
+        } else if (v.valor) {
+          valStr = brMoney(v.valor, 2);
+        } else if (a.valor) {
+          valStr = brMoney(a.valor, 2);
+        }
+
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${text(v.dias)}</td>
           <td>${text(v.vencimento)}</td>
-          <td></td>
-          <td></td>
-          <td></td>
-          <td class="text-right">${v.valor ? brMoney(v.valor, 2) : ''}</td>
-        `;
-        tbody.appendChild(tr);
-      });
-
-      // Render adjustments
-      ajustes.forEach((a) => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td></td>
-          <td></td>
           <td>${text(a.tipo_desconto)}</td>
           <td>${text(a.tipo_valor)}</td>
           <td>${text(a.aplicado)}</td>
-          <td class="text-right">${a.valor ? brMoney(a.valor, 2) : ''}</td>
+          <td class="text-right">${valStr}</td>
         `;
         tbody.appendChild(tr);
-      });
+      }
     };
 
     const renderItems = (items) => {
