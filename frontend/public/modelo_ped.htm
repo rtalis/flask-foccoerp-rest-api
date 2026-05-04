@@ -32,7 +32,7 @@
       border-collapse: collapse;
     }
 
-    table.print-wrapper > tbody > tr > td {
+    table.print-wrapper>tbody>tr>td {
       padding: 0;
       border: none;
     }
@@ -327,7 +327,8 @@
     @media print {
       @page {
         size: A4 portrait;
-        margin: 0;
+        margin: 0 2cm 0 5mm;
+        /* Native left/right margins, 0 top/bottom to hide URLs */
       }
 
       body {
@@ -346,11 +347,22 @@
         border-collapse: collapse;
       }
 
+      table.print-wrapper>thead {
+        display: table-header-group;
+      }
+
+      table.print-wrapper>tfoot {
+        display: table-footer-group;
+      }
+
+      table.print-wrapper>thead>tr>td {
+        height: 1cm;
+        border: none;
+        padding: 0;
+      }
+
       table.print-wrapper>tbody>tr>td {
-        padding-top: 1cm;
-        padding-right: 2cm;
-        padding-left: 5mm;
-        padding-bottom: 0;
+        padding: 0;
         border: none;
       }
 
@@ -375,6 +387,11 @@
     </svg>
   </button>
   <table class="print-wrapper">
+    <thead>
+      <tr>
+        <td>&nbsp;</td>
+      </tr>
+    </thead>
     <tbody>
       <tr>
         <td>
@@ -567,7 +584,7 @@
     </tbody>
     <tfoot>
       <tr>
-        <td></td>
+        <td>&nbsp;</td>
       </tr>
     </tfoot>
   </table>
