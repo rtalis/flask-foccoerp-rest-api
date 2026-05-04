@@ -1420,7 +1420,7 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
         if not text:
             return set()
         patterns = [
-            r'(?:pedido|ped|po|order|ord|pc)[:\s#]*(\d{4,})',
+            r'(?:pedido|ped|oc|ordem|ord|pc)[:\s#]*(\d{4,})',
             r'(?:p/c)[:\s#]*(\d{4,})',
             r'\b(\d{5,8})\b',
         ]

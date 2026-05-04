@@ -26,6 +26,17 @@
       padding: 8px 15px;
     }
 
+    table.print-wrapper {
+      width: 100%;
+      border: none;
+      border-collapse: collapse;
+    }
+
+    table.print-wrapper > tbody > tr > td {
+      padding: 0;
+      border: none;
+    }
+
     /* Header Structure */
     .header-grid {
       display: grid;
@@ -317,16 +328,35 @@
       @page {
         size: A4 portrait;
         margin: 0;
-        /* Hides default browser header and footer */
       }
 
       body {
-        margin: 5mm;
+        margin: 0;
       }
 
       .page {
         width: 100%;
         margin: 0;
+        padding: 0;
+      }
+
+      table.print-wrapper {
+        width: 100%;
+        border: none;
+        border-collapse: collapse;
+      }
+
+      table.print-wrapper>tbody>tr>td {
+        padding-top: 1cm;
+        padding-right: 2cm;
+        padding-left: 5mm;
+        padding-bottom: 0;
+        border: none;
+      }
+
+      table.print-wrapper>tfoot>tr>td {
+        height: 2cm;
+        border: none;
         padding: 0;
       }
 
@@ -344,180 +374,213 @@
         d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z" />
     </svg>
   </button>
-  <div class="page">
+  <table class="print-wrapper">
+    <tbody>
+      <tr>
+        <td>
+          <div class="page">
 
-    <div class="header-grid">
-      <img class="logo" src="logo.gif" alt="Jacauna" />
+            <div class="header-grid">
+              <img class="logo" src="logo.gif" alt="Jacauna" />
 
-      <div class="page-title">Emissão dos Pedidos de Compra</div>
-      <div class="meta-info">
-        FoccoERP &nbsp; &nbsp; <span id="report-name">RPDC0250_RUAH</span><br>
-        Data: <span id="report-datetime">-</span><br>
-        Pág.: <span id="report-page">001</span> de <span id="report-pages">001</span>
-      </div>
-    </div>
+              <div class="page-title">Emissão dos Pedidos de Compra</div>
+              <div class="meta-info">
+                FoccoERP &nbsp; &nbsp; <span id="report-name">RPDC0250_RUAH</span><br>
+                Data: <span id="report-datetime">-</span><br>
+                Pág.: <span id="report-page">001</span> de <span id="report-pages">001</span>
+              </div>
+            </div>
 
-    <div class="company-info">
-      <div>Empresa: <span id="cmp-name">RUAH INDUSTRIA E COMERCIO DE MOVEIS LTDA (1)</span></div>
-      <div>CNPJ <span id="cmp-cnpj">03.875.890/0001-73</span></div>
-      <div>Insc. Estadual: <span id="cmp-ie">062989898</span></div>
-      <div>Endereço: <span id="cmp-address">BR 402 KM 01 GALPÃO 01, SN</span></div>
-      <div>
-        <span class="inline-block">Cidade: <span id="cmp-city">MARCO - CE</span></span>
-        <span class="inline-block">CEP: <span id="cmp-cep">62560000</span></span>
-        <span class="inline-block">Fone: <span id="cmp-phone">88 36641818</span></span>
-      </div>
-      <div>Fax: </div>
-      <div>E-Mail: <span id="cmp-email">nfe@jacauna.com.br</span></div>
-    </div>
+            <div class="company-info">
+              <div>Empresa: <span id="cmp-name">RUAH INDUSTRIA E COMERCIO DE MOVEIS LTDA (1)</span></div>
+              <div>CNPJ <span id="cmp-cnpj">03.875.890/0001-73</span></div>
+              <div>Insc. Estadual: <span id="cmp-ie">062989898</span></div>
+              <div>Endereço: <span id="cmp-address">BR 402 KM 01 GALPÃO 01, SN</span></div>
+              <div>
+                <span class="inline-block">Cidade: <span id="cmp-city">MARCO - CE</span></span>
+                <span class="inline-block">CEP: <span id="cmp-cep">62560000</span></span>
+                <span class="inline-block">Fone: <span id="cmp-phone">88 36641818</span></span>
+              </div>
+              <div>Fax: </div>
+              <div>E-Mail: <span id="cmp-email">nfe@jacauna.com.br</span></div>
+            </div>
 
-    <hr class="solid-line" />
+            <hr class="solid-line" />
 
-    <div class="po-header">
-      Pedido Compra : <span class="po-number" id="po-cod">-</span>
-    </div>
+            <div class="po-header">
+              Pedido Compra : <span class="po-number" id="po-cod">-</span>
+            </div>
 
-    <div class="main-box">
-      <div class="box-row">
-        <div class="col-flex flex-2"><span class="label">Emissão :</span> <span class="val" id="po-emissao">-</span>
-        </div>
-        <div class="col-flex flex-1 text-right" style="justify-content: flex-end; padding-right: 40px;"><span
-            class="label">Moeda :</span> <span class="val" id="po-moeda">REAL</span></div>
-      </div>
+            <div class="main-box">
+              <div class="box-row">
+                <div class="col-flex flex-2"><span class="label">Emissão :</span> <span class="val"
+                    id="po-emissao">-</span>
+                </div>
+                <div class="col-flex flex-1 text-right" style="justify-content: flex-end; padding-right: 40px;"><span
+                    class="label">Moeda :</span> <span class="val" id="po-moeda">REAL</span></div>
+              </div>
 
-      <div class="box-row">
-        <div class="col-flex flex-3"><span class="label">Fornecedor :</span> <span class="val" id="fornecedor">-</span>
-        </div>
-        <div class="col-flex flex-2"><span class="label">CNPJ :</span> <span class="val" id="fornecedor-cnpj">-</span>
-        </div>
-        <div class="col-flex text-center" style="width: 40px;" id="fornecedor-uf"></div>
-      </div>
+              <div class="box-row">
+                <div class="col-flex flex-3"><span class="label">Fornecedor :</span> <span class="val"
+                    id="fornecedor">-</span>
+                </div>
+                <div class="col-flex flex-2"><span class="label">CNPJ :</span> <span class="val"
+                    id="fornecedor-cnpj">-</span>
+                </div>
+                <div class="col-flex text-center" style="width: 40px;" id="fornecedor-uf"></div>
+              </div>
 
-      <div class="box-row">
-        <div class="col-flex flex-3"><span class="label">Transportadora :</span> <span class="val"
-            id="transportadora"></span></div>
-        <div class="col-flex text-center" style="width: 40px;" id="transportadora-uf"></div>
-      </div>
-      <div class="box-row">
-        <div class="col-flex flex-1" style="padding-left: 10px;"><span class="label">Tipo de Frete :</span> <span
-            class="val" id="tipo-frete"></span></div>
-        <div class="col-flex flex-1"><span class="label">Tipo de Valor :</span> <span class="val"
-            id="tipo-valor"></span></div>
-        <div class="col-flex flex-1"><span class="label">Valor Frete :</span> <span class="val" id="valor-frete"></span>
-        </div>
-      </div>
+              <div class="box-row">
+                <div class="col-flex flex-3"><span class="label">Transportadora :</span> <span class="val"
+                    id="transportadora"></span></div>
+                <div class="col-flex text-center" style="width: 40px;" id="transportadora-uf"></div>
+              </div>
+              <div class="box-row">
+                <div class="col-flex flex-1" style="padding-left: 10px;"><span class="label">Tipo de Frete :</span>
+                  <span class="val" id="tipo-frete"></span>
+                </div>
+                <div class="col-flex flex-1"><span class="label">Tipo de Valor :</span> <span class="val"
+                    id="tipo-valor"></span></div>
+                <div class="col-flex flex-1"><span class="label">Valor Frete :</span> <span class="val"
+                    id="valor-frete"></span>
+                </div>
+              </div>
 
-      <div class="box-row">
-        <div class="col-flex"><span class="label">Redespacho :</span> <span class="val" id="redespacho"></span></div>
-      </div>
-      <div class="box-row">
-        <div class="col-flex flex-1" style="padding-left: 10px;"><span class="label">Tipo de Frete :</span> <span
-            class="val" id="tipo-frete-2"></span></div>
-        <div class="col-flex flex-1"><span class="label">Tipo de Valor :</span> <span class="val"
-            id="tipo-valor-2"></span></div>
-        <div class="col-flex flex-1"><span class="label">Valor Frete :</span> <span class="val"
-            id="valor-frete-2"></span></div>
-      </div>
+              <div class="box-row">
+                <div class="col-flex"><span class="label">Redespacho :</span> <span class="val" id="redespacho"></span>
+                </div>
+              </div>
+              <div class="box-row">
+                <div class="col-flex flex-1" style="padding-left: 10px;"><span class="label">Tipo de Frete :</span>
+                  <span class="val" id="tipo-frete-2"></span>
+                </div>
+                <div class="col-flex flex-1"><span class="label">Tipo de Valor :</span> <span class="val"
+                    id="tipo-valor-2"></span></div>
+                <div class="col-flex flex-1"><span class="label">Valor Frete :</span> <span class="val"
+                    id="valor-frete-2"></span></div>
+              </div>
 
-      <div class="box-row">
-        <div class="col-flex flex-2"><span class="label">Comprador :</span> <span class="val" id="comprador">-</span>
-        </div>
-        <div class="col-flex flex-1"><span class="label">Contato :</span> <span class="val" id="contato">-</span></div>
-      </div>
+              <div class="box-row">
+                <div class="col-flex flex-2"><span class="label">Comprador :</span> <span class="val"
+                    id="comprador">-</span>
+                </div>
+                <div class="col-flex flex-1"><span class="label">Contato :</span> <span class="val"
+                    id="contato">-</span></div>
+              </div>
 
-      <div class="box-row" style="align-items: flex-start; padding-bottom: 3px;">
-        <div class="col-flex flex-2" style="align-items: flex-start;">
-          <span class="label">Observação :</span>
-          <span class="val" id="obs" style="white-space: pre-wrap; margin-left: 4px; margin-top: 1px;">-</span>
-        </div>
-        <div class="col-flex flex-1" style="align-items: flex-start;">
-          <span class="label">Talão :</span> <span class="val" id="talao">-</span>
-        </div>
-      </div>
+              <div class="box-row" style="align-items: flex-start; padding-bottom: 3px;">
+                <div class="col-flex flex-2" style="align-items: flex-start;">
+                  <span class="label">Observação :</span>
+                  <span class="val" id="obs" style="white-space: pre-wrap; margin-left: 4px; margin-top: 1px;">-</span>
+                </div>
+                <div class="col-flex flex-1" style="align-items: flex-start;">
+                  <span class="label">Talão :</span> <span class="val" id="talao">-</span>
+                </div>
+              </div>
 
-      <div class="box-row">
-        <div class="col-flex"><span class="label">Condição Pgto. :</span> <span class="val" id="cond-pgto">-</span>
-        </div>
-      </div>
+              <div class="box-row">
+                <div class="col-flex"><span class="label">Condição Pgto. :</span> <span class="val"
+                    id="cond-pgto">-</span>
+                </div>
+              </div>
 
-      <div class="box-row totals-wrapper">
-        <div class="tot-col">
-          <div class="tot-line"><span class="label">Total Bruto :</span> <span class="val" id="tot-bruto">0,00</span>
+              <div class="box-row totals-wrapper">
+                <div class="tot-col">
+                  <div class="tot-line"><span class="label">Total Bruto :</span> <span class="val"
+                      id="tot-bruto">0,00</span>
+                  </div>
+                  <div class="tot-line"><span class="label">Total Líquido :</span> <span class="val"
+                      id="tot-liq">0,00</span>
+                  </div>
+                </div>
+                <div class="tot-col">
+                  <div class="tot-line"><span class="label">IPI :</span> <span class="val" id="tot-ipi">0,00</span>
+                  </div>
+                  <div class="tot-line"><span class="label">Frete :</span> <span class="val" id="tot-frete">0,00</span>
+                  </div>
+                  <div class="tot-line"><span class="label">ICMS ST :</span> <span class="val"
+                      id="tot-icms">0,0000</span></div>
+                </div>
+                <div class="tot-col">
+                  <div class="tot-line"><span class="label">Descontos :</span> <span class="val"
+                      id="tot-desc">0,00</span></div>
+                  <div class="tot-line"><span class="label">Acréscimos :</span> <span class="val"
+                      id="tot-acr">0,00</span></div>
+                </div>
+                <div class="tot-final-box">
+                  <div class="label">Total Final</div>
+                  <div class="final-val" id="tot-final">0,00</div>
+                </div>
+              </div>
+            </div>
+
+            <table class="venc-table" id="venc-table">
+              <colgroup>
+                <col style="width: 8%;" />
+                <col style="width: 25%;" />
+                <col style="width: 15%;" />
+                <col style="width: 17%;" />
+                <col style="width: 15%;" />
+                <col style="width: 20%;" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>Dias</th>
+                  <th>Vencimento</th>
+                  <th>Tipo<br>Desconto</th>
+                  <th>Tipo valor<br>Valor</th>
+                  <th>Aplicado<br>Pedido</th>
+                  <th class="text-right">Valor</th>
+                </tr>
+              </thead>
+              <tbody id="venc-body">
+              </tbody>
+            </table>
+
+            <table class="items-table">
+              <thead>
+                <tr>
+                  <th style="width: 5%;">Emp.<br>Obs.:</th>
+                  <th style="width: 6%;">Linha</th>
+                  <th style="width: 8%;">Código</th>
+                  <th style="width: 25%;">Descrição Técnica</th>
+                  <th class="text-center" style="width: 10%;">Entrega</th>
+                  <th class="text-center" style="width: 6%;">UM<br>%IPI</th>
+                  <th class="text-right" style="width: 12%;">Qtde Total<br>Qtde. Atend.</th>
+                  <th class="text-right" style="width: 14%;">Preço Unitário<br>Qtde. Canc.</th>
+                  <th class="text-right" style="width: 14%;">Preço Total</th>
+                </tr>
+              </thead>
+              <tbody id="items-body">
+              </tbody>
+            </table>
+
+            <div class="footer-notes">
+              <div>Observações:</div>
+              <div id="notes" class="content"></div>
+            </div>
+
+            <div id="error" class="error-msg"></div>
           </div>
-          <div class="tot-line"><span class="label">Total Líquido :</span> <span class="val" id="tot-liq">0,00</span>
-          </div>
-        </div>
-        <div class="tot-col">
-          <div class="tot-line"><span class="label">IPI :</span> <span class="val" id="tot-ipi">0,00</span></div>
-          <div class="tot-line"><span class="label">Frete :</span> <span class="val" id="tot-frete">0,00</span></div>
-          <div class="tot-line"><span class="label">ICMS ST :</span> <span class="val" id="tot-icms">0,0000</span></div>
-        </div>
-        <div class="tot-col">
-          <div class="tot-line"><span class="label">Descontos :</span> <span class="val" id="tot-desc">0,00</span></div>
-          <div class="tot-line"><span class="label">Acréscimos :</span> <span class="val" id="tot-acr">0,00</span></div>
-        </div>
-        <div class="tot-final-box">
-          <div class="label">Total Final</div>
-          <div class="final-val" id="tot-final">0,00</div>
-        </div>
-      </div>
-    </div>
-
-    <table class="venc-table" id="venc-table">
-      <colgroup>
-        <col style="width: 8%;" />
-        <col style="width: 25%;" />
-        <col style="width: 15%;" />
-        <col style="width: 17%;" />
-        <col style="width: 15%;" />
-        <col style="width: 20%;" />
-      </colgroup>
-      <thead>
-        <tr>
-          <th>Dias</th>
-          <th>Vencimento</th>
-          <th>Tipo<br>Desconto</th>
-          <th>Tipo valor<br>Valor</th>
-          <th>Aplicado<br>Pedido</th>
-          <th class="text-right">Valor</th>
-        </tr>
-      </thead>
-      <tbody id="venc-body">
-      </tbody>
-    </table>
-
-    <table class="items-table">
-      <thead>
-        <tr>
-          <th style="width: 5%;">Emp.<br>Obs.:</th>
-          <th style="width: 6%;">Linha</th>
-          <th style="width: 8%;">Código</th>
-          <th style="width: 25%;">Descrição Técnica</th>
-          <th class="text-center" style="width: 10%;">Entrega</th>
-          <th class="text-center" style="width: 6%;">UM<br>%IPI</th>
-          <th class="text-right" style="width: 12%;">Qtde Total<br>Qtde. Atend.</th>
-          <th class="text-right" style="width: 14%;">Preço Unitário<br>Qtde. Canc.</th>
-          <th class="text-right" style="width: 14%;">Preço Total</th>
-        </tr>
-      </thead>
-      <tbody id="items-body">
-      </tbody>
-    </table>
-
-    <div class="footer-notes">
-      <div>Observações:</div>
-      <div id="notes" class="content"></div>
-    </div>
-
-    <div id="error" class="error-msg"></div>
-  </div>
+        </td>
+      </tr>
+    </tbody>
+    <tfoot>
+      <tr>
+        <td></td>
+      </tr>
+    </tfoot>
+  </table>
 
   <script>
     const qs = new URLSearchParams(window.location.search);
     const codPedc = qs.get("cod_pedc");
     const codEmp1 = qs.get("cod_emp1");
     function getApiUrl() {
-      const stored = localStorage.getItem('VITE_API_URL') || sessionStorage.getItem('VITE_API_URL');
+      const queryUrl = qs.get("apiUrl");
+      if (queryUrl) return queryUrl.replace(/\/$/, "");
+
+      const stored = sessionStorage.getItem('VITE_API_URL') || localStorage.getItem('VITE_API_URL');
       if (stored && (stored.startsWith('http://localhost') || stored.startsWith('http://127.0.0.1') || stored.startsWith('https://'))) {
         return stored.replace(/\/$/, "");
       }
