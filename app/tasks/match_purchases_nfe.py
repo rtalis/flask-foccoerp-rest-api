@@ -236,12 +236,6 @@ def store_item_matches(order, nfe_match, unfulfilled_items, min_score=80):
             if nfe_item_id:
                 nfe_item = db.session.get(NFEItem, nfe_item_id)
             
-            # Check if entry already exists
-            existing = PurchaseItemNFEMatch.query.filter_by(
-                purchase_item_id=item.id,
-                nfe_id=nfe_id
-            ).first()
-            
             item_score = item_match.get('combined_score', score * 0.8)
             desc_similarity = item_match.get('desc_score', 0)
             qty_match = item_match.get('qty_score', 0) >= 80 if item_match.get('qty_score') else False
@@ -250,31 +244,57 @@ def store_item_matches(order, nfe_match, unfulfilled_items, min_score=80):
                 if item_match['po_price'] > 0:
                     price_diff = abs(item_match['nfe_price'] - item_match['po_price']) / item_match['po_price'] * 100
             
-            if existing:
+            # Check for all existing matches for this purchase item
+            all_existing = PurchaseItemNFEMatch.query.filter_by(
+                purchase_item_id=item.id
+            ).all()
+            
+            # Do not overrule manual matches
+            if any(e.match_type == 'manual' for e in all_existing):
+                continue
+                
+            best_existing_score = max([e.match_score for e in all_existing]) if all_existing else -1
+            existing_same_nfe = next((e for e in all_existing if e.nfe_id == nfe_id), None)
+            
+            if existing_same_nfe:
                 # Always update existing match with latest data
+                # Clean up duplicate auto matches for other NFEs if they exist
+                for old_match in all_existing:
+                    if old_match.id != existing_same_nfe.id:
+                        db.session.delete(old_match)
+                        
                 # Update score only if new score is better
-                if item_score > existing.match_score:
-                    existing.match_score = item_score
+                if item_score > existing_same_nfe.match_score:
+                    existing_same_nfe.match_score = item_score
                 
                 # Always update these fields with latest data
-                existing.description_similarity = desc_similarity
-                existing.quantity_match = qty_match
-                existing.price_diff_pct = price_diff
-                existing.nfe_item_id = nfe_item_id
-                existing.nfe_item_descricao = item_match.get('nfe_item_desc', '')
-                existing.nfe_item_quantidade = item_match.get('nfe_qty')
-                existing.nfe_item_preco = item_match.get('nfe_price')
-                existing.nfe_fornecedor = nfe_supplier
-                existing.nfe_data_emissao = nfe.data_emissao if nfe else None
-                existing.nfe_numero = nfe_numero
-                existing.nfe_chave = nfe_chave
-                existing.po_item_descricao = item.descricao
-                existing.po_item_quantidade = float(item.quantidade or 0)
-                existing.po_item_preco = float(item.preco_unitario or 0)
-                existing.updated_at = datetime.now()
+                existing_same_nfe.description_similarity = desc_similarity
+                existing_same_nfe.quantity_match = qty_match
+                existing_same_nfe.price_diff_pct = price_diff
+                existing_same_nfe.nfe_item_id = nfe_item_id
+                existing_same_nfe.nfe_item_descricao = item_match.get('nfe_item_desc', '')
+                existing_same_nfe.nfe_item_quantidade = item_match.get('nfe_qty')
+                existing_same_nfe.nfe_item_preco = item_match.get('nfe_price')
+                existing_same_nfe.nfe_fornecedor = nfe_supplier
+                existing_same_nfe.nfe_data_emissao = nfe.data_emissao if nfe else None
+                existing_same_nfe.nfe_numero = nfe_numero
+                existing_same_nfe.nfe_chave = nfe_chave
+                existing_same_nfe.po_item_descricao = item.descricao
+                existing_same_nfe.po_item_quantidade = float(item.quantidade or 0)
+                existing_same_nfe.po_item_preco = float(item.preco_unitario or 0)
+                existing_same_nfe.updated_at = datetime.now()
                 stored_count += 1
                 logger.debug(f"Updated existing match for item {item.id}")
             else:
+                # Different NFE. Is it strictly better?
+                if all_existing and item_score <= best_existing_score:
+                    # An equal or better auto match already exists, skip
+                    continue
+                    
+                # New NFE has a better score, delete the old inferior auto matches
+                for old_match in all_existing:
+                    db.session.delete(old_match)
+                    
                 # Create new entry
                 new_match = PurchaseItemNFEMatch(
                     purchase_item_id=item.id,
@@ -339,7 +359,8 @@ def match_purchases_with_nfes(days=60, min_score=80):
         
         # Get unfulfilled orders
         unfulfilled_orders = get_unfulfilled_orders(days)
-        logger.info(f"Found {len(unfulfilled_orders)} unfulfilled orders to process")
+        total_orders = len(unfulfilled_orders)
+        logger.info(f"Found {total_orders} unfulfilled orders to process")
         
         for order in unfulfilled_orders:
             # Store order info before any DB operations that might expire the object
@@ -354,7 +375,9 @@ def match_purchases_with_nfes(days=60, min_score=80):
                     stats['orders_processed'] += 1
                     continue
                 
-                logger.info(f"Processing order {order_cod_pedc}/{order_cod_emp1} with {len(unfulfilled_items)} unfulfilled items")
+                current_idx = stats['orders_processed'] + 1
+                logger.info(f"Processing order [{current_idx}/{total_orders}] {order_cod_pedc}/{order_cod_emp1} with {len(unfulfilled_items)} unfulfilled items")
+
                 
                 # Call the existing scoring function
                 match_results = score_purchase_nfe_match(order_cod_pedc, order_cod_emp1)
