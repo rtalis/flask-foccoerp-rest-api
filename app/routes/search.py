@@ -554,6 +554,7 @@ def search_advanced():
     value_search_type = request.args.get('valueSearchType', 'item').lower()
     exact_search = request.args.get('exactSearch', 'false').lower() == 'true'
     hide_cancelled = request.args.get('hideCancelled', 'false').lower() == 'true'
+    quick_load = request.args.get('quick_load', 'false').lower() == 'true'
     date_from_param = request.args.get('date_from', '').strip()
     date_to_param = request.args.get('date_to', '').strip()
     
@@ -732,16 +733,33 @@ def search_advanced():
         .subquery()
     )
 
-    orders_paginated = (
-        PurchaseOrder.query
-        .filter(PurchaseOrder.id.in_(
-            db.session.query(order_ids_subquery.c.purchase_order_id)
-        ))
-        .order_by(PurchaseOrder.dt_emis.desc(), PurchaseOrder.id.desc())
-        .paginate(page=page, per_page=per_page, count=True)
-    )
-
-    paginated_order_ids = [o.id for o in orders_paginated.items]
+    if quick_load:
+        orders = (
+            PurchaseOrder.query
+            .filter(PurchaseOrder.id.in_(
+                db.session.query(order_ids_subquery.c.purchase_order_id)
+            ))
+            .order_by(PurchaseOrder.dt_emis.desc(), PurchaseOrder.id.desc())
+            .limit(per_page)
+            .all()
+        )
+        paginated_order_ids = [o.id for o in orders]
+        total_pages = 1
+        current_page = 1
+        total_results = 0
+    else:
+        orders_paginated = (
+            PurchaseOrder.query
+            .filter(PurchaseOrder.id.in_(
+                db.session.query(order_ids_subquery.c.purchase_order_id)
+            ))
+            .order_by(PurchaseOrder.dt_emis.desc(), PurchaseOrder.id.desc())
+            .paginate(page=page, per_page=per_page, count=True)
+        )
+        paginated_order_ids = [o.id for o in orders_paginated.items]
+        total_pages = orders_paginated.pages
+        current_page = orders_paginated.page
+        total_results = orders_paginated.total
 
     items = (
         base_query
@@ -754,9 +772,9 @@ def search_advanced():
 
     return jsonify({
         'purchases': purchases_payload,
-        'total_pages': orders_paginated.pages,
-        'current_page': orders_paginated.page,
-        'total_results': orders_paginated.total
+        'total_pages': total_pages,
+        'current_page': current_page,
+        'total_results': total_results
     }), 200
 
 

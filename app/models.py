@@ -8,7 +8,7 @@ class PurchaseOrder(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     cod_pedc = db.Column(db.String, nullable=False)
     dt_emis = db.Column(db.Date, nullable=False)
-    fornecedor_id = db.Column(db.Integer, nullable=False)
+    fornecedor_id = db.Column(db.Integer, nullable=False, index=True)
     fornecedor_descricao = db.Column(db.String, nullable=True)
     total_bruto = db.Column(db.Float, nullable=True)
     total_liquido = db.Column(db.Float, nullable=True)
@@ -17,9 +17,9 @@ class PurchaseOrder(db.Model):
     posicao_hist = db.Column(db.String, nullable=True)
     observacao = db.Column(db.String, nullable=True)
     contato = db.Column(db.String, nullable=True)
-    func_nome = db.Column(db.String, nullable=True)
+    func_nome = db.Column(db.String, nullable=True, index=True)
     cf_pgto = db.Column(db.String, nullable=True)
-    cod_emp1 = db.Column(db.String, nullable=True)
+    cod_emp1 = db.Column(db.String, nullable=True, index=True)
     total_pedido_com_ipi = db.Column(db.Float, nullable=True)
     is_fulfilled = db.Column(db.Boolean, default=False)
     
@@ -45,12 +45,33 @@ class PurchaseOrder(db.Model):
 
     items = db.relationship('PurchaseItem', backref='purchase_order', lazy=True)
 
+    __table_args__ = (
+        db.Index(
+            'ix_purchase_orders_fornecedor_trgm', 
+            db.text('unaccent(fornecedor_descricao)'), 
+            postgresql_using='gin', 
+            postgresql_ops={'unaccent(fornecedor_descricao)': 'gin_trgm_ops'}
+        ),
+        db.Index(
+            'ix_purchase_orders_observacao_trgm', 
+            db.text('unaccent(observacao)'), 
+            postgresql_using='gin', 
+            postgresql_ops={'unaccent(observacao)': 'gin_trgm_ops'}
+        ),
+        db.Index(
+            'ix_purchase_orders_cod_pedc_trgm', 
+            db.text('unaccent(cod_pedc)'), 
+            postgresql_using='gin', 
+            postgresql_ops={'unaccent(cod_pedc)': 'gin_trgm_ops'}
+        ),
+    )
+
 class PurchaseItem(db.Model):
     __tablename__ = 'purchase_items'
 
     id = db.Column(db.Integer, primary_key=True)
     dt_emis = db.Column(db.Date, nullable=False)
-    purchase_order_id = db.Column(db.Integer, db.ForeignKey('purchase_orders.id'), nullable=False)
+    purchase_order_id = db.Column(db.Integer, db.ForeignKey('purchase_orders.id'), nullable=False, index=True)
     item_id = db.Column(db.String, nullable=False)
     cod_pedc = db.Column(db.String, nullable=False)
     linha = db.Column(db.Integer, nullable=True)
@@ -69,9 +90,22 @@ class PurchaseItem(db.Model):
     perc_toler = db.Column(db.Float, nullable=True)
     qtde_atendida = db.Column(db.Float, nullable=True)
     qtde_saldo = db.Column(db.Float, nullable=True)
-    cod_emp1 = db.Column(db.String, nullable=True)
+    cod_emp1 = db.Column(db.String, nullable=True, index=True)
     observacao = db.Column(db.String, nullable=True)
-
+    __table_args__ = (
+        db.Index(
+            'ix_purchase_items_descricao_trgm', 
+            db.text('unaccent(descricao)'), 
+            postgresql_using='gin', 
+            postgresql_ops={'unaccent(descricao)': 'gin_trgm_ops'}
+        ),
+        db.Index(
+            'ix_purchase_items_item_id_trgm', 
+            db.text('unaccent(item_id)'), 
+            postgresql_using='gin', 
+            postgresql_ops={'unaccent(item_id)': 'gin_trgm_ops'}
+        ),
+    )
     
 class NFEntry(db.Model):
     __tablename__ = 'nf_entries'
@@ -87,6 +121,12 @@ class NFEntry(db.Model):
 
     __table_args__ = (
         db.UniqueConstraint('cod_emp1', 'cod_pedc', 'linha', 'num_nf', name='uq_nf_entry'),
+        db.Index(
+            'ix_nf_entries_num_nf_trgm', 
+            db.text('unaccent(num_nf)'), 
+            postgresql_using='gin', 
+            postgresql_ops={'unaccent(num_nf)': 'gin_trgm_ops'}
+        ),
     )
     
 

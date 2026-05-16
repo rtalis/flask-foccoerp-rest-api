@@ -1805,6 +1805,43 @@ const UnifiedSearch = () => {
       let response;
 
       if (usingEnhanced) {
+        if (page === 1) {
+          // Quick Load Pass: Fetch 2 results fast to immediately populate the screen
+          try {
+            const quickResponse = await axios.get(
+              `${import.meta.env.VITE_API_URL}/api/search_advanced`,
+              {
+                params: {
+                  query: trimmedQuery || undefined,
+                  fields: resolveEnhancedFields().join(","),
+                  selectedFuncName: searchParams.selectedFuncName,
+                  selectedCodEmp1: searchParams.selectedCodEmp1,
+                  minValue: searchParams.min_value || undefined,
+                  maxValue: searchParams.max_value || undefined,
+                  date_from: searchParams.date_from || undefined,
+                  date_to: searchParams.date_to || undefined,
+                  valueSearchType: searchParams.valueSearchType,
+                  exactSearch: searchParams.exactSearch,
+                  ignoreDiacritics: searchParams.ignoreDiacritics,
+                  hideCancelled: searchParams.hideCancelled,
+                  page: 1,
+                  per_page: 2,
+                  quick_load: true,
+                },
+                withCredentials: true,
+                signal: controller.signal,
+              },
+            );
+
+            if (!controller.signal.aborted && activeRequestRef.current === controller) {
+              setResults(quickResponse.data?.purchases || []);
+              setLoading(false); // Stop loading indicator while full query processes
+            }
+          } catch (quickErr) {
+            console.warn("Quick load pass failed or was cancelled", quickErr);
+          }
+        }
+
         response = await axios.get(
           `${import.meta.env.VITE_API_URL}/api/search_advanced`,
           {
