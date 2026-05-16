@@ -22,5 +22,11 @@
       "Adicionado botão para visualização do pedido de compra na tela de busca de notas fiscais e busca de pedidos de compra.",
       "Adicionado nova visualização de itens na tela de busca de notas fiscais"
     ]
+  },
+  {
+    "version": "2.2.3",
+    "notes": [
+      "Adicionado indices no banco de dados e Two-pass-fetch - pesquisas devem ser mais rápidas e com um primeiro resultado imediato."
+    ]
   }
 ]

@@ -1376,7 +1376,7 @@ const UnifiedSearch = () => {
   const [codEmp1Options, setCodEmp1Options] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [noResults, setNoResults] = useState(0);
-  const [perPage, setPerPage] = useState(100);
+  const [perPage, setPerPage] = useState(50);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState("");
@@ -1835,7 +1835,7 @@ const UnifiedSearch = () => {
 
             if (!controller.signal.aborted && activeRequestRef.current === controller) {
               setResults(quickResponse.data?.purchases || []);
-              setLoading(false); // Stop loading indicator while full query processes
+              //setLoading(false); // Stop loading indicator while full query processes
             }
           } catch (quickErr) {
             console.warn("Quick load pass failed or was cancelled", quickErr);
@@ -2699,77 +2699,7 @@ const UnifiedSearch = () => {
           </Paper>
         )}
 
-        {/* Loading State */}
-        {loading && (
-          <Box sx={{ mb: 3 }}>
-            <Box sx={{ textAlign: "center", mb: 3 }}>
-              <Skeleton
-                variant="text"
-                width={300}
-                height={32}
-                sx={{ mx: "auto" }}
-                animation="wave"
-              />
-            </Box>
-            {[1, 2, 3, 4, 5].map((i) => (
-              <Paper
-                key={i}
-                elevation={0}
-                sx={{
-                  mb: 2,
-                  overflow: "hidden",
-                  borderRadius: 2,
-                  border: "1px solid",
-                  borderColor: "divider",
-                }}
-              >
-                <Box
-                  sx={{
-                    bgcolor: "#2d3548",
-                    p: 2,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 2,
-                  }}
-                >
-                  <Skeleton
-                    variant="circular"
-                    width={24}
-                    height={24}
-                    animation="wave"
-                    sx={{ bgcolor: "rgba(255,255,255,0.1)" }}
-                  />
-                  <Skeleton
-                    variant="text"
-                    width="80%"
-                    height={28}
-                    animation="wave"
-                    sx={{ bgcolor: "rgba(255,255,255,0.1)" }}
-                  />
-                </Box>
-                <Box sx={{ p: 2 }}>
-                  {[1, 2].map((j) => (
-                    <Box
-                      key={j}
-                      sx={{
-                        display: "flex",
-                        gap: 2,
-                        py: 1,
-                        borderBottom: j < 2 ? "1px solid #f0f0f0" : "none",
-                      }}
-                    >
-                      <Skeleton variant="text" width={80} animation="wave" />
-                      <Skeleton variant="text" width={60} animation="wave" />
-                      <Skeleton variant="text" width={200} animation="wave" />
-                      <Skeleton variant="text" width={80} animation="wave" />
-                      <Skeleton variant="text" width={100} animation="wave" />
-                    </Box>
-                  ))}
-                </Box>
-              </Paper>
-            ))}
-          </Box>
-        )}
+        
 
         {/* Results Summary */}
         {!loading && results.length > 0 && (
@@ -2866,6 +2796,78 @@ const UnifiedSearch = () => {
               </TableBody>
             </Table>
           </TableContainer>
+        )}
+
+        {/* Loading State */}
+        {loading && (
+          <Box sx={{ mb: 3 }}>
+            <Box sx={{ textAlign: "center", mb: 3 }}>
+              <Skeleton
+                variant="text"
+                width={300}
+                height={32}
+                sx={{ mx: "auto" }}
+                animation="wave"
+              />
+            </Box>
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Paper
+                key={i}
+                elevation={0}
+                sx={{
+                  mb: 2,
+                  overflow: "hidden",
+                  borderRadius: 2,
+                  border: "1px solid",
+                  borderColor: "divider",
+                }}
+              >
+                <Box
+                  sx={{
+                    bgcolor: "#2d3548",
+                    p: 2,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 2,
+                  }}
+                >
+                  <Skeleton
+                    variant="circular"
+                    width={24}
+                    height={24}
+                    animation="wave"
+                    sx={{ bgcolor: "rgba(255,255,255,0.1)" }}
+                  />
+                  <Skeleton
+                    variant="text"
+                    width="80%"
+                    height={28}
+                    animation="wave"
+                    sx={{ bgcolor: "rgba(255,255,255,0.1)" }}
+                  />
+                </Box>
+                <Box sx={{ p: 2 }}>
+                  {[1, 2].map((j) => (
+                    <Box
+                      key={j}
+                      sx={{
+                        display: "flex",
+                        gap: 2,
+                        py: 1,
+                        borderBottom: j < 2 ? "1px solid #f0f0f0" : "none",
+                      }}
+                    >
+                      <Skeleton variant="text" width={80} animation="wave" />
+                      <Skeleton variant="text" width={60} animation="wave" />
+                      <Skeleton variant="text" width={200} animation="wave" />
+                      <Skeleton variant="text" width={80} animation="wave" />
+                      <Skeleton variant="text" width={100} animation="wave" />
+                    </Box>
+                  ))}
+                </Box>
+              </Paper>
+            ))}
+          </Box>
         )}
 
         {/* Pagination */}
