@@ -199,7 +199,6 @@ def _build_purchase_payload(items):
     return list(grouped_results.values())
 
 
-# PHASE 2 ENDPOINTS
 
 @bp.route('/search_items', methods=['GET'])
 @login_required
@@ -585,11 +584,10 @@ def search_advanced():
     include_cnpj_fornecedor = 'cnpj_fornecedor' in fields
     search_columns = [column_map[key] for key in fields if key in column_map]
     if not search_columns and not include_nf:
-        search_columns = [PurchaseItem.descricao]
-
+        search_columns = [PurchaseItem.descricao]      
+        
     remove_accents = None
-    if ignore_diacritics and db.engine.name == 'postgresql':
-        db.session.execute(text("CREATE EXTENSION IF NOT EXISTS unaccent"))
+    if ignore_diacritics :
         remove_accents = lambda col: func.unaccent(col)
     
     def build_like_pattern(term: str) -> str:
@@ -635,14 +633,42 @@ def search_advanced():
         }), 200
 
     base_query = (
-        PurchaseItem.query
-        .join(PurchaseOrder, PurchaseItem.purchase_order_id == PurchaseOrder.id)
-        .options(joinedload(PurchaseItem.purchase_order).joinedload(PurchaseOrder.adjustments))
+    PurchaseItem.query
+    .join(PurchaseOrder, PurchaseItem.purchase_order_id == PurchaseOrder.id)
     )
 
     base_query = apply_user_scopes(base_query, PurchaseOrder)
 
     value_filters = []
+    
+    
+    if include_nf:
+        base_query = base_query.outerjoin(
+            NFEntry,
+            and_(
+                NFEntry.cod_emp1 == PurchaseItem.cod_emp1,
+                NFEntry.cod_pedc == PurchaseItem.cod_pedc,
+                cast(NFEntry.linha, db.String) == cast(PurchaseItem.linha, db.String)
+            )
+        ).outerjoin(
+            PurchaseItemNFEMatch,
+            and_(
+                PurchaseItemNFEMatch.cod_emp1 == PurchaseItem.cod_emp1,
+                PurchaseItemNFEMatch.cod_pedc == PurchaseItem.cod_pedc
+            )
+        )
+
+    if include_cnpj_fornecedor and valid_cnpj_tokens:
+        base_query = base_query.outerjoin(
+            Supplier,
+            or_(
+                Supplier.id_for == PurchaseOrder.fornecedor_id,
+                Supplier.cod_for == cast(PurchaseOrder.fornecedor_id, db.String),
+                func.ltrim(Supplier.cod_for, '0') == func.ltrim(cast(PurchaseOrder.fornecedor_id, db.String), '0')
+            )
+        )
+
+    
     if min_value is not None:
         if value_search_type == 'order':
             value_filters.append(PurchaseOrder.total_pedido_com_ipi >= min_value)
@@ -674,40 +700,15 @@ def search_advanced():
     
     for token in valid_tokens:
         pattern = build_like_pattern(token)
-        term_clauses = [apply_ilike(column, pattern) for column in search_columns]
-
+        term_clauses = [apply_ilike(column, pattern) for column in search_columns]             
+            
         if include_nf:
-            nf_column = NFEntry.num_nf
-            nf_expr = remove_accents(nf_column) if remove_accents else nf_column
-            nf_clause = exists().where(and_(
-                nf_expr.ilike(pattern),
-                NFEntry.cod_emp1 == PurchaseItem.cod_emp1,
-                NFEntry.cod_pedc == PurchaseItem.cod_pedc,
-                cast(NFEntry.linha, db.String) == cast(PurchaseItem.linha, db.String)
-            ))
-            term_clauses.append(nf_clause)
-
-            nfe_match_clause = exists().where(and_(
-                PurchaseItemNFEMatch.cod_emp1 == PurchaseItem.cod_emp1,
-                PurchaseItemNFEMatch.cod_pedc == PurchaseItem.cod_pedc,
-                apply_ilike(PurchaseItemNFEMatch.nfe_numero, pattern)
-            ))
-            term_clauses.append(nfe_match_clause)
+            term_clauses.append(apply_ilike(NFEntry.num_nf, pattern))
+            term_clauses.append(apply_ilike(PurchaseItemNFEMatch.nfe_numero, pattern))
 
         if include_cnpj_fornecedor and token in valid_cnpj_tokens:
             normalized_cnpj = normalize_cnpj_string(token)
-            
-            cnpj_clause = db.session.query(Supplier).filter(
-                and_(
-                    or_(
-                        Supplier.id_for == PurchaseOrder.fornecedor_id,
-                        Supplier.cod_for == cast(PurchaseOrder.fornecedor_id, db.String),
-                        func.ltrim(Supplier.cod_for, '0') == func.ltrim(cast(PurchaseOrder.fornecedor_id, db.String), '0')
-                    ),
-                    Supplier.cnpj_cpf_normalized == normalized_cnpj
-                )
-            ).exists()
-            term_clauses.append(cnpj_clause)
+            term_clauses.append(Supplier.cnpj_cpf_normalized == normalized_cnpj)
 
         if term_clauses:
             token_filters.append(or_(*term_clauses))
