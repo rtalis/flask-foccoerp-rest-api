@@ -69,7 +69,8 @@ def login():
     data = request.get_json()
     email = data.get('email', '').lower()
     password = data.get('password')
-    force = data.get('force', False)  
+    force = data.get('force', False)
+    remember_me = data.get('remember_me', False)
     user = User.query.filter_by(email=email).first()
 
     if user and check_password_hash(user.password, password):
@@ -106,6 +107,10 @@ def login():
         session.permanent = True
         session['last_action_time'] = time.time()
         session['login_time'] = time.time()
+        if remember_me:
+            session['remember_me'] = True
+        else:
+            session.pop('remember_me', None)
         
         login_history = _record_login_event(user, request, method='password')
         send_login_notification_email(user, login_history.login_ip)
@@ -123,7 +128,14 @@ def login():
                 'data_filters': user.data_filters or {},
             }
         }), 200)
-        session_lifetime = int(current_app.config['PERMANENT_SESSION_LIFETIME'].total_seconds())
+        
+        if remember_me:
+            session_lifetime = int(timedelta(days=15).total_seconds())
+            current_app.permanent_session_lifetime = timedelta(days=15)
+        else:
+            session_lifetime = int(current_app.config['PERMANENT_SESSION_LIFETIME'].total_seconds())
+            current_app.permanent_session_lifetime = current_app.config['PERMANENT_SESSION_LIFETIME']
+            
         resp.set_cookie('session_token', new_session_token, httponly=True, samesite='Lax', max_age=session_lifetime)
         session_cookie = request.cookies.get('session')
         if session_cookie:

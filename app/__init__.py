@@ -133,7 +133,10 @@ def create_app():
             absolute_limit = login_time + (60 * 60) # 60 minutes from login
             idle_limit = last_action_time + (15 * 60) # 15 minutes from last action
             
-            expiration_time = max(absolute_limit, idle_limit)
+            if session.get('remember_me'):
+                expiration_time = login_time + (15 * 24 * 60 * 60) # 15 days from login
+            else:
+                expiration_time = max(absolute_limit, idle_limit)
 
             if now_time > expiration_time:
                 logout_user()

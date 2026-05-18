@@ -28,5 +28,11 @@
     "notes": [
       "Adicionado indices no banco de dados e Two-pass-fetch - pesquisas devem ser mais rápidas e com um primeiro resultado imediato."
     ]
+  },
+  {
+    "version": "2.2.4",
+    "notes": [
+    "Adicionado checkbox no login para manter o usuário logado por 15 dias em um computador confiavel - sem necessidade de login a cada acesso."
+    ]
   }
 ]

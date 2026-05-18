@@ -23,6 +23,7 @@ const ZoomToLocation = ({ trigger, targetLocation, targetZoom }) => {
 const Login = ({ onLogin }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [loginSuccess, setLoginSuccess] = useState(false);
@@ -61,7 +62,7 @@ const Login = ({ onLogin }) => {
     try {
       const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/auth/login`,
-        { email, password, force },
+        { email, password, force, remember_me: rememberMe },
         { withCredentials: true },
       );
 
@@ -85,7 +86,7 @@ const Login = ({ onLogin }) => {
         const capabilities = response.data?.user?.capabilities || [];
         const dataFilters = response.data?.user?.data_filters || {};
         setTimeout(() => {
-          onLogin(initialScreen, allowedScreens, capabilities, dataFilters);
+          onLogin(initialScreen, allowedScreens, capabilities, dataFilters, rememberMe);
         }, 1);
       }
     } catch (error) {
@@ -175,6 +176,18 @@ const Login = ({ onLogin }) => {
               onChange={(e) => setPassword(e.target.value)}
               required
             />
+          </div>
+          <div className="remember-me-container" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', marginTop: '-10px', marginBottom: '15px' }}>
+            <input
+              type="checkbox"
+              id="rememberMe"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              style={{ width: 'auto', marginRight: '8px', cursor: 'pointer' }}
+            />
+            <label htmlFor="rememberMe" style={{ margin: 0, fontSize: '0.9rem', cursor: 'pointer', color: '#ccc' }}>
+              Mantenha-me conectado
+            </label>
           </div>
           <button type="submit" disabled={loading || loginSuccess}>
             {loading && <span className="loading-spinner"></span>}

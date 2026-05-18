@@ -34,6 +34,11 @@ const AppContent = () => {
 
   const apiUrl = import.meta.env.VITE_API_URL;
 
+  // Session timeout configuration from environment variables
+  const REMEMBER_ME_DAYS = parseInt(import.meta.env.VITE_SESSION_REMEMBER_ME_DAYS || '15', 10);
+  const ABSOLUTE_TIMEOUT_MINUTES = parseInt(import.meta.env.VITE_SESSION_ABSOLUTE_TIMEOUT_MINUTES || '60', 10);
+  const IDLE_TIMEOUT_MINUTES = parseInt(import.meta.env.VITE_SESSION_IDLE_TIMEOUT_MINUTES || '15', 10);
+
   const normalizeInitialScreen = (screen, allowedScreens = []) => {
     const fallback = "/search";
     const validScreens = [
@@ -123,12 +128,22 @@ const AppContent = () => {
     const intervalId = setInterval(() => {
       const loginTime = parseInt(localStorage.getItem('loginTime'), 10);
       const lastActionTime = parseInt(localStorage.getItem('lastActionTime'), 10);
+      const rememberMe = localStorage.getItem('rememberMe') === 'true';
       const now = Date.now();
       
       if (!loginTime || !lastActionTime) return;
 
-      const idleTimeoutMs = 15 * 60 * 1000;
-      const absoluteTimeoutMs = 60 * 60 * 1000;
+      let absoluteTimeoutMs, idleTimeoutMs;
+      
+      if (rememberMe) {
+        // Remember me session: use configured days, no idle timeout
+        absoluteTimeoutMs = REMEMBER_ME_DAYS * 24 * 60 * 60 * 1000;
+        idleTimeoutMs = Infinity; // No idle timeout for remember me
+      } else {
+        // Standard session: use configured timeouts
+        absoluteTimeoutMs = ABSOLUTE_TIMEOUT_MINUTES * 60 * 1000;
+        idleTimeoutMs = IDLE_TIMEOUT_MINUTES * 60 * 1000;
+      }
 
       const expirationTime = Math.max(
         loginTime + absoluteTimeoutMs,
@@ -240,6 +255,7 @@ const AppContent = () => {
     allowedScreens = [],
     capabilities = [],
     dataFilters = {},
+    rememberMe = false,
   ) => {
     setIsAuthenticated(true);
     setPostLoginRedirect(normalizeInitialScreen(initialScreen, allowedScreens));
@@ -247,6 +263,11 @@ const AppContent = () => {
     localStorage.setItem('lastActionTime', Date.now().toString());
     localStorage.setItem('userCapabilities', JSON.stringify(capabilities || []));
     localStorage.setItem('userDataFilters', JSON.stringify(dataFilters || {}));
+    if (rememberMe) {
+      localStorage.setItem('rememberMe', 'true');
+    } else {
+      localStorage.removeItem('rememberMe');
+    }
 
     fetch("/release-notes.json")
       .then((res) => res.json())
@@ -280,6 +301,7 @@ const AppContent = () => {
       localStorage.removeItem('userDataFilters');
       localStorage.removeItem('loginTime');
       localStorage.removeItem('lastActionTime');
+      localStorage.removeItem('rememberMe');
     }
   };
 
