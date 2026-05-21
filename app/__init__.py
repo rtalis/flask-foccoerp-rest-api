@@ -80,13 +80,30 @@ def create_app():
                 return response
             try:
                 from app.models import RequestLog
+                import urllib.parse
+                
                 duration = (time.time() - request._start_time) * 1000
+                search_term = None
+                
+                # Extract search term from search endpoints
+                if 'search_advanced' in request.path and 'query=' in request.full_path:
+                    try:
+                        parsed_url = urllib.parse.urlparse(request.full_path)
+                        query_params = urllib.parse.parse_qs(parsed_url.query)
+                        search_term = query_params.get('query', [''])[0].strip()
+                        # Only store meaningful searches
+                        if search_term and len(search_term) <= 1:
+                            search_term = None
+                    except Exception:
+                        pass
+                
                 log = RequestLog(
                     user_id=current_user.id,
                     endpoint=request.path,
                     method=request.method,
                     status_code=response.status_code,
                     duration_ms=round(duration, 2),
+                    search_term=search_term,
                 )
                 db.session.add(log)
                 db.session.commit()

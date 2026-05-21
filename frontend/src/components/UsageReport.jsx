@@ -1,70 +1,25 @@
 import React, { useState, useCallback, useMemo, useEffect } from "react";
 import axios from "axios";
 import {
-  Box,
-  Container,
-  Grid,
-  Paper,
-  Typography,
-  Card,
-  CardContent,
-  Alert,
-  MenuItem,
-  Select,
-  FormControl,
-  InputLabel,
-  Stack,
-  Skeleton,
-  Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TableSortLabel,
-  Chip,
-  TextField,
-  FormControlLabel,
-  Checkbox,
+  Box, Container, Grid, Paper, Typography, Card, CardContent,
+  Alert, MenuItem, Select, FormControl, InputLabel, Stack, Skeleton,
+  Button, Table, TableBody, TableCell, TableContainer, TableHead,
+  TableRow, TableSortLabel, Chip, useTheme
 } from "@mui/material";
 import {
   People as PeopleIcon,
   Http as HttpIcon,
-  Login as LoginIcon,
+  Timer as TimerIcon,
+  WarningAmber as WarningIcon,
   PlayArrow as PlayArrowIcon,
-  TrendingUp as TrendingUpIcon,
-  BarChart as BarChartIcon,
+  Search as SearchIcon,
 } from "@mui/icons-material";
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  LineElement,
-  PointElement,
-  ArcElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler,
-} from "chart.js";
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, ArcElement, Title, Tooltip, Legend, Filler } from "chart.js";
 import { Bar, Line, Doughnut } from "react-chartjs-2";
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  LineElement,
-  PointElement,
-  ArcElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler,
-);
+ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, ArcElement, Title, Tooltip, Legend, Filler);
 
-const KPICard = ({ title, value, icon, color, loading }) => (
+const KPICard = ({ title, value, subtitle, icon, color, loading, index = 0 }) => (
   <Card
     elevation={0}
     sx={{
@@ -72,15 +27,24 @@ const KPICard = ({ title, value, icon, color, loading }) => (
       border: "1px solid",
       borderColor: "divider",
       height: "100%",
+      background: "linear-gradient(140deg, rgba(255,255,255,0.9), rgba(255,255,255,0.6))",
+      backdropFilter: "blur(6px)",
+      boxShadow: "0 16px 40px rgba(15, 23, 42, 0.08)",
+      animation: "cardIn 0.6s ease both",
+      animationDelay: `${index * 0.08}s`,
+      "@keyframes cardIn": {
+        from: { opacity: 0, transform: "translateY(10px)" },
+        to: { opacity: 1, transform: "translateY(0)" },
+      },
     }}
   >
-    <CardContent sx={{ p: 2.5 }}>
+    <CardContent sx={{ p: 2.75 }}>
       <Stack direction="row" alignItems="center" spacing={2}>
         <Box
           sx={{
             p: 1.5,
             borderRadius: 2,
-            bgcolor: `${color}15`,
+            bgcolor: `${color}18`,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -89,16 +53,19 @@ const KPICard = ({ title, value, icon, color, loading }) => (
           {React.cloneElement(icon, { sx: { color, fontSize: 28 } })}
         </Box>
         <Box>
-          <Typography variant="body2" color="text.secondary" fontWeight={500}>
+          <Typography variant="body2" color="text.secondary" fontWeight={700} letterSpacing="0.03em">
             {title}
           </Typography>
           {loading ? (
-            <Skeleton width={60} height={36} />
+            <Skeleton width={90} height={38} />
           ) : (
-            <Typography variant="h5" fontWeight={700}>
-              {typeof value === "number"
-                ? value.toLocaleString("pt-BR")
-                : value}
+            <Typography variant="h5" fontWeight={800} sx={{ fontFamily: '"Literata", serif' }}>
+              {typeof value === "number" ? value.toLocaleString("pt-BR") : value}
+            </Typography>
+          )}
+          {subtitle && !loading && (
+            <Typography variant="caption" color="text.secondary">
+              {subtitle}
             </Typography>
           )}
         </Box>
@@ -108,641 +75,439 @@ const KPICard = ({ title, value, icon, color, loading }) => (
 );
 
 const UsageReport = () => {
+  const theme = useTheme();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [days, setDays] = useState(30);
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [includeImport, setIncludeImport] = useState(false);
   const [sortField, setSortField] = useState("request_count");
   const [sortDirection, setSortDirection] = useState("desc");
-
-  const apiUrl = import.meta.env.VITE_API_URL;
 
   const fetchReport = useCallback(async () => {
     setLoading(true);
     setError("");
+    const apiUrl = import.meta.env.VITE_API_URL;
     try {
-      const params = new URLSearchParams();
-      
-      if (startDate && endDate) {
-        params.append("start_date", startDate);
-        params.append("end_date", endDate);
-      } else {
-        params.append("days", days);
-      }
-      
-      // Always explicitly send the include_import parameter
-      params.append("include_import", includeImport ? "true" : "false");
-      
-      const res = await axios.get(`${apiUrl}/api/usage_report?${params}`, {
-        withCredentials: true,
-      });
+      // Ajuste o caminho da API conforme seu proxy
+      const res = await axios.get(`${apiUrl}/api/usage_report?days=${days}`, { withCredentials: true });
       setData(res.data);
     } catch (err) {
-      setError(
-        err.response?.status === 403
-          ? "Acesso negado. Apenas administradores podem acessar este relatório."
-          : "Erro ao carregar relatório de uso.",
-      );
+      setError(err.response?.status === 403 ? "Acesso negado. Apenas administradores." : "Erro ao carregar dados analíticos.");
     } finally {
       setLoading(false);
     }
-  }, [apiUrl, days, startDate, endDate, includeImport]);
+  }, [days]);
 
-  // Auto-fetch when includeImport checkbox changes (if we have existing data)
   useEffect(() => {
-    if (data) {
-      fetchReport();
-    }
-  }, [includeImport]);
+    fetchReport();
+  }, [fetchReport]);
 
   const handleSort = (field) => {
-    if (sortField === field) {
-      setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortField(field);
-      setSortDirection("desc");
-    }
+    setSortDirection(sortField === field && sortDirection === "asc" ? "desc" : "asc");
+    setSortField(field);
   };
+
+  const activeUsers = useMemo(() => (data?.users || []).filter(u => u.login_count > 0).length, [data]);
+  const errorRate = useMemo(() => {
+    if (!data?.metrics?.total_requests) return 0;
+    return ((data.metrics.total_errors / data.metrics.total_requests) * 100).toFixed(2);
+  }, [data]);
+
+  // Chart Data: Health & Traffic (Line Area)
+  const activityChart = useMemo(() => {
+    if (!data?.daily_stats) return null;
+    return {
+      labels: data.daily_stats.map(d => new Date(d.date).toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit' })),
+      datasets: [
+        {
+          label: "Requisições",
+          data: data.daily_stats.map(d => d.requests),
+          borderColor: theme.palette.primary.main,
+          backgroundColor: `${theme.palette.primary.main}20`,
+          fill: true,
+          tension: 0.4,
+        },
+        {
+          label: "Erros (4xx/5xx)",
+          data: data.daily_stats.map(d => d.errors),
+          borderColor: theme.palette.error.main,
+          backgroundColor: `${theme.palette.error.main}20`,
+          fill: true,
+          tension: 0.4,
+        },
+      ],
+    };
+  }, [data, theme]);
+
+  // Chart Data: Top Searches (Doughnut)
+  const searchDoughnut = useMemo(() => {
+    if (!data?.top_searches?.length) return null;
+    const colors = ["#2196f3", "#4caf50", "#ff9800", "#e91e63", "#9c27b0", "#00bcd4", "#ff5722"];
+    return {
+      labels: data.top_searches.map(s => s.term),
+      datasets: [{
+        data: data.top_searches.map(s => s.count),
+        backgroundColor: colors,
+        borderWidth: 0,
+      }],
+    };
+  }, [data]);
+
+  // Chart Data: Status Codes (Bar)
+  const statusCodesChart = useMemo(() => {
+    if (!data?.status_codes) return null;
+    const getCodeColor = (code) => {
+        if(code >= 200 && code < 300) return theme.palette.success.main;
+        if(code >= 400 && code < 500) return theme.palette.warning.main;
+        return theme.palette.error.main;
+    };
+    return {
+      labels: data.status_codes.map(s => `HTTP ${s.code}`),
+      datasets: [{
+        label: "Ocorrências",
+        data: data.status_codes.map(s => s.count),
+        backgroundColor: data.status_codes.map(s => getCodeColor(s.code)),
+        borderRadius: 4,
+      }]
+    };
+  }, [data, theme]);
 
   const sortedUsers = useMemo(() => {
     if (!data?.users) return [];
     return [...data.users].sort((a, b) => {
       const mul = sortDirection === "asc" ? 1 : -1;
-      if (sortField === "username" || sortField === "email") {
-        return mul * (a[sortField] || "").localeCompare(b[sortField] || "");
-      }
-      return mul * ((a[sortField] || 0) - (b[sortField] || 0));
+      return (typeof a[sortField] === 'string') 
+        ? mul * a[sortField].localeCompare(b[sortField])
+        : mul * (a[sortField] - b[sortField]);
     });
   }, [data, sortField, sortDirection]);
 
-  const totalLogins = useMemo(
-    () => (data?.users || []).reduce((s, u) => s + u.login_count, 0),
-    [data],
-  );
-  const totalRequests = useMemo(
-    () => (data?.users || []).reduce((s, u) => s + u.request_count, 0),
-    [data],
-  );
-  const activeUsers = useMemo(
-    () => (data?.users || []).filter((u) => u.login_count > 0).length,
-    [data],
-  );
-
-  // Charts
-  const dailyRequestsChart = useMemo(() => {
-    if (!data?.daily_requests) return null;
-    const sorted = [...data.daily_requests].sort((a, b) => new Date(a.date) - new Date(b.date));
-    return {
-      labels: sorted.map((d) => {
-        const date = new Date(d.date);
-        return date.toLocaleDateString("pt-BR", {
-          day: "2-digit",
-          month: "2-digit",
-        });
-      }),
-      datasets: [
-        {
-          label: "Requisições",
-          data: sorted.map((d) => d.count),
-          borderColor: "#2196f3",
-          backgroundColor: "rgba(33, 150, 243, 0.1)",
-          fill: true,
-          tension: 0.4,
-          borderWidth: 2,
-        },
-      ],
-    };
-  }, [data]);
-
-  const dailyLoginsChart = useMemo(() => {
-    if (!data?.daily_logins) return null;
-    const sorted = [...data.daily_logins].sort((a, b) => new Date(a.date) - new Date(b.date));
-    return {
-      labels: sorted.map((d) => {
-        const date = new Date(d.date);
-        return date.toLocaleDateString("pt-BR", {
-          day: "2-digit",
-          month: "2-digit",
-        });
-      }),
-      datasets: [
-        {
-          label: "Logins",
-          data: sorted.map((d) => d.count),
-          borderColor: "#4caf50",
-          backgroundColor: "rgba(76, 175, 80, 0.1)",
-          fill: true,
-          tension: 0.4,
-          borderWidth: 2,
-        },
-      ],
-    };
-  }, [data]);
-
-  const usersRequestsChart = useMemo(() => {
-    if (!data?.users) return null;
-    const top = [...data.users]
-      .sort((a, b) => b.request_count - a.request_count)
-      .slice(0, 10);
-    return {
-      labels: top.map((u) => u.username),
-      datasets: [
-        {
-          label: "Requisições",
-          data: top.map((u) => u.request_count),
-          backgroundColor: "rgba(33, 150, 243, 0.7)",
-          borderRadius: 6,
-        },
-      ],
-    };
-  }, [data]);
-
-  const usersLoginsChart = useMemo(() => {
-    if (!data?.users) return null;
-    const top = [...data.users]
-      .sort((a, b) => b.login_count - a.login_count)
-      .slice(0, 10);
-    return {
-      labels: top.map((u) => u.username),
-      datasets: [
-        {
-          label: "Logins",
-          data: top.map((u) => u.login_count),
-          backgroundColor: "rgba(76, 175, 80, 0.7)",
-          borderRadius: 6,
-        },
-      ],
-    };
-  }, [data]);
-
-  const endpointsDoughnut = useMemo(() => {
-    if (!data?.top_endpoints?.length) return null;
-    const colors = [
-      "#2196f3",
-      "#4caf50",
-      "#ff9800",
-      "#e91e63",
-      "#9c27b0",
-      "#00bcd4",
-      "#ff5722",
-      "#607d8b",
-      "#795548",
-      "#3f51b5",
-    ];
-    return {
-      labels: data.top_endpoints.map(
-        (e) =>
-          `${e.method} ${e.endpoint.length > 30 ? "..." + e.endpoint.slice(-27) : e.endpoint}`,
-      ),
-      datasets: [
-        {
-          data: data.top_endpoints.map((e) => e.count),
-          backgroundColor: colors.slice(0, data.top_endpoints.length),
-          borderWidth: 0,
-        },
-      ],
-    };
-  }, [data]);
-
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { position: "top", labels: { usePointStyle: true, padding: 15 } },
-    },
-    scales: {
-      y: {
-        beginAtZero: true,
-        ticks: { precision: 0 },
-        grid: { color: "rgba(0,0,0,0.06)" },
-      },
-      x: { grid: { display: false } },
-    },
-  };
-
   return (
-    <Container maxWidth="xl" sx={{ py: 3 }}>
-      {/* Header */}
-      <Stack
-        direction={{ xs: "column", sm: "row" }}
-        justifyContent="space-between"
-        alignItems={{ xs: "stretch", sm: "flex-start" }}
-        spacing={2}
-        sx={{ mb: 3 }}
-      >
-        <Box>
-          <Typography variant="h5" fontWeight={700}>
-            Relatório de Uso
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Acompanhe a atividade dos usuários no sistema
-          </Typography>
-        </Box>
-        <Stack spacing={2} sx={{ width: { xs: "100%", sm: "auto" } }}>
-          {/* Period Selector */}
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ xs: "stretch", sm: "center" }}>
-            <FormControl size="small" sx={{ minWidth: 140 }}>
-              <InputLabel>Período Padrão</InputLabel>
-              <Select
-                value={days}
-                label="Período Padrão"
-                onChange={(e) => {
-                  const newDays = e.target.value;
-                  setDays(newDays);
-                  // Calculate date range from days
-                  const today = new Date();
-                  const start = new Date(today.getTime() - newDays * 24 * 60 * 60 * 1000);
-                  setStartDate(start.toISOString().split("T")[0]);
-                  setEndDate(today.toISOString().split("T")[0]);
+    <Box
+      sx={{
+        position: "relative",
+        py: { xs: 3, md: 5 },
+        background:
+          "radial-gradient(1100px 520px at 10% -10%, rgba(14,116,144,0.18), transparent 60%), radial-gradient(900px 480px at 90% 0%, rgba(15,118,110,0.16), transparent 55%), #f7f6f1",
+        "&:before": {
+          content: '""',
+          position: "absolute",
+          inset: 0,
+          backgroundImage:
+            "repeating-linear-gradient(135deg, rgba(15,23,42,0.05) 0, rgba(15,23,42,0.05) 1px, transparent 1px, transparent 18px)",
+          opacity: 0.25,
+          pointerEvents: "none",
+        },
+      }}
+    >
+      <Container maxWidth="xl" sx={{ position: "relative", zIndex: 1, fontFamily: '"Space Grotesk", sans-serif' }}>
+        {/* Header & Controls */}
+        <Stack
+          direction={{ xs: "column", md: "row" }}
+          justifyContent="space-between"
+          alignItems={{ xs: "flex-start", md: "center" }}
+          spacing={{ xs: 2.5, md: 3 }}
+          sx={{ mb: 4 }}
+        >
+          <Stack spacing={1.2} sx={{ maxWidth: 620 }}>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Chip
+                label="Painel Executivo"
+                size="small"
+                sx={{
+                  bgcolor: "rgba(15,118,110,0.12)",
+                  color: "#0f766e",
+                  fontWeight: 700,
+                  letterSpacing: "0.08em",
                 }}
-              >
-                <MenuItem value={7}>Últimos 7 dias</MenuItem>
-                <MenuItem value={15}>Últimos 15 dias</MenuItem>
-                <MenuItem value={30}>Últimos 30 dias</MenuItem>
-                <MenuItem value={60}>Últimos 60 dias</MenuItem>
-                <MenuItem value={90}>Últimos 90 dias</MenuItem>
-                <MenuItem value={180}>Últimos 180 dias</MenuItem>
-                <MenuItem value={365}>Último ano</MenuItem>
-              </Select>
-            </FormControl>
-            <Typography variant="body2" color="text.secondary" sx={{ display: { xs: "none", sm: "block" } }}>
-              ou
+              />
+              <Chip
+                label={`${days} dias`}
+                size="small"
+                sx={{
+                  bgcolor: "rgba(14,116,144,0.12)",
+                  color: "#0e7490",
+                  fontWeight: 700,
+                }}
+              />
+            </Stack>
+            <Typography
+              variant="h3"
+              fontWeight={800}
+              color="text.primary"
+              sx={{ fontFamily: '"Literata", serif', letterSpacing: "-0.02em" }}
+            >
+              BI & Uso do Sistema
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Métricas de performance, buscas e tráfego do jhub em um painel de leitura rápida.
             </Typography>
           </Stack>
-
-          {/* Date Range Selectors */}
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ xs: "stretch", sm: "center" }}>
-            <TextField
-              size="small"
-              type="date"
-              label="Data Inicial"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              sx={{ minWidth: 130 }}
-            />
-            <TextField
-              size="small"
-              type="date"
-              label="Data Final"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              sx={{ minWidth: 130 }}
-            />
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ width: { xs: "100%", md: "auto" } }}>
+            <FormControl size="small" sx={{ minWidth: { xs: "100%", sm: 200 }, bgcolor: "background.paper" }}>
+              <InputLabel>Recorte de Tempo</InputLabel>
+              <Select value={days} label="Recorte de Tempo" onChange={(e) => setDays(e.target.value)}>
+                <MenuItem value={7}>Últimos 7 dias</MenuItem>
+                <MenuItem value={30}>Últimos 30 dias</MenuItem>
+                <MenuItem value={90}>Últimos 90 dias</MenuItem>
+              </Select>
+            </FormControl>
             <Button
               variant="contained"
-              startIcon={<PlayArrowIcon />}
               onClick={fetchReport}
               disabled={loading}
-              sx={{ borderRadius: 2, textTransform: "none", fontWeight: 600 }}
+              startIcon={<PlayArrowIcon />}
+              sx={{
+                textTransform: "none",
+                borderRadius: 2,
+                px: 3,
+                boxShadow: "0 14px 28px rgba(15,118,110,0.25)",
+                background: "linear-gradient(135deg, #0f766e, #0e7490)",
+              }}
             >
-              {loading ? "Carregando..." : "Gerar Relatório"}
+              Atualizar
             </Button>
           </Stack>
-
-          {/* Include Import Checkbox */}
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={includeImport}
-                onChange={(e) => setIncludeImport(e.target.checked)}
-                size="small"
-              />
-            }
-            label="Incluir endpoint /api/import"
-            sx={{ ml: 0 }}
-          />
         </Stack>
-      </Stack>
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
-        </Alert>
-      )}
+        {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
 
-      {/* KPI Cards */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <KPICard
-            title="Usuários Ativos"
-            value={activeUsers}
-            icon={<PeopleIcon />}
-            color="#2196f3"
-            loading={loading}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <KPICard
-            title="Total de Logins"
-            value={totalLogins}
-            icon={<LoginIcon />}
-            color="#4caf50"
-            loading={loading}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <KPICard
-            title="Total de Requisições"
-            value={totalRequests}
-            icon={<HttpIcon />}
-            color="#ff9800"
-            loading={loading}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <KPICard
-            title="Média Req/Usuário"
-            value={
-              activeUsers > 0 ? Math.round(totalRequests / activeUsers) : 0
-            }
-            icon={<TrendingUpIcon />}
-            color="#e91e63"
-            loading={loading}
-          />
-        </Grid>
-      </Grid>
-
-      {data && (
-        <>
-          {/* Atividade Diária - Daily Activity Charts */}
-          <Grid container spacing={2} sx={{ mb: 3 }}>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <Paper
-                elevation={0}
-                sx={{
-                  p: 3,
-                  borderRadius: 3,
-                  border: "1px solid",
-                  borderColor: "divider",
-                  height: 380,
-                }}
-              >
-                <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                  Atividade Diária - Requisições
-                </Typography>
-                {dailyRequestsChart && (
-                  <Box sx={{ height: 310 }}>
-                    <Line data={dailyRequestsChart} options={chartOptions} />
-                  </Box>
-                )}
-              </Paper>
-            </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <Paper
-                elevation={0}
-                sx={{
-                  p: 3,
-                  borderRadius: 3,
-                  border: "1px solid",
-                  borderColor: "divider",
-                  height: 380,
-                }}
-              >
-                <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                  Atividade Diária - Logins
-                </Typography>
-                {dailyLoginsChart && (
-                  <Box sx={{ height: 310 }}>
-                    <Line data={dailyLoginsChart} options={chartOptions} />
-                  </Box>
-                )}
-              </Paper>
-            </Grid>
+        {/* KPI Row */}
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <KPICard
+              title="Total de Requisições"
+              value={data?.metrics?.total_requests || 0}
+              icon={<HttpIcon />}
+              color={theme.palette.primary.main}
+              loading={loading}
+              index={0}
+            />
           </Grid>
-
-          {/* Top Endpoints Doughnut Chart */}
-          <Grid container spacing={2} sx={{ mb: 3 }}>
-            <Grid size={{ xs: 12 }}>
-              <Paper
-                elevation={0}
-                sx={{
-                  p: 3,
-                  borderRadius: 3,
-                  border: "1px solid",
-                  borderColor: "divider",
-                  height: 380,
-                }}
-              >
-                <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                  Top Endpoints
-                </Typography>
-                {endpointsDoughnut ? (
-                  <Box sx={{ height: 310 }}>
-                    <Doughnut
-                      data={endpointsDoughnut}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                          legend: {
-                            position: "bottom",
-                            labels: {
-                              usePointStyle: true,
-                              padding: 10,
-                              font: { size: 11 },
-                            },
-                          },
-                        },
-                      }}
-                    />
-                  </Box>
-                ) : (
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ mt: 4, textAlign: "center" }}
-                  >
-                    Sem dados de endpoints no período.
-                  </Typography>
-                )}
-              </Paper>
-            </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <KPICard
+              title="Usuários Ativos"
+              value={activeUsers}
+              subtitle="Com login no período"
+              icon={<PeopleIcon />}
+              color={theme.palette.success.main}
+              loading={loading}
+              index={1}
+            />
           </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <KPICard
+              title="Latência Média"
+              value={`${data?.metrics?.avg_duration_ms || 0} ms`}
+              subtitle="Tempo de resposta API"
+              icon={<TimerIcon />}
+              color={theme.palette.info.main}
+              loading={loading}
+              index={2}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <KPICard
+              title="Taxa de Falha (4xx/5xx)"
+              value={`${errorRate}%`}
+              subtitle={`${data?.metrics?.total_errors || 0} erros registrados`}
+              icon={<WarningIcon />}
+              color={theme.palette.error.main}
+              loading={loading}
+              index={3}
+            />
+          </Grid>
+        </Grid>
 
-          {/* Uso por Usuário - User Usage Charts */}
-          <Grid container spacing={2} sx={{ mb: 3 }}>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <Paper
-                elevation={0}
-                sx={{
-                  p: 3,
-                  borderRadius: 3,
-                  border: "1px solid",
-                  borderColor: "divider",
-                  height: 380,
-                }}
-              >
-                <Stack
-                  direction="row"
-                  alignItems="center"
-                  spacing={1}
-                  sx={{ mb: 1 }}
+        {data && (
+          <>
+            {/* All Charts Row - responsive grid layout */}
+            <Grid container spacing={3} sx={{ mb: 4 }}>
+              {/* Volume de Tráfego e Saúde - 8 cols on large, 12 on medium */}
+              <Grid item xs={12} lg={8}>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 3,
+                    borderRadius: 3,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    background: "rgba(255,255,255,0.8)",
+                    backdropFilter: "blur(8px)",
+                    height: { xs: "auto", lg: 420 },
+                  }}
                 >
-                  <BarChartIcon color="primary" />
-                  <Typography variant="subtitle1" fontWeight={600}>
-                    Uso por Usuário (Top 10) - Requisições
-                  </Typography>
-                </Stack>
-                {usersRequestsChart && (
-                  <Box sx={{ height: 310 }}>
-                    <Bar data={usersRequestsChart} options={chartOptions} />
-                  </Box>
-                )}
-              </Paper>
-            </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <Paper
-                elevation={0}
-                sx={{
-                  p: 3,
-                  borderRadius: 3,
-                  border: "1px solid",
-                  borderColor: "divider",
-                  height: 380,
-                }}
-              >
-                <Stack
-                  direction="row"
-                  alignItems="center"
-                  spacing={1}
-                  sx={{ mb: 1 }}
-                >
-                  <LoginIcon color="success" />
-                  <Typography variant="subtitle1" fontWeight={600}>
-                    Uso por Usuário (Top 10) - Logins
-                  </Typography>
-                </Stack>
-                {usersLoginsChart && (
-                  <Box sx={{ height: 310 }}>
-                    <Bar data={usersLoginsChart} options={chartOptions} />
-                  </Box>
-                )}
-              </Paper>
-            </Grid>
-          </Grid>
+                  <Typography variant="h6" fontWeight={700} mb={2}>Volume de Tráfego e Saúde</Typography>
+                  {activityChart && (
+                    <Box sx={{ height: { xs: 240, md: 320 } }}>
+                      <Line data={activityChart} options={{ responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false } }} />
+                    </Box>
+                  )}
+                </Paper>
+              </Grid>
 
-          {/* Table */}
-          <Paper
-            elevation={0}
-            sx={{
-              borderRadius: 3,
-              border: "1px solid",
-              borderColor: "divider",
-              overflow: "hidden",
-            }}
-          >
-            <Box sx={{ p: 2.5, pb: 1 }}>
-              <Typography variant="subtitle1" fontWeight={600}>
-                Detalhamento por Usuário
-              </Typography>
-            </Box>
-            <TableContainer>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>
-                      <TableSortLabel
-                        active={sortField === "username"}
-                        direction={
-                          sortField === "username" ? sortDirection : "asc"
-                        }
-                        onClick={() => handleSort("username")}
-                      >
-                        Usuário
-                      </TableSortLabel>
-                    </TableCell>
-                    <TableCell>
-                      <TableSortLabel
-                        active={sortField === "email"}
-                        direction={
-                          sortField === "email" ? sortDirection : "asc"
-                        }
-                        onClick={() => handleSort("email")}
-                      >
-                        Email
-                      </TableSortLabel>
-                    </TableCell>
-                    <TableCell align="right">
-                      <TableSortLabel
-                        active={sortField === "login_count"}
-                        direction={
-                          sortField === "login_count" ? sortDirection : "asc"
-                        }
-                        onClick={() => handleSort("login_count")}
-                      >
-                        Logins
-                      </TableSortLabel>
-                    </TableCell>
-                    <TableCell align="right">
-                      <TableSortLabel
-                        active={sortField === "request_count"}
-                        direction={
-                          sortField === "request_count" ? sortDirection : "asc"
-                        }
-                        onClick={() => handleSort("request_count")}
-                      >
-                        Requisições
-                      </TableSortLabel>
-                    </TableCell>
-                    <TableCell align="center">Status</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {sortedUsers.map((user) => (
-                    <TableRow key={user.user_id} hover>
-                      <TableCell sx={{ fontWeight: 500 }}>
-                        {user.username}
+              {/* Top Termos Pesquisados - 4 cols on large, 12 on medium, then wraps to row 2 */}
+              <Grid item xs={12} sm={6} lg={4}>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 3,
+                    borderRadius: 3,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    background: "rgba(255,255,255,0.85)",
+                    backdropFilter: "blur(8px)",
+                    height: { xs: "auto", lg: 420 },
+                  }}
+                >
+                  <Stack direction="row" alignItems="center" spacing={1} mb={2}>
+                    <SearchIcon color="primary" />
+                    <Typography variant="h6" fontWeight={700}>Top Termos Pesquisados</Typography>
+                  </Stack>
+                  {searchDoughnut ? (
+                    <Box sx={{ height: { xs: 240, md: 300 } }}>
+                      <Doughnut
+                        data={searchDoughnut}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: { legend: { position: "bottom" } },
+                        }}
+                      />
+                    </Box>
+                  ) : (
+                    <Typography color="text.secondary" textAlign="center" mt={8}>Nenhum termo de busca registrado.</Typography>
+                  )}
+                </Paper>
+              </Grid>
+
+              {/* Distribuição de Status (HTTP) - 4 cols on large, 12 on medium */}
+              <Grid item xs={12} sm={6} lg={4}>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 3,
+                    borderRadius: 3,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    background: "rgba(255,255,255,0.85)",
+                    backdropFilter: "blur(8px)",
+                    height: { xs: "auto", lg: 420 },
+                  }}
+                >
+                  <Typography variant="h6" fontWeight={700} mb={2}>Distribuição de Status (HTTP)</Typography>
+                  {statusCodesChart && (
+                    <Box sx={{ height: { xs: 220, md: 300 } }}>
+                      <Bar data={statusCodesChart} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }} />
+                    </Box>
+                  )}
+                </Paper>
+              </Grid>
+
+              {/* Rotas Mais Acessadas - full width, spans below */}
+              <Grid item xs={12}>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    borderRadius: 3,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    background: "rgba(255,255,255,0.85)",
+                    backdropFilter: "blur(8px)",
+                    height: { xs: "auto" },
+                    overflow: "hidden",
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                >
+                  <Box sx={{ p: 3, pb: 1 }}>
+                    <Typography variant="h6" fontWeight={700}>Rotas Mais Acessadas</Typography>
+                  </Box>
+                  <TableContainer sx={{ flexGrow: 1, maxHeight: { xs: 320, md: 400 } }}>
+                    <Table size="small" stickyHeader>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ fontWeight: 700 }}>Endpoint</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 700 }}>Requisições</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {data.top_endpoints.map((ep, idx) => (
+                          <TableRow key={idx} hover>
+                            <TableCell
+                              sx={{
+                                fontFamily: "monospace",
+                                fontSize: "0.82rem",
+                                maxWidth: { xs: 200, md: 360 },
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {ep.endpoint}
+                            </TableCell>
+                            <TableCell align="right">{ep.count.toLocaleString()}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              </Grid>
+            </Grid>
+
+            {/* User Data Grid */}
+            <Paper
+              elevation={0}
+              sx={{
+                borderRadius: 3,
+                border: "1px solid",
+                borderColor: "divider",
+                background: "rgba(255,255,255,0.88)",
+                backdropFilter: "blur(8px)",
+                overflow: "hidden",
+              }}
+            >
+              <Box sx={{ p: 3, pb: 1 }}><Typography variant="h6" fontWeight={700}>Comportamento do Usuário</Typography></Box>
+              <TableContainer sx={{ maxHeight: { xs: 420, md: 520 } }}>
+                <Table stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>
+                        <TableSortLabel active={sortField === "username"} direction={sortDirection} onClick={() => handleSort("username")}>Usuário</TableSortLabel>
                       </TableCell>
-                      <TableCell>{user.email}</TableCell>
-                      <TableCell align="right">
-                        {user.login_count.toLocaleString("pt-BR")}
+                      <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+                        <TableSortLabel active={sortField === "email"} direction={sortDirection} onClick={() => handleSort("email")}>Email</TableSortLabel>
                       </TableCell>
                       <TableCell align="right">
-                        {user.request_count.toLocaleString("pt-BR")}
+                        <TableSortLabel active={sortField === "login_count"} direction={sortDirection} onClick={() => handleSort("login_count")}>Logins</TableSortLabel>
                       </TableCell>
-                      <TableCell align="center">
-                        <Chip
-                          label={user.login_count > 0 ? "Ativo" : "Inativo"}
-                          color={user.login_count > 0 ? "success" : "default"}
-                          size="small"
-                          variant="outlined"
-                        />
+                      <TableCell align="right">
+                        <TableSortLabel active={sortField === "request_count"} direction={sortDirection} onClick={() => handleSort("request_count")}>Requisições</TableSortLabel>
                       </TableCell>
+                      <TableCell align="center" sx={{ display: { xs: "none", sm: "table-cell" } }}>Status</TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Paper>
-        </>
-      )}
-
-      {!data && !loading && !error && (
-        <Paper
-          elevation={0}
-          sx={{
-            p: 6,
-            borderRadius: 3,
-            border: "1px solid",
-            borderColor: "divider",
-            textAlign: "center",
-          }}
-        >
-          <BarChartIcon sx={{ fontSize: 64, color: "text.disabled", mb: 2 }} />
-          <Typography variant="h6" color="text.secondary" gutterBottom>
-            Selecione um período e clique em "Gerar Relatório"
-          </Typography>
-          <Typography variant="body2" color="text.disabled">
-            O relatório mostrará logins, requisições e atividade dos usuários.
-          </Typography>
-        </Paper>
-      )}
-    </Container>
+                  </TableHead>
+                  <TableBody>
+                    {sortedUsers.map((user) => (
+                      <TableRow key={user.user_id} hover>
+                        <TableCell sx={{ fontWeight: 600 }}>{user.username}</TableCell>
+                        <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>{user.email}</TableCell>
+                        <TableCell align="right">{user.login_count.toLocaleString("pt-BR")}</TableCell>
+                        <TableCell align="right">{user.request_count.toLocaleString("pt-BR")}</TableCell>
+                        <TableCell align="center" sx={{ display: { xs: "none", sm: "table-cell" } }}>
+                          <Chip label={user.login_count > 0 ? "Ativo" : "Inativo"} color={user.login_count > 0 ? "success" : "default"} size="small" variant="filled" sx={{ borderRadius: 1 }} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+          </>
+        )}
+      </Container>
+    </Box>
   );
 };
 

@@ -585,6 +585,7 @@ class RequestLog(db.Model):
     method = db.Column(db.String(10), nullable=False)
     status_code = db.Column(db.Integer, nullable=True)
     duration_ms = db.Column(db.Float, nullable=True)
+    search_term = db.Column(db.String(500), nullable=True)
     timestamp = db.Column(db.DateTime, default=datetime.now, index=True)
 
     user = db.relationship('User', backref=db.backref('request_logs', lazy='dynamic'))

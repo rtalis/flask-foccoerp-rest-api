@@ -733,7 +733,6 @@ def search_advanced():
         .distinct()
         .subquery()
     )
-
     if quick_load:
         orders = (
             PurchaseOrder.query
