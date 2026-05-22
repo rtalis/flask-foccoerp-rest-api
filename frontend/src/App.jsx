@@ -18,6 +18,7 @@ import ImportFile from "./components/ImportFile";
 import Register from "./components/Register";
 import QuotationAnalyzer from "./components/QuotationAnalyzer";
 import Dashboard from "./components/Dashboard";
+import PurchaseReport from "./components/PurchaseReport";
 import TokenManager from "./components/TokenManager";
 import NFESearch from "./components/NFESearch";
 import ReleaseNotes from "./components/ReleaseNotes";
@@ -43,6 +44,7 @@ const AppContent = () => {
     const fallback = "/search";
     const validScreens = [
       "/dashboard",
+      "/purchase-report",
       "/search",
       "/nfe-search",
       "/quotation-analyzer",
@@ -341,6 +343,7 @@ const AppContent = () => {
             <Route path="/search" element={<UnifiedSearch />} />
             <Route path="/nfe-search" element={<NFESearch />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/purchase-report" element={<PurchaseReport />} />
             <Route path="/quotation-analyzer" element={<QuotationAnalyzer />} />
             <Route path="/import" element={<ImportFile />} />
             <Route path="/register" element={<Register />} />

@@ -18,6 +18,7 @@ import {
   Badge,
   useMediaQuery,
   useTheme,
+  Collapse,
 } from "@mui/material";
 import {
   Assessment as AssessmentIcon,
@@ -32,6 +33,8 @@ import {
   People as PeopleIcon,
   AccountCircle as AccountCircleIcon,
   BarChart as BarChartIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
 } from "@mui/icons-material";
 import TrackedCompanies from "./TrackedCompanies";
 
@@ -52,6 +55,7 @@ const Layout = ({ onLogout }) => {
   const [capabilities, setCapabilities] = useState([]);
   const [dataFilters, setDataFilters] = useState({});
   const [nfeBadge, setNfeBadge] = useState(false);
+  const [expandedReports, setExpandedReports] = useState(false);
 
   const isAdmin = userRole === "admin";
   
@@ -79,6 +83,13 @@ const Layout = ({ onLogout }) => {
     fetchUserContext();
   }, []);
 
+  // Collapse expanded reports when sidebar closes
+  useEffect(() => {
+    if (!sidebarOpen) {
+      setExpandedReports(false);
+    }
+  }, [sidebarOpen]);
+
   const drawerWidth = sidebarOpen ? DRAWER_WIDTH : DRAWER_WIDTH_COLLAPSED;
 
   const allMenuItems = [
@@ -105,12 +116,6 @@ const Layout = ({ onLogout }) => {
       icon: <SyncIcon />,
       path: "/import",
       description: "Atualizar base de dados",
-    },
-    {
-      text: "Relatórios",
-      icon: <AssessmentIcon />,
-      path: "/dashboard",
-      description: "Visão geral e métricas",
     },
   ];
 
@@ -149,6 +154,15 @@ const Layout = ({ onLogout }) => {
     if (isMobile) {
       setMobileOpen(false);
     }
+  };
+
+  const handleReportsClick = () => {
+    // If sidebar is collapsed, expand it first
+    if (!sidebarOpen) {
+      setSidebarOpen(true);
+    }
+    // Toggle the expanded reports menu
+    setExpandedReports(!expandedReports);
   };
 
   const handleLogout = () => {
@@ -306,6 +320,155 @@ const Layout = ({ onLogout }) => {
             </ListItemButton>
           </Tooltip>
         ))}
+
+        {/* Expandable Relatórios Section */}
+        <Tooltip
+          title={!sidebarOpen ? "Relatórios" : ""}
+          placement="right"
+          arrow
+        >
+          <ListItemButton
+            onClick={handleReportsClick}
+            selected={!sidebarOpen && (isActive("/dashboard") || isActive("/purchase-report"))}
+            sx={{
+              borderRadius: 2,
+              mb: 0.5,
+              minHeight: 48,
+              px: sidebarOpen ? 2 : 1.5,
+              justifyContent: sidebarOpen ? "space-between" : "center",
+              color: "rgba(255,255,255,0.7)",
+              "&:hover": {
+                bgcolor: "rgba(255,255,255,0.08)",
+                color: "#fff",
+              },
+              "&.Mui-selected": {
+                bgcolor: "primary.main",
+                color: "#fff",
+                "&:hover": {
+                  bgcolor: "primary.dark",
+                },
+              },
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", minWidth: 0 }}>
+              <ListItemIcon
+                sx={{
+                  minWidth: 0,
+                  mr: sidebarOpen ? 2 : 0,
+                  justifyContent: "center",
+                  color: "inherit",
+                }}
+              >
+                <AssessmentIcon />
+              </ListItemIcon>
+              {sidebarOpen && (
+                <ListItemText
+                  primary="Relatórios"
+                  secondary="Relatórios e métricas"
+                  primaryTypographyProps={{
+                    fontSize: "0.9rem",
+                    fontWeight: 500,
+                  }}
+                  secondaryTypographyProps={{
+                    fontSize: "0.7rem",
+                    color: "rgba(255,255,255,0.4)",
+                    sx: { mt: 0.25 },
+                  }}
+                />
+              )}
+            </Box>
+            {sidebarOpen && (
+              expandedReports ? <ExpandLessIcon /> : <ExpandMoreIcon />
+            )}
+          </ListItemButton>
+        </Tooltip>
+
+        {/* Reports Submenu */}
+        <Collapse in={expandedReports} timeout="auto" unmountOnExit>
+          <List component="div" disablePadding>
+            {/* Relatório Geral */}
+            <Tooltip
+              title={!sidebarOpen ? "Relatório geral" : ""}
+              placement="right"
+              arrow
+            >
+              <ListItemButton
+                onClick={() => handleNavigate("/dashboard")}
+                selected={isActive("/dashboard")}
+                sx={{
+                  borderRadius: 2,
+                  mb: 0.5,
+                  minHeight: 44,
+                  ml: sidebarOpen ? 2 : 0,
+                  pl: sidebarOpen ? 4 : 1.5,
+                  pr: sidebarOpen ? 2 : 1.5,
+                  justifyContent: sidebarOpen ? "flex-start" : "center",
+                  color: "rgba(255,255,255,0.7)",
+                  "&:hover": {
+                    bgcolor: "rgba(255,255,255,0.08)",
+                    color: "#fff",
+                  },
+                  "&.Mui-selected": {
+                    bgcolor: "primary.main",
+                    color: "#fff",
+                    "&:hover": {
+                      bgcolor: "primary.dark",
+                    },
+                  },
+                }}
+              >
+                <ListItemText
+                  primary="Relatório geral"
+                  primaryTypographyProps={{
+                    fontSize: "0.85rem",
+                    fontWeight: 500,
+                  }}
+                />
+              </ListItemButton>
+            </Tooltip>
+
+            {/* Relatório de Pedidos de Compra */}
+            <Tooltip
+              title={!sidebarOpen ? "Relatório de pedidos" : ""}
+              placement="right"
+              arrow
+            >
+              <ListItemButton
+                onClick={() => handleNavigate("/purchase-report")}
+                selected={isActive("/purchase-report")}
+                sx={{
+                  borderRadius: 2,
+                  mb: 0.5,
+                  minHeight: 44,
+                  ml: sidebarOpen ? 2 : 0,
+                  pl: sidebarOpen ? 4 : 1.5,
+                  pr: sidebarOpen ? 2 : 1.5,
+                  justifyContent: sidebarOpen ? "flex-start" : "center",
+                  color: "rgba(255,255,255,0.7)",
+                  "&:hover": {
+                    bgcolor: "rgba(255,255,255,0.08)",
+                    color: "#fff",
+                  },
+                  "&.Mui-selected": {
+                    bgcolor: "primary.main",
+                    color: "#fff",
+                    "&:hover": {
+                      bgcolor: "primary.dark",
+                    },
+                  },
+                }}
+              >
+                <ListItemText
+                  primary="Relatório de pedidos de compra"
+                  primaryTypographyProps={{
+                    fontSize: "0.85rem",
+                    fontWeight: 500,
+                  }}
+                />
+              </ListItemButton>
+            </Tooltip>
+          </List>
+        </Collapse>
       </List>
 
       {/* Bottom Section */}
