@@ -123,7 +123,7 @@ def usage_report():
         
         'status_codes': [{'code': s.status_code or 'Unknown', 'count': s.count} for s in status_distribution],
         'top_endpoints': [{'endpoint': ep[0], 'count': ep[1]} for ep in top_endpoints],
-        'top_searches': [{'term': st[0], 'count': st[1]} for st in top_search_terms],
+        'top_searches': top_search_terms,
         'period_days': days,
     }), 200
 
