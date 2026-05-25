@@ -56,9 +56,16 @@ flask-foccoerp-rest-api/
    ```
 
 3. Instale as dependências:
+
+   3.1 Para usar o match_purchases_nfe.py com sentence-transformers, instale a versão do torch com aceleração para sua máquina, no caso de uso com cpu: 
+   ```
+   pip install torch --index-url https://download.pytorch.org/whl/cpu
+   ```
+   E então instale o restante das dependencias:
    ```
    pip install -r requirements.txt
    ```
+   
 
 4. Configure as variáveis de ambiente no arquivo `.env`, pode utilizar como base o arquivo .env.example.
 

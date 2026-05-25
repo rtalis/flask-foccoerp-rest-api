@@ -711,7 +711,7 @@ def sync_nfe_api():
 def match_purchase_nfe():
     """Find NFEs that match a purchase order and score their similarity."""
     from app.utils import score_purchase_nfe_match
-    
+
     cod_pedc = request.args.get('cod_pedc')
     cod_emp1 = request.args.get('cod_emp1')
     max_results = request.args.get('max_results', default=10, type=int)

@@ -1300,7 +1300,22 @@ def relink_purchase_item_nfe_matches():
     
     return relinked_count
 
-def score_purchase_nfe_match(cod_pedc, cod_emp1):
+from sentence_transformers import SentenceTransformer, util
+import torch
+
+# Global embedding model - lazy loaded on first use
+_embedding_model = None
+
+def _load_embedding_model():
+    """Load the embedding model on first use"""
+    global _embedding_model
+    if _embedding_model is None:
+        print("Loading Embedding Model...")
+        _embedding_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+        print("Model loaded successfully.")
+    return _embedding_model
+
+def score_purchase_nfe_match(cod_pedc, cod_emp1, nfe_cache=None):
     """
     Find and score NFEs that might fulfill a purchase order.
     
@@ -1320,14 +1335,18 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
     Args:
         cod_pedc: The purchase order code
         cod_emp1: The company code
+        nfe_cache: Optional dictionary to cache NFE data
         
     Returns:
         List of NFEs scored by how well they match the purchase order.
     """
+    if nfe_cache is None:
+        nfe_cache = {}
+
     import re
     from fuzzywuzzy import fuzz
     from app.models import PurchaseOrder, PurchaseItem, NFEData, NFEItem, NFEEmitente
-    
+
     # Validate required parameters
     if not cod_pedc:
         return {'error': 'cod_pedc is required'}
@@ -1431,87 +1450,62 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
             numbers.update(matches)
         return numbers
     
-    def match_items(po_items, nfe_items_db, use_original_qty=False):
+    def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, use_original_qty=False):
         """
-        Match PO items to NFE items and calculate match quality.
-        Args:
-            po_items: List of purchase order items
-            nfe_items_db: List of NFE items from database
-            use_original_qty: If True, use original quantidade instead of remaining
-        Returns: (matched_items, total_match_score, coverage_ratio)
+        Match PO items to NFE items using Semantic Embeddings.
         """
         matches = []
         matched_nfe_ids = set()
         
-        for po_item in po_items:
-            # Use original quantity for fulfilled orders, remaining for unfulfilled
+        # --- MATCHING LOOP ---
+        for i, po_item in enumerate(po_items):
             po_qty = po_item['quantidade'] if use_original_qty else po_item['qtde_remaining']
             if po_qty <= 0:
                 continue
                 
-            po_desc = po_item['descricao'].lower()
             po_price = po_item['preco_unitario']
-            
             best_match = None
             best_score = 0
             
-            for nfe_item in nfe_items_db:
+            for j, nfe_item in enumerate(nfe_items_db):
                 if nfe_item.id in matched_nfe_ids:
                     continue
                     
-                nfe_desc = (nfe_item.descricao or '').lower()
                 nfe_qty = float(nfe_item.quantidade_comercial or 0)
                 nfe_price = float(nfe_item.valor_unitario_comercial or 0)
                 
-                # Description match (0-100)
+                # --- SEMANTIC DESCRIPTION SCORE ---
                 desc_score = 0
-                if po_desc and nfe_desc:
-                    desc_score = max(
-                        fuzz.token_set_ratio(po_desc, nfe_desc),
-                        fuzz.token_sort_ratio(po_desc, nfe_desc),
-                        fuzz.partial_ratio(po_desc, nfe_desc)
-                    )
+                if len(po_embeddings) > i and len(nfe_embeddings) > j:
+                    cosine_score = util.cos_sim(po_embeddings[i], nfe_embeddings[j]).item()
+                    desc_score = max(0, int(cosine_score * 100))
                 
                 # Quantity match (0-100)
                 qty_score = 0
                 if po_qty > 0:
                     qty_ratio = min(nfe_qty, po_qty) / po_qty
-                    if qty_ratio >= 0.95:
-                        qty_score = 100
-                    elif qty_ratio >= 0.8:
-                        qty_score = 85
-                    elif qty_ratio >= 0.5:
-                        qty_score = 70
-                    else:
-                        qty_score = qty_ratio * 100
+                    if qty_ratio >= 0.95: qty_score = 100
+                    elif qty_ratio >= 0.8: qty_score = 85
+                    elif qty_ratio >= 0.5: qty_score = 70
+                    else: qty_score = qty_ratio * 100
                 
                 # Price match (0-100)
                 price_score = 0
                 if po_price > 0 and nfe_price > 0:
                     price_diff_pct = abs(po_price - nfe_price) / po_price * 100
-                    if price_diff_pct < 1:
-                        price_score = 100
-                    elif price_diff_pct < 5:
-                        price_score = 90
-                    elif price_diff_pct < 10:
-                        price_score = 80
-                    elif price_diff_pct < 20:
-                        price_score = 60
-                    elif price_diff_pct < 50:
-                        price_score = 30
-                    else:
-                        price_score = 0
+                    if price_diff_pct < 1: price_score = 100
+                    elif price_diff_pct < 5: price_score = 90
+                    elif price_diff_pct < 10: price_score = 80
+                    elif price_diff_pct < 20: price_score = 60
+                    elif price_diff_pct < 50: price_score = 30
                 
-                # Skip if both description AND price match are too low
-                # Allow low description match if price matches very well (same product, different naming)
-                if desc_score < 35 and price_score < 80:
+                if desc_score < 45 and price_score < 80:
                     continue
-                if desc_score < 25:  
+                if desc_score < 30:  
                     continue
                 
-                # Combined score: adjust weights based on match quality
-                # If description is weak but price is strong, trust price more
-                if desc_score < 45 and price_score >= 80:
+                # Combined score
+                if desc_score < 50 and price_score >= 80:
                     combined = (desc_score * 0.25) + (qty_score * 0.35) + (price_score * 0.40)
                 else:
                     combined = (desc_score * 0.50) + (qty_score * 0.30) + (price_score * 0.20)
@@ -1537,34 +1531,66 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
                 matches.append(best_match)
                 matched_nfe_ids.add(best_match['nfe_item_id'])
         
-        # Calculate coverage - use appropriate quantity based on mode
+        # Calculate coverage
         if use_original_qty:
             items_to_match_count = len([i for i in po_items if i['quantidade'] > 0])
         else:
             items_to_match_count = len([i for i in po_items if i['qtde_remaining'] > 0])
+            
         coverage = len(matches) / items_to_match_count if items_to_match_count > 0 else 0
         avg_score = sum(m['combined_score'] for m in matches) / len(matches) if matches else 0
         
         return matches, avg_score, coverage
     
+
+    # === 2. OPTIMIZE THE MAIN LOOP ===
     results = []
     po_num_clean = clean_digits(str(cod_pedc))
     
+    # CALCULATE PO EMBEDDINGS EXACTLY ONCE PER ORDER
+    all_items = po_data['itens']
+    po_descriptions_list = [item['descricao'].lower() for item in all_items]
+    embedding_model = _load_embedding_model()
+    po_embeddings_global = embedding_model.encode(po_descriptions_list, convert_to_tensor=True, show_progress_bar=False) if po_descriptions_list else []
+    
     for nfe in all_nfes:
-        # Get NFE emitente info
-        emitente = NFEEmitente.query.filter_by(nfe_id=nfe.id).first()
+        # === THE CACHE CHECK ===
+        if nfe.id not in nfe_cache:
+            # 1. DB Queries: Only hit the database if we haven't seen this NFE yet
+            emitente = NFEEmitente.query.filter_by(nfe_id=nfe.id).first()
+            nfe_items_db = NFEItem.query.filter_by(nfe_id=nfe.id).all()
+            
+            # 2. AI Encoding: Pre-calculate the NFE embeddings exactly ONCE
+            nfe_descriptions = [(item.descricao or '').lower() for item in nfe_items_db]
+            nfe_embeddings_arr = embedding_model.encode(nfe_descriptions, convert_to_tensor=True, show_progress_bar=False) if nfe_descriptions else []
+            
+            # 3. Store in RAM for the next PO that needs it
+            nfe_cache[nfe.id] = {
+                'emitente': emitente,
+                'nfe_items_db': nfe_items_db,
+                'nfe_embeddings': nfe_embeddings_arr
+            }
+
+        # === PULL FROM CACHE ===
+        cached_nfe = nfe_cache[nfe.id]
+        emitente = cached_nfe['emitente']
+        nfe_items_db = cached_nfe['nfe_items_db']
+        nfe_embeddings = cached_nfe['nfe_embeddings']
+
         nfe_supplier = emitente.nome if emitente else ''
         nfe_cnpj = emitente.cnpj if emitente else ''
 
-        # Get NFE items
-        nfe_items_db = NFEItem.query.filter_by(nfe_id=nfe.id).all()
-        
         nfe_value = float(nfe.valor_total or 0)
         nfe_items_value = float(nfe.valor_produtos or 0)
         nfe_info_adic = str(nfe.informacoes_adicionais or '').lower()
  
         score = 0
         breakdown = {}
+        
+        
+        
+        
+        
         
         # === 1. CNPJ/Supplier Match (0-30 points) ===
         cnpj_score = 0
@@ -1629,7 +1655,13 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1):
         all_items = po_data['itens']
         
         # Match against all items using original quantities
-        item_matches, avg_match_quality, coverage = match_items(all_items, nfe_items_db, use_original_qty=False)
+        item_matches, avg_match_quality, coverage = match_items(
+            all_items, 
+            nfe_items_db, 
+            po_embeddings=po_embeddings_global, 
+            nfe_embeddings=nfe_embeddings,
+            use_original_qty=False
+        )
         
         # Item score based on coverage and quality
         # coverage * 20 (up to 20 points) + quality * 15 / 100 (up to 15 points)

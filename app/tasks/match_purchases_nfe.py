@@ -362,6 +362,8 @@ def match_purchases_with_nfes(days=60, min_score=80):
         total_orders = len(unfulfilled_orders)
         logger.info(f"Found {total_orders} unfulfilled orders to process")
         
+        shared_nfe_cache = {}
+        
         for order in unfulfilled_orders:
             # Store order info before any DB operations that might expire the object
             order_cod_pedc = order.cod_pedc
@@ -380,7 +382,11 @@ def match_purchases_with_nfes(days=60, min_score=80):
 
                 
                 # Call the existing scoring function
-                match_results = score_purchase_nfe_match(order_cod_pedc, order_cod_emp1)
+                match_results = score_purchase_nfe_match(
+                    order_cod_pedc, 
+                    order_cod_emp1,
+                    nfe_cache=shared_nfe_cache
+                )
                 
                 if isinstance(match_results, dict) and 'error' in match_results:
                     logger.warning(f"Error matching order {order.cod_pedc}: {match_results['error']}")
