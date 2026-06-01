@@ -4,7 +4,7 @@ from flask import current_app, jsonify, request
 from flask_login import current_user, login_required
 from sqlalchemy import and_, case, func
 from app import db
-from app.models import LoginHistory, RequestLog, User
+from app.models import LoginHistory, RequestLog, User, ReportCategory
 from app.routes.routes import bp
 
 
@@ -99,6 +99,12 @@ def usage_report():
     # Sort dictionaries to get Top 10
     top_endpoints = sorted(endpoint_counter.items(), key=lambda x: x[1], reverse=True)[:10]
 
+    categories = (
+        ReportCategory.query
+        .order_by(ReportCategory.name)
+        .all()
+    )
+
     return jsonify({
         'users': [{
             'user_id': u.id,
@@ -124,6 +130,7 @@ def usage_report():
         'status_codes': [{'code': s.status_code or 'Unknown', 'count': s.count} for s in status_distribution],
         'top_endpoints': [{'endpoint': ep[0], 'count': ep[1]} for ep in top_endpoints],
         'top_searches': top_search_terms,
+        'report_categories': [{'id': rc.id, 'name': rc.name} for rc in categories],
         'period_days': days,
     }), 200
 

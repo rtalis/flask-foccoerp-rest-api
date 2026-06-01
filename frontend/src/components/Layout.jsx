@@ -119,6 +119,17 @@ const Layout = ({ onLogout }) => {
     },
   ];
 
+  const reportMenuItems = [
+    {
+      text: "Relatorio geral",
+      path: "/dashboard",
+    },
+    {
+      text: "Relatorio de pedidos de compra",
+      path: "/purchase-report",
+    },
+  ];
+
   // Filter menu items by allowed screens (Admins see everything)
   const menuItems = allMenuItems.filter((item) =>
     isAdmin ||
@@ -136,6 +147,10 @@ const Layout = ({ onLogout }) => {
     }
     return true;
   });
+
+  const canSeeReports = isAdmin || reportMenuItems.some((item) => (
+    allowedScreens.includes(item.path) || allowedScreens.includes("*")
+  ));
 
   const bottomMenuItems = [
     {
@@ -173,7 +188,7 @@ const Layout = ({ onLogout }) => {
   const isActive = (path) => location.pathname === path;
 
   const getPageTitle = () => {
-    const allItems = [...menuItems, ...bottomMenuItems];
+    const allItems = canSeeReports ? [...menuItems, ...bottomMenuItems, ...reportMenuItems] : [...menuItems, ...bottomMenuItems];
     const current = allItems.find((item) => item.path === location.pathname);
     return current?.text || "jhub - hub de pesquisas ruah";
   };
@@ -321,88 +336,23 @@ const Layout = ({ onLogout }) => {
           </Tooltip>
         ))}
 
-        {/* Expandable Relatórios Section */}
-        <Tooltip
-          title={!sidebarOpen ? "Relatórios" : ""}
-          placement="right"
-          arrow
-        >
-          <ListItemButton
-            onClick={handleReportsClick}
-            selected={!sidebarOpen && (isActive("/dashboard") || isActive("/purchase-report"))}
-            sx={{
-              borderRadius: 2,
-              mb: 0.5,
-              minHeight: 48,
-              px: sidebarOpen ? 2 : 1.5,
-              justifyContent: sidebarOpen ? "space-between" : "center",
-              color: "rgba(255,255,255,0.7)",
-              "&:hover": {
-                bgcolor: "rgba(255,255,255,0.08)",
-                color: "#fff",
-              },
-              "&.Mui-selected": {
-                bgcolor: "primary.main",
-                color: "#fff",
-                "&:hover": {
-                  bgcolor: "primary.dark",
-                },
-              },
-            }}
-          >
-            <Box sx={{ display: "flex", alignItems: "center", minWidth: 0 }}>
-              <ListItemIcon
-                sx={{
-                  minWidth: 0,
-                  mr: sidebarOpen ? 2 : 0,
-                  justifyContent: "center",
-                  color: "inherit",
-                }}
-              >
-                <AssessmentIcon />
-              </ListItemIcon>
-              {sidebarOpen && (
-                <ListItemText
-                  primary="Relatórios"
-                  secondary="Relatórios e métricas"
-                  primaryTypographyProps={{
-                    fontSize: "0.9rem",
-                    fontWeight: 500,
-                  }}
-                  secondaryTypographyProps={{
-                    fontSize: "0.7rem",
-                    color: "rgba(255,255,255,0.4)",
-                    sx: { mt: 0.25 },
-                  }}
-                />
-              )}
-            </Box>
-            {sidebarOpen && (
-              expandedReports ? <ExpandLessIcon /> : <ExpandMoreIcon />
-            )}
-          </ListItemButton>
-        </Tooltip>
-
-        {/* Reports Submenu */}
-        <Collapse in={expandedReports} timeout="auto" unmountOnExit>
-          <List component="div" disablePadding>
-            {/* Relatório Geral */}
+        {canSeeReports && (
+          <>
+            {/* Expandable Relatórios Section */}
             <Tooltip
-              title={!sidebarOpen ? "Relatório geral" : ""}
+              title={!sidebarOpen ? "Relatórios" : ""}
               placement="right"
               arrow
             >
               <ListItemButton
-                onClick={() => handleNavigate("/dashboard")}
-                selected={isActive("/dashboard")}
+                onClick={handleReportsClick}
+                selected={!sidebarOpen && (isActive("/dashboard") || isActive("/purchase-report"))}
                 sx={{
                   borderRadius: 2,
                   mb: 0.5,
-                  minHeight: 44,
-                  ml: sidebarOpen ? 2 : 0,
-                  pl: sidebarOpen ? 4 : 1.5,
-                  pr: sidebarOpen ? 2 : 1.5,
-                  justifyContent: sidebarOpen ? "flex-start" : "center",
+                  minHeight: 48,
+                  px: sidebarOpen ? 2 : 1.5,
+                  justifyContent: sidebarOpen ? "space-between" : "center",
                   color: "rgba(255,255,255,0.7)",
                   "&:hover": {
                     bgcolor: "rgba(255,255,255,0.08)",
@@ -417,58 +367,129 @@ const Layout = ({ onLogout }) => {
                   },
                 }}
               >
-                <ListItemText
-                  primary="Relatório geral"
-                  primaryTypographyProps={{
-                    fontSize: "0.85rem",
-                    fontWeight: 500,
-                  }}
-                />
+                <Box sx={{ display: "flex", alignItems: "center", minWidth: 0 }}>
+                  <ListItemIcon
+                    sx={{
+                      minWidth: 0,
+                      mr: sidebarOpen ? 2 : 0,
+                      justifyContent: "center",
+                      color: "inherit",
+                    }}
+                  >
+                    <AssessmentIcon />
+                  </ListItemIcon>
+                  {sidebarOpen && (
+                    <ListItemText
+                      primary="Relatórios"
+                      secondary="Relatórios e métricas"
+                      primaryTypographyProps={{
+                        fontSize: "0.9rem",
+                        fontWeight: 500,
+                      }}
+                      secondaryTypographyProps={{
+                        fontSize: "0.7rem",
+                        color: "rgba(255,255,255,0.4)",
+                        sx: { mt: 0.25 },
+                      }}
+                    />
+                  )}
+                </Box>
+                {sidebarOpen && (
+                  expandedReports ? <ExpandLessIcon /> : <ExpandMoreIcon />
+                )}
               </ListItemButton>
             </Tooltip>
 
-            {/* Relatório de Pedidos de Compra */}
-            <Tooltip
-              title={!sidebarOpen ? "Relatório de pedidos" : ""}
-              placement="right"
-              arrow
-            >
-              <ListItemButton
-                onClick={() => handleNavigate("/purchase-report")}
-                selected={isActive("/purchase-report")}
-                sx={{
-                  borderRadius: 2,
-                  mb: 0.5,
-                  minHeight: 44,
-                  ml: sidebarOpen ? 2 : 0,
-                  pl: sidebarOpen ? 4 : 1.5,
-                  pr: sidebarOpen ? 2 : 1.5,
-                  justifyContent: sidebarOpen ? "flex-start" : "center",
-                  color: "rgba(255,255,255,0.7)",
-                  "&:hover": {
-                    bgcolor: "rgba(255,255,255,0.08)",
-                    color: "#fff",
-                  },
-                  "&.Mui-selected": {
-                    bgcolor: "primary.main",
-                    color: "#fff",
-                    "&:hover": {
-                      bgcolor: "primary.dark",
-                    },
-                  },
-                }}
-              >
-                <ListItemText
-                  primary="Relatório de pedidos de compra"
-                  primaryTypographyProps={{
-                    fontSize: "0.85rem",
-                    fontWeight: 500,
-                  }}
-                />
-              </ListItemButton>
-            </Tooltip>
-          </List>
-        </Collapse>
+            {/* Reports Submenu */}
+            <Collapse in={expandedReports} timeout="auto" unmountOnExit>
+              <List component="div" disablePadding>
+                {(isAdmin || allowedScreens.includes("/dashboard") || allowedScreens.includes("*")) && (
+                  <Tooltip
+                    title={!sidebarOpen ? "Relatório geral" : ""}
+                    placement="right"
+                    arrow
+                  >
+                    <ListItemButton
+                      onClick={() => handleNavigate("/dashboard")}
+                      selected={isActive("/dashboard")}
+                      sx={{
+                        borderRadius: 2,
+                        mb: 0.5,
+                        minHeight: 44,
+                        ml: sidebarOpen ? 2 : 0,
+                        pl: sidebarOpen ? 4 : 1.5,
+                        pr: sidebarOpen ? 2 : 1.5,
+                        justifyContent: sidebarOpen ? "flex-start" : "center",
+                        color: "rgba(255,255,255,0.7)",
+                        "&:hover": {
+                          bgcolor: "rgba(255,255,255,0.08)",
+                          color: "#fff",
+                        },
+                        "&.Mui-selected": {
+                          bgcolor: "primary.main",
+                          color: "#fff",
+                          "&:hover": {
+                            bgcolor: "primary.dark",
+                          },
+                        },
+                      }}
+                    >
+                      <ListItemText
+                        primary="Relatório geral"
+                        primaryTypographyProps={{
+                          fontSize: "0.85rem",
+                          fontWeight: 500,
+                        }}
+                      />
+                    </ListItemButton>
+                  </Tooltip>
+                )}
+
+                {(isAdmin || allowedScreens.includes("/purchase-report") || allowedScreens.includes("*")) && (
+                  <Tooltip
+                    title={!sidebarOpen ? "Relatório de pedidos" : ""}
+                    placement="right"
+                    arrow
+                  >
+                    <ListItemButton
+                      onClick={() => handleNavigate("/purchase-report")}
+                      selected={isActive("/purchase-report")}
+                      sx={{
+                        borderRadius: 2,
+                        mb: 0.5,
+                        minHeight: 44,
+                        ml: sidebarOpen ? 2 : 0,
+                        pl: sidebarOpen ? 4 : 1.5,
+                        pr: sidebarOpen ? 2 : 1.5,
+                        justifyContent: sidebarOpen ? "flex-start" : "center",
+                        color: "rgba(255,255,255,0.7)",
+                        "&:hover": {
+                          bgcolor: "rgba(255,255,255,0.08)",
+                          color: "#fff",
+                        },
+                        "&.Mui-selected": {
+                          bgcolor: "primary.main",
+                          color: "#fff",
+                          "&:hover": {
+                            bgcolor: "primary.dark",
+                          },
+                        },
+                      }}
+                    >
+                      <ListItemText
+                        primary="Relatório de pedidos de compra"
+                        primaryTypographyProps={{
+                          fontSize: "0.85rem",
+                          fontWeight: 500,
+                        }}
+                      />
+                    </ListItemButton>
+                  </Tooltip>
+                )}
+              </List>
+            </Collapse>
+          </>
+        )}
       </List>
 
       {/* Bottom Section */}

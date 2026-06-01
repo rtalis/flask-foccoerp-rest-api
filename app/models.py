@@ -130,6 +130,17 @@ class NFEntry(db.Model):
     )
     
 
+user_report_categories = db.Table('user_report_categories',
+    db.Column('user_id', db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), primary_key=True),
+    db.Column('category_id', db.Integer, db.ForeignKey('report_categories.id', ondelete='CASCADE'), primary_key=True)
+)
+
+class ReportCategory(db.Model):
+    __tablename__ = 'report_categories'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), unique=True, nullable=False)
+
+
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
@@ -146,6 +157,7 @@ class User(UserMixin, db.Model):
     last_action_time = db.Column(db.DateTime(timezone=True), nullable=True)  # Last user activity time
     capabilities = db.Column(db.JSON, nullable=True, default=list) # E.g., ['view_financials', 'view_nfes']
     data_filters = db.Column(db.JSON, nullable=True, default=dict) # E.g., {'observacao_contains': ['manutenção']}
+    report_categories = db.relationship('ReportCategory', secondary=user_report_categories, lazy='subquery', backref=db.backref('users', lazy=True))
 
 class Company(db.Model):
     __tablename__ = 'companies'

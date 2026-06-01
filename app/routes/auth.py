@@ -14,6 +14,7 @@ import datetime as dt
 from app.utils import send_login_notification_email
 from config import Config
 from functools import wraps
+from sqlalchemy import func
 
 
 auth_bp = Blueprint('auth', __name__)
@@ -126,6 +127,7 @@ def login():
                 'allowed_screens': user.allowed_screens or [],
                 'capabilities': user.capabilities or [],
                 'data_filters': user.data_filters or {},
+                'report_categories': [rc.id for rc in getattr(user, 'report_categories', [])],
             }
         }), 200)
         
@@ -157,6 +159,7 @@ def me():
         'allowed_screens': u.allowed_screens or [],
         'capabilities': u.capabilities or [],
         'data_filters': u.data_filters or {},
+        'report_categories': [rc.id for rc in getattr(u, 'report_categories', [])],
     }), 200
 
 @auth_bp.route('/register', methods=['POST'])
@@ -178,6 +181,7 @@ def register():
     capabilities = data.get('capabilities', ['view_financials', 'view_nfes'])
     data_filters = data.get('data_filters', {})
     system_name = data.get('system_name', '')
+    report_categories_ids = data.get('report_categories', [])
 
     if not username or not email or not password:
         return jsonify({'error': 'Missing fields'}), 400
@@ -197,6 +201,12 @@ def register():
         data_filters=data_filters,
         system_name=system_name
     )
+    
+    if report_categories_ids:
+        from app.models import ReportCategory
+        categories = ReportCategory.query.filter(ReportCategory.id.in_(report_categories_ids)).all()
+        new_user.report_categories = categories
+
     db.session.add(new_user)
     db.session.commit()
     return jsonify({'message': 'User created successfully'}), 201
@@ -455,6 +465,7 @@ def get_users():
         'allowed_screens': user.allowed_screens,
         'capabilities': user.capabilities or [],
         'data_filters': user.data_filters or {},
+        'report_categories': [rc.id for rc in user.report_categories],
     } for user in users]
     
     return jsonify(result), 200
@@ -513,6 +524,11 @@ def update_user(user_id):
 
     if 'system_name' in data:
         user.system_name = data['system_name']
+
+    if 'report_categories' in data:
+        from app.models import ReportCategory
+        categories = ReportCategory.query.filter(ReportCategory.id.in_(data['report_categories'])).all()
+        user.report_categories = categories
 
     db.session.commit()
     return jsonify({'message': 'User updated successfully'}), 200
@@ -584,6 +600,76 @@ def update_me():
         'purchaser_name': user.purchaser_name,
         'initial_screen': user.initial_screen
     }), 200
+
+@auth_bp.route('/report-categories', methods=['GET'])
+@login_required
+def get_report_categories():
+    from app.models import ReportCategory
+    categories = ReportCategory.query.order_by(ReportCategory.name).all()
+    return jsonify([{'id': rc.id, 'name': rc.name} for rc in categories]), 200
+
+@auth_bp.route('/report-categories', methods=['POST'])
+@login_required
+def create_report_category():
+    if getattr(current_user, 'role', 'viewer') != 'admin':
+        return jsonify({'error': 'Forbidden'}), 403
+
+    from app.models import ReportCategory
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Nome da categoria e obrigatório'}), 400
+
+    existing = ReportCategory.query.filter(func.lower(ReportCategory.name) == name.lower()).first()
+    if existing:
+        return jsonify({'error': 'Categoria ja existe'}), 400
+
+    category = ReportCategory(name=name)
+    db.session.add(category)
+    db.session.commit()
+    return jsonify({'id': category.id, 'name': category.name}), 201
+
+@auth_bp.route('/report-categories/<int:category_id>', methods=['PUT'])
+@login_required
+def update_report_category(category_id):
+    if getattr(current_user, 'role', 'viewer') != 'admin':
+        return jsonify({'error': 'Forbidden'}), 403
+
+    from app.models import ReportCategory
+    category = ReportCategory.query.get(category_id)
+    if not category:
+        return jsonify({'error': 'Categoria nao encontrada'}), 404
+
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Nome da categoria e obrigatório'}), 400
+
+    existing = ReportCategory.query.filter(
+        func.lower(ReportCategory.name) == name.lower(),
+        ReportCategory.id != category_id
+    ).first()
+    if existing:
+        return jsonify({'error': 'Categoria ja existe'}), 400
+
+    category.name = name
+    db.session.commit()
+    return jsonify({'id': category.id, 'name': category.name}), 200
+
+@auth_bp.route('/report-categories/<int:category_id>', methods=['DELETE'])
+@login_required
+def delete_report_category(category_id):
+    if getattr(current_user, 'role', 'viewer') != 'admin':
+        return jsonify({'error': 'Forbidden'}), 403
+
+    from app.models import ReportCategory
+    category = ReportCategory.query.get(category_id)
+    if not category:
+        return jsonify({'error': 'Categoria nao encontrada'}), 404
+
+    db.session.delete(category)
+    db.session.commit()
+    return jsonify({'message': 'Categoria removida'}), 200
 
 @auth_bp.route('/users/<int:user_id>', methods=['DELETE'])
 @login_required

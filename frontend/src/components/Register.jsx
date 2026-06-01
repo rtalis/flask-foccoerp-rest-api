@@ -14,9 +14,14 @@ import {
   Checkbox,
   FormControlLabel,
   Paper,
+  Divider,
   Snackbar,
   Alert,
   IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
   Table,
   TableBody,
   TableCell,
@@ -28,6 +33,8 @@ import {
   Skeleton,
   Tooltip,
   Collapse,
+  Grid,
+  InputAdornment,
 } from "@mui/material";
 import {
   Add as AddIcon,
@@ -39,6 +46,7 @@ import {
   Key as KeyIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
+  Search as SearchIcon,
 } from "@mui/icons-material";
 
 const ROLE_PRESETS = {
@@ -100,6 +108,7 @@ const Register = () => {
     initial_screen: "/dashboard",
     allowed_screens: ["/dashboard"],
     capabilities: ["view_financials", "view_nfes"],
+    report_categories: [],
     data_filters: {},
     data_filters_observacao: "",
   });
@@ -110,8 +119,13 @@ const Register = () => {
   const [error, setError] = useState("");
   const [purchaserNames, setPurchaserNames] = useState([]);
   const [users, setUsers] = useState([]);
+  const [reportCategories, setReportCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [categoryReport, setCategoryReport] = useState("");
+  const [categoryName, setCategoryName] = useState("");
+  const [categoryEditId, setCategoryEditId] = useState(null);
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [alert, setAlert] = useState({
     open: false,
     message: "",
@@ -119,9 +133,17 @@ const Register = () => {
   });
   const [isAdmin, setIsAdmin] = useState(false);
 
+  const filteredReportCategories = reportCategories.filter((cat) => {
+    if (!categoryReport.trim()) {
+      return true;
+    }
+    return cat.name.toLowerCase().includes(categoryReport.trim().toLowerCase());
+  });
+
   // Available screens for permissions
   const availableScreens = [
     { path: "/dashboard", label: "Dashboard" },
+    { path: "/purchase-report", label: "Relatorio de pedidos" },
     { path: "/search", label: "Buscar Pedidos" },
     { path: "/nfe-search", label: "Buscar NFEs" },
     { path: "/quotation-analyzer", label: "Analisar Cotações" },
@@ -140,7 +162,7 @@ const Register = () => {
           setIsAdmin(false);
         } else {
           setIsAdmin(true);
-          await Promise.all([fetchPurchaserNames(), fetchUsers()]);
+          await Promise.all([fetchPurchaserNames(), fetchUsers(), fetchReportCategories()]);
         }
       } catch (err) {
         navigate("/login");
@@ -181,6 +203,18 @@ const Register = () => {
     }
   };
 
+  const fetchReportCategories = async () => {
+    try {
+      const response = await axios.get(
+        `${import.meta.env.VITE_API_URL}/auth/report-categories`,
+        { withCredentials: true }
+      );
+      setReportCategories(response.data);
+    } catch (error) {
+      console.error("Error fetching report categories:", error);
+    }
+  };
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     
@@ -192,6 +226,7 @@ const Register = () => {
         initial_screen: preset.initial_screen,
         allowed_screens: [...preset.allowed_screens],
         capabilities: [...preset.capabilities],
+        report_categories: prev.report_categories || [],
         data_filters_observacao: preset.data_filters_observacao
       }));
     } else {
@@ -231,6 +266,114 @@ const Register = () => {
         };
       }
     });
+  };
+
+  const handleReportCategoryChange = (categoryId) => {
+    return setFormData((prev) => {
+      const currentCats = prev.report_categories || [];
+      if (currentCats.includes(categoryId)) {
+        return {
+          ...prev,
+          report_categories: currentCats.filter((id) => id !== categoryId),
+        };
+      } else {
+        return {
+          ...prev,
+          report_categories: [...currentCats, categoryId],
+        };
+      }
+    });
+  };
+
+  const handleSelectAllCategories = () => {
+    setFormData((prev) => ({
+      ...prev,
+      report_categories: reportCategories.map((cat) => cat.id),
+    }));
+  };
+
+  const handleClearCategories = () => {
+    setFormData((prev) => ({
+      ...prev,
+      report_categories: [],
+    }));
+  };
+
+  const handleStartEditCategory = (category) => {
+    setCategoryEditId(category.id);
+    setCategoryName(category.name);
+    setShowAdvanced(true);
+    setCategoryDialogOpen(true);
+  };
+
+  const handleCancelCategoryEdit = () => {
+    setCategoryEditId(null);
+    setCategoryName("");
+  };
+
+  const handleOpenCategoryDialog = () => {
+    setCategoryDialogOpen(true);
+  };
+
+  const handleCloseCategoryDialog = () => {
+    setCategoryDialogOpen(false);
+    handleCancelCategoryEdit();
+  };
+
+  const handleSaveCategory = async () => {
+    const trimmed = categoryName.trim();
+    if (!trimmed) {
+      setAlert({ open: true, message: "Informe o nome da categoria", severity: "error" });
+      return;
+    }
+
+    try {
+      if (categoryEditId) {
+        await axios.put(
+          `${import.meta.env.VITE_API_URL}/auth/report-categories/${categoryEditId}`,
+          { name: trimmed },
+          { withCredentials: true }
+        );
+        setAlert({ open: true, message: "Categoria atualizada", severity: "success" });
+      } else {
+        await axios.post(
+          `${import.meta.env.VITE_API_URL}/auth/report-categories`,
+          { name: trimmed },
+          { withCredentials: true }
+        );
+        setAlert({ open: true, message: "Categoria criada", severity: "success" });
+      }
+      handleCancelCategoryEdit();
+      fetchReportCategories();
+    } catch (error) {
+      setAlert({
+        open: true,
+        message: error.response?.data?.error || "Falha ao salvar categoria",
+        severity: "error",
+      });
+    }
+  };
+
+  const handleDeleteCategory = async (categoryId) => {
+    if (!window.confirm("Excluir esta categoria?")) return;
+    try {
+      await axios.delete(
+        `${import.meta.env.VITE_API_URL}/auth/report-categories/${categoryId}`,
+        { withCredentials: true }
+      );
+      setAlert({ open: true, message: "Categoria removida", severity: "success" });
+      setFormData((prev) => ({
+        ...prev,
+        report_categories: prev.report_categories.filter((id) => id !== categoryId),
+      }));
+      fetchReportCategories();
+    } catch (error) {
+      setAlert({
+        open: true,
+        message: error.response?.data?.error || "Falha ao remover categoria",
+        severity: "error",
+      });
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -326,6 +469,7 @@ const Register = () => {
       initial_screen: user.initial_screen || "/dashboard",
       allowed_screens: user.allowed_screens || ["/dashboard"],
       capabilities: user.capabilities || [],
+      report_categories: user.report_categories || [],
       data_filters: user.data_filters || {},
       data_filters_observacao: obsText,
     });
@@ -364,6 +508,7 @@ const Register = () => {
       initial_screen: "/dashboard",
       allowed_screens: ["/dashboard"],
       capabilities: ["view_financials", "view_nfes"],
+      report_categories: [],
       data_filters: {},
       data_filters_observacao: "",
     });
@@ -371,6 +516,8 @@ const Register = () => {
     setEditUserId(null);
     setShowAdvanced(false);
     setError("");
+    setCategoryEditId(null);
+    setCategoryName("");
   };
 
   const handleCloseAlert = () => setAlert({ ...alert, open: false });
@@ -474,76 +621,96 @@ const Register = () => {
 
         <Box component="form" onSubmit={handleSubmit}>
           <Stack spacing={2}>
-            {/* Row 1: Username, Email, Password */}
-            <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-              <TextField
-                required
-                size="small"
-                label="Usuário"
-                name="username"
-                value={formData.username}
-                onChange={handleInputChange}
-                sx={{ flex: 1 }}
-              />
-              <TextField
-                required
-                size="small"
-                label="Email"
-                name="email"
-                type="email"
-                value={formData.email}
-                onChange={handleInputChange}
-                sx={{ flex: 1 }}
-              />
-              <TextField
-                size="small"
-                label="Senha"
-                name="password"
-                type="password"
-                value={formData.password}
-                onChange={handleInputChange}
-                required={!isEditing}
-                placeholder={isEditing ? "Manter atual" : ""}
-                sx={{ flex: 1 }}
-              />
-            </Stack>
-
-            {/* Row 2: Role + System Name */}
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-              <FormControl size="small" sx={{ minWidth: 150 }}>
-                <InputLabel>Tipo</InputLabel>
-                <Select
-                  name="role"
-                  label="Tipo"
-                  value={formData.role}
-                  onChange={handleInputChange}
-                >
-                  <MenuItem value="admin">Administrador</MenuItem>
-                  <MenuItem value="basic_viewer">Visualizador Básico</MenuItem>
-                  <MenuItem value="viewer">Visualizador</MenuItem>
-                  <MenuItem value="fiscal">Fiscal</MenuItem>
-                  <MenuItem value="financial">Financeiro</MenuItem>
-                  <MenuItem value="purchaser">Comprador</MenuItem>
-                  <MenuItem value="checker">Conferente</MenuItem>
-                </Select>
-              </FormControl>
-              <FormControl size="small" sx={{ flex: 1 }}>
-                <InputLabel>Nome no Sistema</InputLabel>
-                <Select
-                  name="system_name"
-                  label="Nome no Sistema"
-                  value={formData.system_name}
-                  onChange={handleInputChange}
-                >
-                  <MenuItem value="">Nenhum</MenuItem>
-                  {purchaserNames.map((name) => (
-                    <MenuItem key={name} value={name}>
-                      {name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Stack>
+            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+              <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
+                Identidade e acesso
+              </Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={4}>
+                  <TextField
+                    required
+                    size="small"
+                    label="Usuário"
+                    name="username"
+                    value={formData.username}
+                    onChange={handleInputChange}
+                    fullWidth
+                  />
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <TextField
+                    required
+                    size="small"
+                    label="Email"
+                    name="email"
+                    type="email"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    fullWidth
+                  />
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <TextField
+                    size="small"
+                    label="Senha"
+                    name="password"
+                    type="password"
+                    value={formData.password}
+                    onChange={handleInputChange}
+                    required={!isEditing}
+                    placeholder={isEditing ? "Manter atual" : ""}
+                    fullWidth
+                  />
+                </Grid>
+                <Grid item xs={12} md={3}>
+                  <FormControl size="small" fullWidth>
+                    <InputLabel>Tipo</InputLabel>
+                    <Select
+                      name="role"
+                      label="Tipo"
+                      value={formData.role}
+                      onChange={handleInputChange}
+                    >
+                      <MenuItem value="admin">Administrador</MenuItem>
+                      <MenuItem value="basic_viewer">Visualizador Básico</MenuItem>
+                      <MenuItem value="viewer">Visualizador</MenuItem>
+                      <MenuItem value="fiscal">Fiscal</MenuItem>
+                      <MenuItem value="financial">Financeiro</MenuItem>
+                      <MenuItem value="purchaser">Comprador</MenuItem>
+                      <MenuItem value="checker">Conferente</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <FormControl size="small" fullWidth>
+                    <InputLabel>Nome no Sistema</InputLabel>
+                    <Select
+                      name="system_name"
+                      label="Nome no Sistema"
+                      value={formData.system_name}
+                      onChange={handleInputChange}
+                    >
+                      <MenuItem value="">Nenhum</MenuItem>
+                      {purchaserNames.map((name) => (
+                        <MenuItem key={name} value={name}>
+                          {name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} md={3}>
+                  <TextField
+                    size="small"
+                    label="Nome Exibição"
+                    name="purchaser_name"
+                    value={formData.purchaser_name}
+                    onChange={handleInputChange}
+                    fullWidth
+                  />
+                </Grid>
+              </Grid>
+            </Paper>
 
             {/* Advanced toggle */}
             <Button
@@ -558,101 +725,101 @@ const Register = () => {
 
             <Collapse in={showAdvanced}>
               <Stack spacing={2}>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                  <TextField
-                    size="small"
-                    label="Nome Exibição"
-                    name="purchaser_name"
-                    value={formData.purchaser_name}
-                    onChange={handleInputChange}
-                    sx={{ flex: 1 }}
-                  />
-                  <FormControl size="small" sx={{ minWidth: 180 }}>
-                    <InputLabel>Tela Inicial</InputLabel>
-                    <Select
-                      name="initial_screen"
-                      label="Tela Inicial"
-                      value={formData.initial_screen}
-                      onChange={handleInputChange}
-                    >
-                      {availableScreens.map((s) => (
-                        <MenuItem key={s.path} value={s.path}>
-                          {s.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Stack>
-
-                <Box sx={{ p: 2, bgcolor: "grey.50", borderRadius: 1 }}>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ mb: 1, display: "block" }}
-                  >
-                    Telas permitidas
+                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                  <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
+                    Navegacao e permissões
                   </Typography>
-                  <Stack direction="row" flexWrap="wrap" gap={1}>
-                    {availableScreens.map((screen) => (
-                      <FormControlLabel
-                        key={screen.path}
-                        control={
-                          <Checkbox
-                            size="small"
-                            checked={formData.allowed_screens.includes(
-                              screen.path
-                            )}
-                            onChange={() => handleScreensChange(screen.path)}
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={4}>
+                      <FormControl size="small" fullWidth>
+                        <InputLabel>Tela Inicial</InputLabel>
+                        <Select
+                          name="initial_screen"
+                          label="Tela Inicial"
+                          value={formData.initial_screen}
+                          onChange={handleInputChange}
+                        >
+                          {availableScreens.map((s) => (
+                            <MenuItem key={s.path} value={s.path}>
+                              {s.label}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} md={8}>
+                      <Box sx={{ p: 2, bgcolor: "grey.50", borderRadius: 1 }}>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ mb: 1, display: "block" }}
+                        >
+                          Telas permitidas
+                        </Typography>
+                        <Stack direction="row" flexWrap="wrap" gap={1}>
+                          {availableScreens.map((screen) => (
+                            <FormControlLabel
+                              key={screen.path}
+                              control={
+                                <Checkbox
+                                  size="small"
+                                  checked={formData.allowed_screens.includes(
+                                    screen.path
+                                  )}
+                                  onChange={() => handleScreensChange(screen.path)}
+                                />
+                              }
+                              label={
+                                <Typography variant="body2">
+                                  {screen.label}
+                                </Typography>
+                              }
+                            />
+                          ))}
+                        </Stack>
+                      </Box>
+                    </Grid>
+                    <Grid item xs={12}>
+                      <Box sx={{ p: 2, bgcolor: "grey.50", borderRadius: 1 }}>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ mb: 1, display: "block" }}
+                        >
+                          Permissoes de Acesso a Dados Extras
+                        </Typography>
+                        <Stack direction="row" flexWrap="wrap" gap={1}>
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                size="small"
+                                checked={(formData.capabilities || []).includes("view_financials")}
+                                onChange={() => handleCapabilitiesChange("view_financials")}
+                              />
+                            }
+                            label={<Typography variant="body2">Visualizar Valores Financeiros</Typography>}
                           />
-                        }
-                        label={
-                          <Typography variant="body2">
-                            {screen.label}
-                          </Typography>
-                        }
-                      />
-                    ))}
-                  </Stack>
-                </Box>
-
-                {/* Capabilities Access Control Section */}
-                <Box sx={{ p: 2, bgcolor: "grey.50", borderRadius: 1 }}>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ mb: 1, display: "block" }}
-                  >
-                    Permissões de Acesso a Dados Extras
-                  </Typography>
-                  <Stack direction="row" flexWrap="wrap" gap={1}>
-                      <FormControlLabel
-                        control={
-                          <Checkbox
-                            size="small"
-                            checked={(formData.capabilities || []).includes("view_financials")}
-                            onChange={() => handleCapabilitiesChange("view_financials")}
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                size="small"
+                                checked={(formData.capabilities || []).includes("view_nfes")}
+                                onChange={() => handleCapabilitiesChange("view_nfes")}
+                              />
+                            }
+                            label={<Typography variant="body2">Visualizar Menus de NFEs</Typography>}
                           />
-                        }
-                        label={<Typography variant="body2">Visualizar Valores Financeiros</Typography>}
-                      />
-                      <FormControlLabel
-                        control={
-                          <Checkbox
-                            size="small"
-                            checked={(formData.capabilities || []).includes("view_nfes")}
-                            onChange={() => handleCapabilitiesChange("view_nfes")}
-                          />
-                        }
-                        label={<Typography variant="body2">Visualizar Menus de NFEs</Typography>}
-                      />
-                  </Stack>
-                </Box>
+                        </Stack>
+                      </Box>
+                    </Grid>
+                  </Grid>
+                </Paper>
 
                 {/* Data Filtering Access Control Section */}
-                <Box sx={{ p: 2, bgcolor: "grey.50", borderRadius: 1 }}>
+                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
                   <Typography
-                    variant="caption"
-                    color="text.secondary"
+                    variant="subtitle2"
+                    fontWeight={600}
                     sx={{ mb: 1, display: "block" }}
                   >
                     Filtro Restritivo de Dados
@@ -678,7 +845,71 @@ const Register = () => {
                   >
                     *Se preenchido, este usuário só encontrará pedidos cuja observação possua essas palavras.
                   </Typography>
-                </Box>
+                </Paper>
+
+                {/* Report Categories Section */}
+                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                  <Typography
+                    variant="subtitle2"
+                    fontWeight={600}
+                    sx={{ mb: 1, display: "block" }}
+                  >
+                    Categorias de Relatórios do usuário
+                  </Typography>
+                  <Stack direction={{ xs: "column", md: "row" }} spacing={2} sx={{ mb: 1 }}>
+                    <TextField
+                      size="small"
+                      placeholder="Buscar categoria"
+                      value={categoryReport}
+                      onChange={(e) => setCategoryReport(e.target.value)}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <SearchIcon fontSize="small" />
+                          </InputAdornment>
+                        )
+                      }}
+                      sx={{ flex: 1 }}
+                    />
+                    <Stack direction="row" spacing={1}>
+                      <Button size="small" variant="outlined" onClick={handleSelectAllCategories}>
+                        Marcar todas
+                      </Button>
+                      <Button size="small" variant="text" onClick={handleClearCategories}>
+                        Limpar
+                      </Button>
+                    </Stack>
+                  </Stack>
+                  <Divider sx={{ mb: 1 }} />
+                  <Stack direction="row" flexWrap="wrap" gap={1}>
+                    {filteredReportCategories.map((cat) => (
+                      <FormControlLabel
+                        key={cat.id}
+                        control={
+                          <Checkbox
+                            size="small"
+                            checked={formData.report_categories.includes(cat.id)}
+                            onChange={() => handleReportCategoryChange(cat.id)}
+                          />
+                        }
+                        label={
+                          <Typography variant="body2">{cat.name}</Typography>
+                        }
+                      />
+                    ))}
+                    {filteredReportCategories.length === 0 && (
+                      <Typography variant="caption" color="text.secondary">
+                        Nenhuma categoria encontrada.
+                      </Typography>
+                    )}
+                  </Stack>
+
+                  <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+                    <Button size="small" variant="outlined" onClick={handleOpenCategoryDialog}>
+                      Gerenciar categorias
+                    </Button>
+                  </Stack>
+                </Paper>
 
               </Stack>
             </Collapse>
@@ -789,6 +1020,65 @@ const Register = () => {
           {alert.message}
         </Alert>
       </Snackbar>
+
+      <Dialog open={categoryDialogOpen} onClose={handleCloseCategoryDialog} fullWidth maxWidth="sm">
+        <DialogTitle>Gerenciar categorias</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2}>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+              <TextField
+                size="small"
+                label={categoryEditId ? "Editar categoria" : "Nova categoria"}
+                value={categoryName}
+                onChange={(e) => setCategoryName(e.target.value)}
+                fullWidth
+              />
+              <Button variant="contained" onClick={handleSaveCategory}>
+                {categoryEditId ? "Atualizar" : "Adicionar"}
+              </Button>
+            </Stack>
+            {categoryEditId && (
+              <Button size="small" variant="text" onClick={handleCancelCategoryEdit}>
+                Cancelar edicao
+              </Button>
+            )}
+            <Divider />
+            <Stack spacing={1}>
+              {reportCategories.map((cat) => (
+                <Box
+                  key={cat.id}
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    p: 1,
+                    borderRadius: 1,
+                    bgcolor: "grey.50",
+                  }}
+                >
+                  <Typography variant="body2">{cat.name}</Typography>
+                  <Stack direction="row" spacing={1}>
+                    <Button size="small" variant="text" onClick={() => handleStartEditCategory(cat)}>
+                      Editar
+                    </Button>
+                    <Button size="small" color="error" variant="text" onClick={() => handleDeleteCategory(cat.id)}>
+                      Excluir
+                    </Button>
+                  </Stack>
+                </Box>
+              ))}
+              {reportCategories.length === 0 && (
+                <Typography variant="caption" color="text.secondary">
+                  Nenhuma categoria cadastrada.
+                </Typography>
+              )}
+            </Stack>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseCategoryDialog}>Fechar</Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };
