@@ -542,7 +542,7 @@ def search_advanced():
     tokens = [token for token in re.split(r'\s+', normalized_query) if token]
 
     page = max(int(request.args.get('page', 1)), 1)
-    per_page = max(min(int(request.args.get('per_page', 20)), 200), 1)
+    per_page = max(min(int(request.args.get('per_page', 20)), 2000), 1)
     score_cutoff = int(request.args.get('score_cutoff', 100))
     ignore_diacritics = request.args.get('ignoreDiacritics', 'true').lower() == 'true'
     fields_param = request.args.get('fields', '')

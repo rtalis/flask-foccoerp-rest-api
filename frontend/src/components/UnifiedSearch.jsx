@@ -1318,7 +1318,7 @@ const UnifiedSearch = () => {
   const SEARCH_MODE_STORAGE_KEY = "searchModePreference";
   const SEARCH_PARAMS_STORAGE_KEY = "searchParamsPreference";
   const SHOW_SUGGESTIONS_STORAGE_KEY = "showSuggestionsPreference";
-  const PER_PAGE_OPTIONS = [50, 100, 200, 300, 500, 1000];
+  const PER_PAGE_OPTIONS = [50, 100, 200, 300, 500, 1000, 2000];
   const DEFAULT_ENHANCED_FIELDS = [
     "descricao",
     "item_id",
@@ -2915,6 +2915,18 @@ const UnifiedSearch = () => {
                 Próxima
               </Button>
             </Box>
+          </Box>
+        )}
+
+        {/* Export Button - visible whenever there are results */}
+        {results.length > 0 && (
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "flex-end",
+              mb: 2,
+            }}
+          >
             <Tooltip title="Exporta os resultados da busca para um arquivo Excel">
               <Button
                 variant="contained"
@@ -2923,14 +2935,12 @@ const UnifiedSearch = () => {
                   px: 3,
                   py: 1,
                   textTransform: "none",
-                  alignSelf: "center",
                   fontWeight: 400,
                   bgcolor: "#1a1f2e",
                   "&:hover": { bgcolor: "#2d3548" },
                   width: { xs: "100%", sm: "auto" },
                 }}
                 onClick={handleExportExcel}
-                disabled={results.length === 0}
               >
                 Exportar para Excel
               </Button>

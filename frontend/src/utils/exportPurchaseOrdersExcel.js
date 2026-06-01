@@ -8,6 +8,20 @@ import { saveAs } from "file-saver";
  */
 export const exportPurchaseOrdersToExcel = (results, options = {}) => {
   const { canViewFinancials = true, canViewNfes = true } = options;
+  
+  // Helper function to format dates properly for Excel
+  const formatDateForExcel = (dateStr) => {
+    if (!dateStr) return "";
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return dateStr; // Return as-is if invalid
+      // Format as DD/MM/YYYY
+      return date.toLocaleDateString("pt-BR");
+    } catch {
+      return dateStr;
+    }
+  };
+  
   try {
     const wb = XLSX.utils.book_new();
 
@@ -16,8 +30,9 @@ export const exportPurchaseOrdersToExcel = (results, options = {}) => {
       .map((order) => {
         return (order.items || []).map((item) => {
           const row = {
+            Empresa: order.order.cod_emp1,
             "Código Pedido": order.order.cod_pedc,
-            "Data Emissão": order.order.dt_emis,
+            "Data Emissão": formatDateForExcel(order.order.dt_emis),
             Fornecedor: order.order.fornecedor_descricao,
           };
           if (canViewFinancials) {
@@ -44,7 +59,7 @@ export const exportPurchaseOrdersToExcel = (results, options = {}) => {
           }
 
           row["Unidade Medida"] = item.unidade_medida;
-          row["Data Entrega"] = item.dt_entrega;
+          row["Data Entrega"] = formatDateForExcel(item.dt_entrega);
 
           if (canViewFinancials) {
             row["Perc. IPI"] = item.perc_ipi;
