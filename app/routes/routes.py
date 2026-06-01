@@ -553,3 +553,4 @@ from app.routes import imports
 from app.routes import quotations  
 from app.routes import tracking 
 from app.routes import purchases
+from app.routes import report

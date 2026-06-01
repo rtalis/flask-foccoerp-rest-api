@@ -141,6 +141,24 @@ class ReportCategory(db.Model):
     name = db.Column(db.String(100), unique=True, nullable=False)
 
 
+class PurchaseOrderCategoryOverride(db.Model):
+    """Manual category assignment for purchase orders that can't be auto-matched via observacao."""
+    __tablename__ = 'purchase_order_category_overrides'
+    id = db.Column(db.Integer, primary_key=True)
+    purchase_order_id = db.Column(db.Integer, db.ForeignKey('purchase_orders.id', ondelete='CASCADE'), nullable=False)
+    category_id = db.Column(db.Integer, db.ForeignKey('report_categories.id', ondelete='CASCADE'), nullable=False)
+    created_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
+    purchase_order = db.relationship('PurchaseOrder', backref=db.backref('category_override', uselist=False))
+    category = db.relationship('ReportCategory')
+    created_by = db.relationship('User', foreign_keys=[created_by_id])
+
+    __table_args__ = (
+        db.UniqueConstraint('purchase_order_id', name='uq_po_category_override'),
+    )
+
+
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
