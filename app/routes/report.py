@@ -6,7 +6,8 @@ from flask_login import login_required, current_user
 from sqlalchemy import extract
 
 from app import db
-from app.models import PurchaseOrder, PurchaseItem, User, ReportCategory, PurchaseOrderCategoryOverride
+from app.models import PurchaseOrder, PurchaseItem, User, ReportCategory, PurchaseOrderCategoryOverride, PurchaseAdjustment
+from app.utils import apply_adjustments
 from app.routes.routes import bp
 
 
@@ -109,13 +110,13 @@ def get_purchase_category_report():
         # Query purchase orders for this user in the given year, exclude cancelled
         orders = PurchaseOrder.query.filter(
             PurchaseOrder.func_nome.ilike(f'%{target_user.system_name}%'),
-            extract('year', PurchaseOrder.dt_emis) == year,
-            PurchaseOrder.posicao_hist.notin_(['CC', 'CA']) | (PurchaseOrder.posicao_hist.is_(None))
+            extract('year', PurchaseOrder.dt_emis) == year
         ).all()
 
         # Build the category x month matrix
         data = {cat: [0.0] * 12 for cat in category_names}
         unmatched_orders = []
+        categorized_orders = []
 
         for order in orders:
             # Calculate total summing non-cancelled items
@@ -131,30 +132,54 @@ def get_purchase_category_report():
             if effective_total <= 0:
                 continue
 
+            #TODO verificar se o valor do frete estão relativos ao valor do item cancelado de maneira correta
+            adjustments_query = PurchaseAdjustment.query.filter_by(purchase_order_id=order.id).all()
+            adjusted_total = apply_adjustments(effective_total, adjustments_query) + (order.vlr_frete_tra or 0) + (order.total_liquido_ipi or 0)
+            
+            # Use adjusted_total for the report
+            report_total = adjusted_total
+
             # 1. Check for manual override
             override = PurchaseOrderCategoryOverride.query.filter_by(purchase_order_id=order.id).first()
             matched_cat = None
+            override_category_id = None
             if override and override.category_id in category_map:
                 matched_cat = category_map[override.category_id]
+                override_category_id = override.category_id
             else:
                 # 2. Auto-match via observacao
                 last_line = _get_last_obs_line(order.observacao)
                 matched_cat = _match_category(last_line, category_names)
 
-            if matched_cat is None:
-                # Add to unmatched list
-                unmatched_orders.append({
-                    'id': order.id,
-                    'cod_pedc': order.cod_pedc,
-                    'dt_emis': order.dt_emis.strftime('%Y-%m-%d'),
-                    'fornecedor_descricao': order.fornecedor_descricao,
-                    'observacao_last_line': _get_last_obs_line(order.observacao),
-                    'total': round(effective_total, 2)
-                })
-                continue
+            order_data = {
+                'id': order.id,
+                'cod_pedc': order.cod_pedc,
+                'dt_emis': order.dt_emis.strftime('%Y-%m-%d'),
+                'fornecedor_descricao': order.fornecedor_descricao,
+                'observacao_last_line': _get_last_obs_line(order.observacao),
+                'total': round(report_total, 2),
+                'override_category_id': override_category_id,
+                'matched_cat': matched_cat
+            }
 
-            month_idx = order.dt_emis.month - 1
-            data[matched_cat][month_idx] += effective_total
+            if matched_cat is None:
+                # Add to unmatched list (no category assigned)
+                unmatched_orders.append(order_data)
+            else:
+                # Add to categorized list (has override) OR count in report
+                if override:
+                    # User has manually set a category - show in categorized section
+                    categorized_orders.append(order_data)
+                # Add to monthly data either way
+                month_idx = order.dt_emis.month - 1
+                data[matched_cat][month_idx] += report_total
+
+        # Sort unmatched orders by date (most recent first) then by cod_pedc
+        unmatched_orders.sort(key=lambda x: (x['dt_emis'], x['cod_pedc']), reverse=True)
+        # Sort categorized orders by date (most recent first) then by cod_pedc
+        categorized_orders.sort(key=lambda x: (x['dt_emis'], x['cod_pedc']), reverse=True)
+        # Combine: uncategorized first, then categorized at the end
+        all_unmatched_for_display = unmatched_orders + categorized_orders
 
         # Calculate totals and averages
         category_totals = {}
@@ -186,7 +211,7 @@ def get_purchase_category_report():
             'category_averages': category_averages,
             'month_totals': month_totals,
             'grand_total': grand_total,
-            'unmatched_orders': unmatched_orders,
+            'unmatched_orders': all_unmatched_for_display,
             'generated_at': datetime.now().strftime('%d de %B de %Y').replace(
                 'January', 'Janeiro').replace('February', 'Fevereiro').replace(
                 'March', 'Marco').replace('April', 'Abril').replace(

@@ -38,7 +38,7 @@ export const exportPurchaseOrdersToExcel = (results, options = {}) => {
           if (canViewFinancials) {
             row["Total Bruto"] = order.order.total_bruto;
             row["Total Líquido"] = order.order.total_liquido;
-            row["Total Líquido IPI"] = order.order.total_liquido_ipi;
+            row["Total Final"] = order.order.adjusted_total;
           }
           row["Posição"] = order.order.posicao;
           row["Observação"] = order.order.observacao;

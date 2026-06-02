@@ -160,6 +160,7 @@ const PurchaseReport = () => {
   // Unmatched Dialog state
   const [unmatchedDialogOpen, setUnmatchedDialogOpen] = useState(false);
   const [savingOverrideId, setSavingOverrideId] = useState(null);
+  const [dialogHasChanges, setDialogHasChanges] = useState(false);
 
   // Generate year options (current year down to 5 years ago)
   const yearOptions = useMemo(() => {
@@ -210,19 +211,62 @@ const PurchaseReport = () => {
     }
   }, [apiUrl, selectedUserId, year]);
 
+  // Refresh report when dialog closes if changes were made
+  useEffect(() => {
+    if (!unmatchedDialogOpen && dialogHasChanges) {
+      setDialogHasChanges(false);
+      fetchReport();
+    }
+  }, [unmatchedDialogOpen, dialogHasChanges, fetchReport]);
+
   const handleSaveOverride = async (purchaseOrderId, categoryId) => {
-    if (!categoryId) return;
+    if (!categoryId || !reportData) return;
+    
     try {
       setSavingOverrideId(purchaseOrderId);
+      
+      // Find the order being updated
+      const orderIndex = reportData.unmatched_orders.findIndex(o => o.id === purchaseOrderId);
+      if (orderIndex === -1) return;
+      
+      // Save original state for rollback
+      const originalOrders = reportData.unmatched_orders;
+      
+      // Create updated order with category info
+      const updatedOrder = {
+        ...reportData.unmatched_orders[orderIndex],
+        override_category_id: categoryId,
+        matched_cat: reportData.categories.find(c => c.id === categoryId)?.name
+      };
+      
+      // Optimistic update: update order locally
+      const newOrders = reportData.unmatched_orders.map(o => 
+        o.id === purchaseOrderId ? updatedOrder : o
+      );
+      
+      // Update UI immediately (no reload)
+      setReportData(prev => ({
+        ...prev,
+        unmatched_orders: newOrders
+      }));
+      
+      // Save to server
       await axios.post(
         `${apiUrl}/api/purchase-category-override`,
         { purchase_order_id: purchaseOrderId, category_id: categoryId },
         { withCredentials: true }
       );
-      // Re-fetch report data implicitly closes dialog nicely
-      await fetchReport();
+      
+      // Mark that changes were made in the dialog
+      setDialogHasChanges(true);
+      
     } catch (e) {
       console.error("Error saving override", e);
+      // Revert on error
+      setReportData(prev => ({
+        ...prev,
+        unmatched_orders: reportData.unmatched_orders
+      }));
       alert("Erro ao salvar categoria do pedido.");
     } finally {
       setSavingOverrideId(null);
@@ -832,10 +876,17 @@ const PurchaseReport = () => {
         <Dialog 
           open={unmatchedDialogOpen} 
           onClose={() => setUnmatchedDialogOpen(false)}
-          maxWidth="md"
+          maxWidth="lg"
           fullWidth
+          PaperProps={{
+            sx: {
+              maxHeight: "90vh",
+              display: "flex",
+              flexDirection: "column"
+            }
+          }}
         >
-          <DialogTitle sx={{ bgcolor: "#f5f6fa", borderBottom: "1px solid rgba(0,0,0,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <DialogTitle sx={{ bgcolor: "#f5f6fa", borderBottom: "1px solid rgba(0,0,0,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center", py: 2 }}>
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <WarningAmberIcon color="warning" />
               <Typography variant="h6" fontWeight="bold">
@@ -846,51 +897,81 @@ const PurchaseReport = () => {
               <CloseIcon />
             </IconButton>
           </DialogTitle>
-          <DialogContent sx={{ p: 0 }}>
-            <TableContainer>
-              <Table size="small">
+          <DialogContent sx={{ p: 0, flex: 1, overflow: "auto" }}>
+            <TableContainer sx={{ maxHeight: "100%" }}>
+              <Table size="small" stickyHeader>
                 <TableHead>
                   <TableRow sx={{ bgcolor: "#f9f9f9" }}>
-                    <TableCell sx={{ fontWeight: "bold" }}>Pedido</TableCell>
-                    <TableCell sx={{ fontWeight: "bold" }}>Data</TableCell>
-                    <TableCell sx={{ fontWeight: "bold" }}>Fornecedor</TableCell>
-                    <TableCell sx={{ fontWeight: "bold" }}>Última linha (Obs)</TableCell>
-                    <TableCell sx={{ fontWeight: "bold" }}>Total</TableCell>
-                    <TableCell sx={{ fontWeight: "bold", width: 200 }}>Categoria</TableCell>
+                    <TableCell sx={{ fontWeight: "bold", minWidth: 80 }}>Pedido</TableCell>
+                    <TableCell sx={{ fontWeight: "bold", minWidth: 90 }}>Data</TableCell>
+                    <TableCell sx={{ fontWeight: "bold", minWidth: 150 }}>Fornecedor</TableCell>
+                    <TableCell sx={{ fontWeight: "bold", minWidth: 200 }}>Última linha (Observ. PC)</TableCell>
+                    <TableCell sx={{ fontWeight: "bold", minWidth: 100 }}>Total</TableCell>
+                    <TableCell sx={{ fontWeight: "bold", minWidth: 200 }}>Categoria</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {reportData.unmatched_orders?.map((order) => (
-                    <TableRow key={order.id} hover>
-                      <TableCell>{order.cod_pedc}</TableCell>
-                      <TableCell>{order.dt_emis}</TableCell>
-                      <TableCell>{order.fornecedor_descricao}</TableCell>
-                      <TableCell sx={{ maxWidth: 250, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        <Tooltip title={order.observacao_last_line || "Sem observação"}>
-                          <span>{order.observacao_last_line || "-"}</span>
-                        </Tooltip>
-                      </TableCell>
-                      <TableCell>{fmtCurrency(order.total)}</TableCell>
-                      <TableCell>
-                        <FormControl size="small" fullWidth>
-                          <Select
-                            displayEmpty
-                            value=""
-                            onChange={(e) => handleSaveOverride(order.id, e.target.value)}
-                            disabled={savingOverrideId === order.id}
-                            sx={{ fontSize: "0.85rem" }}
-                            renderValue={() => savingOverrideId === order.id ? "Salvando..." : "Selecionar..."}
-                          >
-                            {reportData.categories.map((c) => (
-                              <MenuItem key={c.id} value={c.id} sx={{ fontSize: "0.85rem" }}>
-                                {c.name}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {reportData.unmatched_orders?.map((order, idx) => {
+                    const uncategorizedCount = reportData.unmatched_orders.filter(o => !o.override_category_id).length;
+                    const isFirstCategorized = idx === uncategorizedCount && order.override_category_id;
+                    
+                    return (
+                      <React.Fragment key={order.id}>
+                        {isFirstCategorized && (
+                          <TableRow>
+                            <TableCell colSpan={6} sx={{ bgcolor: "#e8f5e9", py: 1.5 }}>
+                              <Typography variant="subtitle2" sx={{ fontWeight: "bold", color: "#2e7d32" }}>
+                                ✓ Pedidos Já Categorizados
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        <TableRow 
+                          hover 
+                          sx={{ 
+                            bgcolor: order.override_category_id ? "rgba(76, 175, 80, 0.08)" : "transparent"
+                          }}
+                        >
+                          <TableCell sx={{ fontSize: "0.9rem" }}>{order.cod_pedc}</TableCell>
+                          <TableCell sx={{ fontSize: "0.9rem" }}>{order.dt_emis}</TableCell>
+                          <TableCell sx={{ fontSize: "0.9rem", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            <Tooltip title={order.fornecedor_descricao}>
+                              <span>{order.fornecedor_descricao}</span>
+                            </Tooltip>
+                          </TableCell>
+                          <TableCell sx={{ fontSize: "0.9rem", maxWidth: 250, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            <Tooltip title={order.observacao_last_line || "Sem observação"}>
+                              <span>{order.observacao_last_line || "-"}</span>
+                            </Tooltip>
+                          </TableCell>
+                          <TableCell sx={{ fontSize: "0.9rem" }}>{fmtCurrency(order.total)}</TableCell>
+                          <TableCell sx={{ minWidth: 200 }}>
+                            <FormControl size="small" fullWidth>
+                              <Select
+                                displayEmpty
+                                value={order.override_category_id || ""}
+                                onChange={(e) => handleSaveOverride(order.id, e.target.value)}
+                                disabled={savingOverrideId === order.id}
+                                sx={{ fontSize: "0.85rem" }}
+                                renderValue={(value) => {
+                                  if (savingOverrideId === order.id) return "Salvando...";
+                                  if (!value) return "Selecionar...";
+                                  const cat = reportData.categories.find(c => c.id === value);
+                                  return cat?.name || "Selecionar...";
+                                }}
+                              >
+                                {reportData.categories.map((c) => (
+                                  <MenuItem key={c.id} value={c.id} sx={{ fontSize: "0.85rem" }}>
+                                    {c.name}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </TableCell>
+                        </TableRow>
+                      </React.Fragment>
+                    );
+                  })}
                   {reportData.unmatched_orders?.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={6} align="center" sx={{ py: 3, color: "text.secondary" }}>
