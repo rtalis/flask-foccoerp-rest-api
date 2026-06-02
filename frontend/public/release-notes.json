@@ -1,21 +1,5 @@
 [
-  {
-    "version": "2.2.0",
-    "notes": [
-      "Migração de CRA para Vite: Página inicial carrega mais rápido e consome menos memória.",
-      "Corrigido erro ao recuperar URL de API na tela de carregamento DANFE - menos erros de: Carregamento de DANFE está demorando.",
-      "Atualizada configuração CORS para permitir origens definidas em variável de ambiente com segurança aprimorada.",
-      "Adicionados testes abrangentes para funcionalidade de busca de NFE.",
-      "Refatorado código para melhor legibilidade e manutenibilidade."
-    ]
-  },
-  {
-    "version": "2.2.1",
-    "notes": [
-      "Adicionado marcação para melhor visualização do termo buscado nos resultados.",
-      "Adicionado botão para indicar que existem outros itens compondo um determinado pedido de compra e mostra-los"
-    ]
-  },
+
   {
     "version": "2.2.2",
     "notes": [
@@ -33,6 +17,12 @@
     "version": "2.2.4",
     "notes": [
     "Adicionado checkbox no login para manter o usuário logado por 15 dias em um computador confiavel - sem necessidade de login a cada acesso."
+    ]
+  },
+  {
+    "version": "2.2.5",
+    "notes": [
+      "Adicionado nova tela de relatório de pedidos de compra - disponível no menu Relatórios > Pedidos de Compra (Para quem tem acesso a esse relatório)."
     ]
   }
 ]

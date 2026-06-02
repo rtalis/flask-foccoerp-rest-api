@@ -119,14 +119,15 @@ def get_purchase_category_report():
         categorized_orders = []
 
         for order in orders:
+            vlr_c_ipi = order.total_pedido_com_ipi or 0.0
             # Calculate total summing non-cancelled items
             items = PurchaseItem.query.filter_by(purchase_order_id=order.id).all()
             effective_total = 0.0
             for item in items:
                 qty = float(item.quantidade or 0)
                 canc = float(item.qtde_canc or 0)
-                canc_toler = float(item.qtde_canc_toler or 0)
-                if qty > (canc + canc_toler):
+                #TODO calcular um item cancelado parcialmente
+                if qty > canc:
                     effective_total += float(item.total or 0)
 
             if effective_total <= 0:
@@ -134,8 +135,9 @@ def get_purchase_category_report():
 
             #TODO verificar se o valor do frete estão relativos ao valor do item cancelado de maneira correta
             adjustments_query = PurchaseAdjustment.query.filter_by(purchase_order_id=order.id).all()
-            adjusted_total = apply_adjustments(effective_total, adjustments_query) + (order.vlr_frete_tra or 0) + (order.total_liquido_ipi or 0)
-            
+            adjusted_total = apply_adjustments(vlr_c_ipi, adjustments_query) + (order.vlr_frete_tra or 0)
+            if order.dt_emis > datetime(2026, 1, 1).date() and order.dt_emis < datetime(2026, 2, 1).date():
+                print(f"{order.cod_pedc};{round(adjusted_total, 2)}")         
             # Use adjusted_total for the report
             report_total = adjusted_total
 
