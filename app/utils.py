@@ -854,6 +854,14 @@ def apply_adjustments(base_value, adjustments):
                     value -= amount
                 elif adj.tp_dctacr1 == 'Acréscimo':
                     value += amount
+            elif adj.tp_vlr1 == 'Percentual':
+                if False: # TODO implementar percentual
+                    percent = adj.vlr1 or 0
+                    if adj.tp_dctacr1 == 'Desconto':
+                        value -= value * (percent / 100)
+                    elif adj.tp_dctacr1 == 'Acréscimo':
+                        value += value * (percent / 100)
+
 
     return value
 

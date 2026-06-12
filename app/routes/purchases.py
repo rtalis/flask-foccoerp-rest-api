@@ -53,8 +53,22 @@ def get_purchasers():
 def get_companies():
     """Get distinct company codes from purchase orders with names from Company table."""
     try:
+        user_id = request.args.get('user_id', type=int)
+        year = request.args.get('year', type=int)
+
         # Get distinct cod_emp1 from purchase orders
-        purchase_codes = db.session.query(PurchaseOrder.cod_emp1).distinct().all()
+        query = db.session.query(PurchaseOrder.cod_emp1).distinct()
+
+        if user_id and year:
+            from sqlalchemy import extract
+            target_user = User.query.get(user_id)
+            if target_user and target_user.system_name:
+                query = query.filter(
+                    PurchaseOrder.func_nome.ilike(f"%{target_user.system_name}%"),
+                    extract("year", PurchaseOrder.dt_emis) == year
+                )
+
+        purchase_codes = query.all()
         purchase_codes = [code[0] for code in purchase_codes if code[0] is not None]
         
         # Get company names from Company table

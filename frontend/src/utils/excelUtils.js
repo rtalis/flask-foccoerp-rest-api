@@ -222,3 +222,116 @@ const formatCurrency = (value) => {
     currency: 'BRL'
   }).format(value);
 };
+
+/**
+ * Generates and downloads an Excel file with the purchase report summary and monthly sheets
+ * @param {Object} reportData - The purchase report data returned from the API
+ */
+export const generatePurchaseReportExcel = (reportData) => {
+  try {
+    const wb = XLSX.utils.book_new();
+
+    const MONTH_NAMES = [
+      "JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO",
+      "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"
+    ];
+
+    const {
+      category_names,
+      data,
+      category_totals,
+      category_averages,
+      month_totals,
+      grand_total,
+      user_name,
+      year: rYear,
+    } = reportData;
+
+    // First tab: Summary & Chart Data
+    const wsData = [];
+    wsData.push([`RELATÓRIO DE COMPRAS ${rYear}`]);
+    wsData.push([`Comprador: ${user_name}`]);
+    wsData.push([]);
+    wsData.push(["GÊNERO", ...MONTH_NAMES, "TOTAL", "MÉDIA MÊS"]);
+
+    category_names.forEach((cat) => {
+      wsData.push([
+        cat,
+        ...data[cat],
+        category_totals[cat],
+        category_averages[cat]
+      ]);
+    });
+
+    wsData.push(["TOTAL", ...month_totals, grand_total, ""]);
+    wsData.push([]);
+    wsData.push(["GRÁFICO RELATÓRIO DE COMPRAS"]);
+    wsData.push(["(Valores consolidados mensais)"]);
+    wsData.push(["Mês", "Total de Compras"]);
+    MONTH_NAMES.forEach((m, idx) => {
+      wsData.push([m, month_totals[idx]]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // Set column widths
+    const wscols = [
+      { wch: 22 }, // GÊNERO / Mês
+      ...Array(12).fill({ wch: 14 }), // 12 months
+      { wch: 16 }, // TOTAL
+      { wch: 16 }  // MÉDIA MÊS
+    ];
+    ws['!cols'] = wscols;
+
+    XLSX.utils.book_append_sheet(wb, ws, "Relatório");
+
+    // Monthly tabs
+    MONTH_NAMES.forEach((monthName, monthIdx) => {
+      const monthOrders = (reportData.all_orders || []).filter(
+        (o) => o.month_idx === monthIdx
+      );
+
+      // Format row values: COD_EMP1, PEDIDO, FORNECEDOR, DT. PED., VALOR, NF, DT. FAT., GENERO
+      const sheetRows = monthOrders.map(o => ({
+        "COD_EMP1": o.cod_emp1 || "",
+        "PEDIDO": o.cod_pedc || "",
+        "FORNECEDOR": o.fornecedor_descricao || "",
+        "DT. PED.": o.dt_emis_br || "",
+        "VALOR": o.total !== undefined ? o.total : "",
+        "NF": o.nf || "",
+        "DT. FAT.": o.dt_fat || "",
+        "GENERO": o.matched_cat || ""
+      }));
+
+      const mWs = XLSX.utils.json_to_sheet(sheetRows);
+
+      // Set column widths for month sheet
+      mWs['!cols'] = [
+        { wch: 12 }, // COD_EMP1
+        { wch: 12 }, // PEDIDO
+        { wch: 40 }, // FORNECEDOR
+        { wch: 14 }, // DT. PED.
+        { wch: 16 }, // VALOR
+        { wch: 16 }, // NF
+        { wch: 14 }, // DT. FAT.
+        { wch: 22 }  // GENERO
+      ];
+
+      // Sheet name length limit in Excel is 31 chars
+      const sheetName = monthName.substring(0, 30);
+      XLSX.utils.book_append_sheet(wb, mWs, sheetName);
+    });
+
+    // Write workbook
+    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const fileBlob = new Blob([excelBuffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+
+    saveAs(fileBlob, `relatorio_compras_${rYear}_${user_name}.xlsx`);
+    return { success: true };
+  } catch (err) {
+    console.error("Error generating Purchase Report Excel:", err);
+    return { success: false, error: err.message };
+  }
+};
