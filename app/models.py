@@ -111,13 +111,17 @@ class NFEntry(db.Model):
     __tablename__ = 'nf_entries'
     
     id = db.Column(db.Integer, primary_key=True)
-    cod_emp1 = db.Column(db.String(10), nullable=False)
+    cod_emp1 = db.Column(db.String(20), nullable=False) 
     cod_pedc = db.Column(db.String(20), nullable=False)
     linha = db.Column(db.String(10), nullable=False)
     num_nf = db.Column(db.String(20), nullable=False)
     dt_ent = db.Column(db.Date)
     text_field = db.Column(db.Text)
     qtde = db.Column(db.String(15))
+    
+    # --- NEW COLUMNS ADDED ---
+    obs_conf = db.Column(db.Text, nullable=True)
+    chave_acesso_nfel = db.Column(db.String(44), nullable=True)
 
     __table_args__ = (
         db.UniqueConstraint('cod_emp1', 'cod_pedc', 'linha', 'num_nf', name='uq_nf_entry'),
@@ -128,7 +132,6 @@ class NFEntry(db.Model):
             postgresql_ops={'unaccent(num_nf)': 'gin_trgm_ops'}
         ),
     )
-    
 
 user_report_categories = db.Table('user_report_categories',
     db.Column('user_id', db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), primary_key=True),
