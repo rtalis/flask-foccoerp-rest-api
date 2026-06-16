@@ -124,6 +124,7 @@ def sync_companies(oracle_conn):
                 emp.INSEST AS inscricao_estadual
             FROM FOCCO3I.TEMPRESAS emp
             LEFT JOIN FOCCO3I.TCIDADES cid ON emp.CID_ID = cid.ID
+            WHERE emp.CNPJ != '00000000000'
         """
         
     data = fetch_oracle_data(oracle_conn, query)
@@ -150,6 +151,7 @@ def sync_companies(oracle_conn):
 def sync_suppliers(oracle_conn):
     """Step 1.5: Sync Suppliers com todos os campos de contato e UF"""
     logger.info("Syncing Suppliers...")
+    #TODO fix this query
     query = """
         SELECT 
             forn.ID AS id_for,
@@ -165,15 +167,17 @@ def sync_suppliers(oracle_conn):
             REGEXP_REPLACE(COALESCE(forn.CNPJ, forn.CPF), '[^0-9]', '') AS cnpj_cpf_normalized,
             forn.DESCRICAO AS descricao,
             forn.BAIRRO AS bairro,
-            -- Buscando contatos genéricos da TCONTATOS
-            (SELECT MAX(EMAIL) FROM FOCCO3I.TCONTATOS WHERE FORN_ID = forn.ID) AS email,
-            (SELECT MAX(FONE) FROM FOCCO3I.TCONTATOS WHERE FORN_ID = forn.ID) AS tel_ddd_tel_telefone,
-            (SELECT MAX(FAX) FROM FOCCO3I.TCONTATOS WHERE FORN_ID = forn.ID) AS cf_fax,
-            -- O Focco usa conta_ctb_id ou similar. Se não houver correspondência exata, mantemos nulo
+            -- (SELECT MAX(EMAIL) FROM FOCCO3I.TCONTATOS WHERE FORN_ID = forn.ID) AS email,
+            null as email,
+             -- (SELECT MAX(FONE) FROM FOCCO3I.TCONTATOS WHERE FORN_ID = forn.ID) AS tel_ddd_tel_telefone,
+             null as tel_ddd_tel_telefone,
+            -- (SELECT MAX(FAX) FROM FOCCO3I.TCONTATOS WHERE FORN_ID = forn.ID) AS cf_fax,
+            null as cf_fax,
             TO_CHAR(forn.FORN_ID) AS conta_itens 
         FROM FOCCO3I.TFORNECEDORES forn
         LEFT JOIN FOCCO3I.TCIDADES cid ON forn.CID_ID = cid.ID
         LEFT JOIN FOCCO3I.TUF uf ON cid.UF_ID = uf.ID
+        
     """
     data = fetch_oracle_data(oracle_conn, query)
     if not data: return
