@@ -50,6 +50,6 @@ SQLAlchemy==2.0.36
 torch 
 # Install torch version for your machine, in case of cpu only run:
 # pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu 
-typing_extensions==4.12.2
+typing_extensions==4.15.0
 Werkzeug==3.1.6
 wrapt==1.17.0

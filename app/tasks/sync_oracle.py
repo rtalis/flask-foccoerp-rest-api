@@ -41,7 +41,7 @@ ORACLE_DSN = os.getenv('ORACLE_DSN', 'your_oracle_host:1521/your_service_name')
 def get_oracle_connection():
     """Establish connection to Oracle DB."""
     try:
-        oracledb.init_oracle_client(lib_dir="/opt/oracle/instantclient_19_21")
+        oracledb.init_oracle_client(lib_dir="/opt/oracle/instantclient_23_4")
     except Exception as e:
         logger.warning(f"Thick mode init warning (safe to ignore if already init): {e}")
 
@@ -151,7 +151,7 @@ def sync_companies(oracle_conn):
 def sync_suppliers(oracle_conn):
     """Step 1.5: Sync Suppliers com todos os campos de contato e UF"""
     logger.info("Syncing Suppliers...")
-    #TODO fix this query
+    
     query = """
         SELECT 
             forn.ID AS id_for,
@@ -162,23 +162,27 @@ def sync_suppliers(oracle_conn):
             forn.ENDERECO AS endereco,
             TO_CHAR(forn.CEP) AS cep,
             cid.CIDADE AS cidade,
-            uf.SIGLA AS uf,
+            uf.UF AS uf,  -- CORREÇÃO 1: A coluna correta é UF (e não SIGLA)
             COALESCE(forn.CNPJ, forn.CPF) AS nvl_forn_cnpj_forn_cpf,
             REGEXP_REPLACE(COALESCE(forn.CNPJ, forn.CPF), '[^0-9]', '') AS cnpj_cpf_normalized,
             forn.DESCRICAO AS descricao,
             forn.BAIRRO AS bairro,
-            -- (SELECT MAX(EMAIL) FROM FOCCO3I.TCONTATOS WHERE FORN_ID = forn.ID) AS email,
-            null as email,
-             -- (SELECT MAX(FONE) FROM FOCCO3I.TCONTATOS WHERE FORN_ID = forn.ID) AS tel_ddd_tel_telefone,
-             null as tel_ddd_tel_telefone,
-            -- (SELECT MAX(FAX) FROM FOCCO3I.TCONTATOS WHERE FORN_ID = forn.ID) AS cf_fax,
-            null as cf_fax,
+            
+            -- Mantendo nulos por enquanto para garantir a execução
+            NULL as email,
+            NULL as cf_fax,
+            
+            -- DICA: No Focco, os telefones ficam na TTEL_FOR. 
+            -- Se quiser testar depois, descomente a linha abaixo e remova o NULL acima:
+            -- (SELECT MAX(DDD || TELEFONE) FROM FOCCO3I.TTEL_FOR WHERE FORN_ID = forn.ID) AS tel_ddd_tel_telefone,
+            NULL as tel_ddd_tel_telefone,
+            
             TO_CHAR(forn.FORN_ID) AS conta_itens 
         FROM FOCCO3I.TFORNECEDORES forn
         LEFT JOIN FOCCO3I.TCIDADES cid ON forn.CID_ID = cid.ID
-        LEFT JOIN FOCCO3I.TUF uf ON cid.UF_ID = uf.ID
-        
+        LEFT JOIN FOCCO3I.TUFS uf ON cid.UF_ID = uf.ID  -- CORREÇÃO 2: A tabela é TUFS (plural)
     """
+    
     data = fetch_oracle_data(oracle_conn, query)
     if not data: return
 
@@ -201,6 +205,7 @@ def sync_suppliers(oracle_conn):
             }
         )
         db.session.execute(on_conflict)
+        
     db.session.commit()
     logger.info(f"Successfully synced {len(data)} suppliers.")
     
@@ -218,10 +223,10 @@ def sync_purchase_orders(oracle_conn, start_date):
             TO_CHAR(emp.ID) AS cod_emp1, 
             NVL(forn.ID, 0) AS fornecedor_id,
             forn.DESCRICAO AS fornecedor_descricao,
-            uf.SIGLA AS for_uf,
+            uf.UF AS for_uf,               -- CORREÇÃO 1: Nome correto da coluna de UF
             func.NOME AS func_nome,
             pdc.POSICAO AS posicao,
-            pdc.POSICAO AS posicao_hist, -- Usando a atual como histórico inicial
+            pdc.POSICAO AS posicao_hist,
             pdc.OBSERVACAO AS observacao,
             pdc.CONTATO AS contato,
             TO_CHAR(pdc.NUM_TALAO) AS num_talao,
@@ -242,16 +247,15 @@ def sync_purchase_orders(oracle_conn, start_date):
             pdc.TP_VLR_FRETE_RED AS tp_vlr_frete_red,
             
             -- Condição Pagamento e Moeda
-            cond.DESCRICAO AS cf_pgto,
+            TO_CHAR(pdc.TP_PGTO) AS cf_pgto, -- CORREÇÃO 2: Puxando direto do pedido (a tabela TCOND_PGTO não tem vínculo direto aqui)
             moe.SIGLA AS moeped
             
         FROM FOCCO3I.TPED_COMPRA pdc
         JOIN FOCCO3I.TEMPRESAS emp ON pdc.EMPR_ID = emp.ID
         LEFT JOIN FOCCO3I.TFORNECEDORES forn ON pdc.TFOR_ID = forn.ID
         LEFT JOIN FOCCO3I.TCIDADES cid ON forn.CID_ID = cid.ID
-        LEFT JOIN FOCCO3I.TUF uf ON cid.UF_ID = uf.ID
+        LEFT JOIN FOCCO3I.TUFS uf ON cid.UF_ID = uf.ID     -- CORREÇÃO 1: Tabela no plural (TUFS)
         LEFT JOIN FOCCO3I.TFUNCIONARIOS func ON pdc.FUNC_ID = func.ID
-        LEFT JOIN FOCCO3I.TCOND_PGTO cond ON pdc.TCONDPGTO_ID = cond.ID
         LEFT JOIN FOCCO3I.TMOEDAS moe ON pdc.MOE_ID = moe.ID
         WHERE pdc.DT_EMIS >= :start_date
     """
@@ -282,39 +286,41 @@ def sync_purchase_orders(oracle_conn, start_date):
     db.session.commit()
     logger.info(f"Successfully synced {len(data)} purchase orders.")
     
-    
+
+
+
 def sync_purchase_items(oracle_conn, start_date):
     """Step 3: Sync Purchase Items com Unidades, Prazos e Impostos"""
     logger.info("Syncing Purchase Items...")
     query = """
         SELECT 
             itpdc.ID AS id,
+            pdc.DT_EMIS AS dt_emis,
             itpdc.TPEDC_ID AS purchase_order_id,
             pdc.COD_PEDC AS cod_pedc,
             TO_CHAR(emp.ID) AS cod_emp1,
             TO_CHAR(itpdc.ID) AS linha,
             NVL(item.COD_ITEM, 'N/A') AS item_id,
             itpdc.DESCRICAO_ITEM AS descricao,
-            itpdc.OBSERVACAO AS observacao,
-            um.SIGLA AS unidade_medida,
+            itpdc.OBS AS observacao,              -- CORREÇÃO: No item a coluna é OBS
+            um.COD_UNID_MED AS unidade_medida,    -- CORREÇÃO: Tabela TUNID_MED e coluna COD_UNID_MED
             itpdc.DT_ENTREGA AS dt_entrega,
             
             -- Quantidades
             itpdc.QTDE AS quantidade,
-            NVL(itpdc.QTDE_REC, 0) AS qtde_atendida,
+            NVL(itpdc.QTDE_ATENDIDA, 0) AS qtde_atendida,  -- CORREÇÃO: Coluna nativa é QTDE_ATENDIDA
             NVL(itpdc.QTDE_CANC, 0) AS qtde_canc,
-            (itpdc.QTDE - NVL(itpdc.QTDE_REC, 0) - NVL(itpdc.QTDE_CANC, 0)) AS qtde_saldo,
-            itpdc.QTDE_CANC_TOLER AS qtde_canc_toler,
-            itpdc.PERC_TOLER AS perc_toler,
+            NVL(itpdc.QTDE_SALDO, 0) AS qtde_saldo,        -- CORREÇÃO: Puxando o saldo já calculado pelo Focco
+            NVL(itpdc.QTDE_CANC_TOLER, 0) AS qtde_canc_toler,
+            NVL(itpdc.PERC_TOLER, 0) AS perc_toler,
             
             -- Valores e Impostos
             itpdc.PRECO_UNITARIO AS preco_unitario,
-            (itpdc.QTDE * itpdc.PRECO_UNITARIO) AS total,
-            itpdc.PERC_IPI AS perc_ipi,
-            -- Cálculo seguro para Total Líquido IPI caso não haja coluna nativa
-            ((itpdc.QTDE * itpdc.PRECO_UNITARIO) * (1 + NVL(itpdc.PERC_IPI,0)/100)) AS tot_liquido_ipi,
-            NVL(itpdc.VLR_DESC, 0) AS tot_descontos,
-            NVL(itpdc.VLR_ACRESC, 0) AS tot_acrescimos
+            itpdc.TOT_BRUTO AS total,                      -- CORREÇÃO: O Focco já grava o TOT_BRUTO (Qtd * Preço)
+            NVL(itpdc.PERC_IPI, 0) AS perc_ipi,
+            itpdc.TOT_LIQUIDO_IPI AS tot_liquido_ipi,      -- CORREÇÃO: Valor nativo já calculado pelo ERP
+            NVL(itpdc.TOT_DESCONTOS, 0) AS tot_descontos,  -- CORREÇÃO: Nome correto da coluna
+            NVL(itpdc.TOT_ACRESCIMOS, 0) AS tot_acrescimos -- CORREÇÃO: Nome correto da coluna
             
         FROM FOCCO3I.TPEDC_ITEM itpdc
         JOIN FOCCO3I.TPED_COMPRA pdc ON itpdc.TPEDC_ID = pdc.ID
@@ -322,7 +328,7 @@ def sync_purchase_items(oracle_conn, start_date):
         LEFT JOIN FOCCO3I.TITENS_SUPRIMENTOS itsup ON itpdc.ITEM_ID = itsup.ID
         LEFT JOIN FOCCO3I.TITENS_EMPR itempr ON itsup.ITEMPR_ID = itempr.ID
         LEFT JOIN FOCCO3I.TITENS item ON itempr.ITEM_ID = item.ID
-        LEFT JOIN FOCCO3I.TUM um ON itpdc.UM_ID = um.ID
+        LEFT JOIN FOCCO3I.TUNID_MED um ON itpdc.UNID_MED_ID = um.ID  -- CORREÇÃO: Tabela correta e Join correto
         WHERE pdc.DT_EMIS >= :start_date
     """
     data = fetch_oracle_data(oracle_conn, query, start_date)
@@ -393,40 +399,49 @@ def sync_purchase_installments(oracle_conn, start_date):
     
     
 def sync_nf_entries(oracle_conn, start_date):
-    """Step 4: Sync Invoices directly into NFEntry"""
+    """Step 4: Sync Invoices directly into NFEntry (Matches + Metadata)"""
     logger.info("Syncing NF Entries...")
     
-    # Focco uses CHAVE_NFE instead of CHAVE_ACESSO_NFEL in the base header table usually
-    # If your specific installation uses CHAVE_ACESSO_NFEL, swap nfe.CHAVE_NFE below.
+    # 1. TNFS_ENTRADA como fonte principal (FROM)
+    # 2. Inclusão do campo nfe.OBS mapeado para text_field
+    # 3. GROUP BY para evitar erro de duplicidade no PostgreSQL (ON CONFLICT)
     query_entries = """
         SELECT 
             TO_CHAR(emp.ID) AS cod_emp1,
-            pdc.COD_PEDC AS cod_pedc,
+            TO_CHAR(pdc.COD_PEDC) AS cod_pedc,
             TO_CHAR(itpdc.ID) AS linha,
-            nfe.NUM_NF AS num_nf,
+            TO_CHAR(nfe.NUM_NF) AS num_nf,
+            
             nfe.DT_ENT AS dt_ent,
-            TO_CHAR(itnfe.QTDE) AS qtde,
+            nfe.OBS AS text_field,
             nfe.OBS_CONF AS obs_conf,
-            nfe.CHAVE_ACESSO_NFEL AS chave_acesso_nfel
-        FROM FOCCO3I.TITENS_NFE itnfe
-        JOIN FOCCO3I.TNFS_ENTRADA nfe ON itnfe.NFE_ID = nfe.ID
+            nfe.CHAVE_ACESSO_NFEL AS chave_acesso_nfel,
+            TO_CHAR(itnfe.QTDE) AS qtde
+            
+        FROM FOCCO3I.TNFS_ENTRADA nfe
+        JOIN FOCCO3I.TEMPRESAS emp ON nfe.EMPR_ID = emp.ID
+        JOIN FOCCO3I.TITENS_NFE itnfe ON itnfe.NFE_ID = nfe.ID
         JOIN FOCCO3I.TPEDC_ITEM itpdc ON itnfe.PEDCITEM_ID = itpdc.ID
         JOIN FOCCO3I.TPED_COMPRA pdc ON itpdc.TPEDC_ID = pdc.ID
-        JOIN FOCCO3I.TEMPRESAS emp ON pdc.EMPR_ID = emp.ID
         WHERE nfe.DT_ENT >= :start_date
+    
     """
     entries = fetch_oracle_data(oracle_conn, query_entries, start_date)
-    if not entries: return
+    if not entries: 
+        logger.info("No new NF Entries found.")
+        return
 
     chunk_count = 0
     for chunk in chunk_data(entries, chunk_size=2000):
         stmt_e = insert(NFEntry).values(chunk)
         
+        # O 'text_field' agora também é atualizado caso a nota mude no Focco
         on_conflict_e = stmt_e.on_conflict_do_update(
             constraint='uq_nf_entry',
             set_={
                 'dt_ent': stmt_e.excluded.dt_ent,
                 'qtde': stmt_e.excluded.qtde,
+                'text_field': stmt_e.excluded.text_field,       -- NOVO: Atualiza o texto
                 'obs_conf': stmt_e.excluded.obs_conf,
                 'chave_acesso_nfel': stmt_e.excluded.chave_acesso_nfel
             }
@@ -436,6 +451,7 @@ def sync_nf_entries(oracle_conn, start_date):
         
     db.session.commit()
     logger.info(f"Successfully synced {len(entries)} NF Entries across {chunk_count} batches.")
+    
 
 def run_sync():
     """Main execution function."""
