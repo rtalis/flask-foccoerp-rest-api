@@ -383,7 +383,6 @@ def sync_purchase_installments(oracle_conn, start_date):
     for chunk in chunk_data(data, chunk_size=2000):
         stmt = insert(PurchasePaymentInstallment).values(chunk)
         
-        # O ID na tabela TPEDC_VENC é a primary key ideal
         on_conflict = stmt.on_conflict_do_update(
             index_elements=['id'],
             set_={
@@ -401,15 +400,11 @@ def sync_purchase_installments(oracle_conn, start_date):
 def sync_nf_entries(oracle_conn, start_date):
     """Step 4: Sync Invoices directly into NFEntry (Matches + Metadata)"""
     logger.info("Syncing NF Entries...")
-    
-    # 1. TNFS_ENTRADA como fonte principal (FROM)
-    # 2. Inclusão do campo nfe.OBS mapeado para text_field
-    # 3. GROUP BY para evitar erro de duplicidade no PostgreSQL (ON CONFLICT)
     query_entries = """
         SELECT 
             TO_CHAR(emp.ID) AS cod_emp1,
             TO_CHAR(pdc.COD_PEDC) AS cod_pedc,
-            TO_CHAR(itpdc.ID) AS linha,
+            TO_CHAR(itpdc.LINHA) AS linha,
             TO_CHAR(nfe.NUM_NF) AS num_nf,
             
             nfe.DT_ENT AS dt_ent,
@@ -435,13 +430,12 @@ def sync_nf_entries(oracle_conn, start_date):
     for chunk in chunk_data(entries, chunk_size=2000):
         stmt_e = insert(NFEntry).values(chunk)
         
-        # O 'text_field' agora também é atualizado caso a nota mude no Focco
         on_conflict_e = stmt_e.on_conflict_do_update(
             constraint='uq_nf_entry',
             set_={
                 'dt_ent': stmt_e.excluded.dt_ent,
                 'qtde': stmt_e.excluded.qtde,
-                'text_field': stmt_e.excluded.text_field,       -- NOVO: Atualiza o texto
+                'text_field': stmt_e.excluded.text_field,
                 'obs_conf': stmt_e.excluded.obs_conf,
                 'chave_acesso_nfel': stmt_e.excluded.chave_acesso_nfel
             }
