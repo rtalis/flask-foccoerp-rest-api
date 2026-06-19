@@ -65,28 +65,44 @@ def chunk_data(data_list, chunk_size=2000):
     for i in range(0, len(data_list), chunk_size):
         yield data_list[i:i + chunk_size]
 
-# --- 5. SYNC FUNCTIONS ---
 def sync_purchase_adjustments(oracle_conn, start_date):
-    """Step 3.5: Sync Purchase Adjustments (Discounts/Additions)"""
+    """Step 3.5: Sync Purchase Adjustments (Traduzindo siglas para o cálculo)"""
     logger.info("Syncing Purchase Adjustments...")
     
-    # We join TPED_COMPRA to get the cod_emp1 (EMPR_ID) and cod_pedc
     query = """
         SELECT 
             adj.ID AS id,
             adj.TPEDC_ID AS purchase_order_id,
-            adj.TP_APLICACAO AS tp_apl,
-            adj.TP_DCTACR AS tp_dctacr1,
-            adj.TP_VLR AS tp_vlr1,
+            
+            CASE adj.TP_APLICACAO 
+                WHEN 'P' THEN 'Pedido' 
+                WHEN 'I' THEN 'Itens' 
+                ELSE adj.TP_APLICACAO 
+            END AS tp_apl,
+            
+            CASE adj.TP_DCTACR 
+                WHEN 'D' THEN 'Desconto' 
+                WHEN 'A' THEN 'Acréscimo' 
+                ELSE adj.TP_DCTACR 
+            END AS tp_dctacr1,
+            
+            CASE adj.TP_VLR 
+                WHEN 'P' THEN 'Percentual' 
+                WHEN 'V' THEN 'Valor' 
+                ELSE adj.TP_VLR 
+            END AS tp_vlr1,
+            
             adj.VLR AS vlr1,
             TO_CHAR(pdc.EMPR_ID) AS cod_emp1,
             TO_CHAR(pdc.COD_PEDC) AS cod_pedc
+            
         FROM FOCCO3I.TPEDC_DCTACR adj
         JOIN FOCCO3I.TPED_COMPRA pdc ON adj.TPEDC_ID = pdc.ID
         WHERE pdc.DT_EMIS >= :start_date
     """
     data = fetch_oracle_data(oracle_conn, query, start_date)
     if not data: 
+        logger.info("No new purchase adjustments found.")
         return
 
     chunk_count = 0
@@ -107,7 +123,9 @@ def sync_purchase_adjustments(oracle_conn, start_date):
         
     db.session.commit()
     logger.info(f"Successfully synced {len(data)} purchase adjustments across {chunk_count} batches.")
-
+    
+    
+    
 def sync_companies(oracle_conn):    
     """Step 1: Sync Companies (Warehouses) based strictly on TEMPRESAS DDL"""
     logger.info("Syncing Companies...")
@@ -359,26 +377,27 @@ def sync_purchase_items(oracle_conn, start_date):
     
     
 
-
 def sync_purchase_installments(oracle_conn, start_date):
-    """Step 3.6: Sync Purchase Payment Installments (Parcelas)"""
+    """Step 3.6: Sync Purchase Payment Installments (Condições de Pagamento)"""
     logger.info("Syncing Purchase Installments...")
+    
     query = """
         SELECT 
-            venc.ID AS id,
-            venc.TPEDC_ID AS purchase_order_id,
+            pgto.ID AS id,
+            pgto.TPEDC_ID AS purchase_order_id,
             TO_CHAR(pdc.COD_PEDC) AS cod_pedc,
             TO_CHAR(pdc.EMPR_ID) AS cod_emp1,
-            venc.PARCELA AS nr_parc,       -- Ou o nome do seu campo no modelo (ex: installment_number)
-            venc.DT_VCTO AS dt_vcto,
-            venc.VLR_PARC AS vlr_parc,
-            venc.PERC_PARC AS perc_parc
-        FROM FOCCO3I.TPEDC_VENC venc
-        JOIN FOCCO3I.TPED_COMPRA pdc ON venc.TPEDC_ID = pdc.ID
+            pgto.NUM_DIAS AS num_dias,      
+            pgto.DT_VCTO AS dt_vcto,
+            pgto.PERC_PGTO AS perc_pgto
+        FROM FOCCO3I.TPEDC_PGTO pgto
+        JOIN FOCCO3I.TPED_COMPRA pdc ON pgto.TPEDC_ID = pdc.ID
         WHERE pdc.DT_EMIS >= :start_date
     """
     data = fetch_oracle_data(oracle_conn, query, start_date)
-    if not data: return
+    if not data: 
+        logger.info("No new installments found.")
+        return
 
     for chunk in chunk_data(data, chunk_size=2000):
         stmt = insert(PurchasePaymentInstallment).values(chunk)
@@ -386,14 +405,16 @@ def sync_purchase_installments(oracle_conn, start_date):
         on_conflict = stmt.on_conflict_do_update(
             index_elements=['id'],
             set_={
+                'num_dias': stmt.excluded.num_dias,
                 'dt_vcto': stmt.excluded.dt_vcto,
-                'vlr_parc': stmt.excluded.vlr_parc,
-                'perc_parc': stmt.excluded.perc_parc
+                'perc_pgto': stmt.excluded.perc_pgto
             }
         )
         db.session.execute(on_conflict)
+        
     db.session.commit()
     logger.info(f"Successfully synced {len(data)} installments.")
+    
     
     
 def sync_nf_entries(oracle_conn, start_date):

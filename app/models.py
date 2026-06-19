@@ -300,7 +300,7 @@ class PurchasePaymentInstallment(db.Model):
     dt_vcto = db.Column(db.Date, nullable=True)
     tpedc_id1 = db.Column(db.String(50), nullable=True)
     id3 = db.Column(db.String(50), nullable=True)
-    
+    perc_pgto = db.Column(db.Float, nullable=True)
     purchase_order = db.relationship('PurchaseOrder', backref=db.backref('installments', lazy=True, cascade="all, delete-orphan"))
 
 
