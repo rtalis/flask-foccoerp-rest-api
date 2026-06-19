@@ -571,6 +571,7 @@ def import_ruah(file_content):
 
         
 
+
 def import_rpdc0250c(file_content):
     formatted_items = format_for_db_rpdc0250c(file_content) 
     itemcount = 0
@@ -579,11 +580,15 @@ def import_rpdc0250c(file_content):
     unique_combinations = {}
     for item_data in formatted_items:
         if item_data and item_data['num_nf']:
+            # Agrupamento lógico tradicional do XML continua igual
             key = (item_data['cod_emp1'], item_data['cod_pedc'], item_data['linha'], item_data['num_nf'])
+            
             if key not in unique_combinations:
+                # Injeta o ID sintético e a origem XML
+                item_data['itnfe_id'] = f"XML-{item_data['cod_emp1']}-{item_data['cod_pedc']}-{item_data['linha']}-{item_data['num_nf']}"
+                item_data['origem'] = 'XML'
                 unique_combinations[key] = item_data
 
-    # Bulk fetch existing entries
     cod_pedcs = {item['cod_pedc'] for item in unique_combinations.values()}
     existing_entries = NFEntry.query.filter(NFEntry.cod_pedc.in_(cod_pedcs)).all()
     existing_map = {(e.cod_emp1, e.cod_pedc, e.linha, e.num_nf): e for e in existing_entries}
@@ -593,11 +598,21 @@ def import_rpdc0250c(file_content):
 
         if existing_entry:
             has_changes = False
+            
+            # Se uma linha antiga do XML ainda não tiver a string itnfe_id gravada
+            if existing_entry.itnfe_id != item_data['itnfe_id']:
+                existing_entry.itnfe_id = item_data['itnfe_id']
+                has_changes = True
+                
+            if existing_entry.origem != 'XML':
+                existing_entry.origem = 'XML'
+                has_changes = True
+
             if existing_entry.dt_ent != item_data.get('dt_ent'):
                 existing_entry.dt_ent = item_data.get('dt_ent', '')
                 has_changes = True
                 
-            if hasattr(existing_entry, 'qtde') and existing_entry.qtde != item_data.get('qtde'):
+            if getattr(existing_entry, 'qtde', None) != item_data.get('qtde'):
                 existing_entry.qtde = item_data.get('qtde')
                 has_changes = True
             
@@ -605,6 +620,8 @@ def import_rpdc0250c(file_content):
                 updated += 1
         else:
             nf_entry = NFEntry(
+                itnfe_id=item_data['itnfe_id'],
+                origem=item_data['origem'],
                 cod_emp1=item_data['cod_emp1'],
                 cod_pedc=item_data['cod_pedc'],
                 linha=item_data['linha'],
@@ -617,6 +634,7 @@ def import_rpdc0250c(file_content):
 
     db.session.commit()
     return jsonify({'message': f'Data imported successfully: {itemcount} new entries, {updated} updated'}), 201
+
 
 def parse_rcot0300(xml_data):
     import xml.etree.ElementTree as ET

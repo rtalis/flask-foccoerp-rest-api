@@ -57,7 +57,6 @@ class NFEntrySchema(Schema):
     cod_pedc = fields.Str(required=True)
     linha = fields.Int(required=False)
     num_nf = fields.Str(required=True)
-    text_field = fields.Str(required=False)
 
     @post_load
     def create_nf_entry(self, data, **kwargs):

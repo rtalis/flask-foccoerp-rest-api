@@ -111,20 +111,19 @@ class NFEntry(db.Model):
     __tablename__ = 'nf_entries'
     
     id = db.Column(db.Integer, primary_key=True)
+    itnfe_id = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    origem = db.Column(db.String(10), nullable=False, default='FOCCO')     
     cod_emp1 = db.Column(db.String(20), nullable=False) 
     cod_pedc = db.Column(db.String(20), nullable=False)
     linha = db.Column(db.String(10), nullable=False)
     num_nf = db.Column(db.String(20), nullable=False)
     dt_ent = db.Column(db.Date)
-    text_field = db.Column(db.Text)
     qtde = db.Column(db.String(15))
-    
-    # --- NEW COLUMNS ADDED ---
     obs_conf = db.Column(db.Text, nullable=True)
     chave_acesso_nfel = db.Column(db.String(44), nullable=True)
 
     __table_args__ = (
-        db.UniqueConstraint('cod_emp1', 'cod_pedc', 'linha', 'num_nf', name='uq_nf_entry'),
+        # A restrição antiga 'uq_nf_entry' foi removida daqui
         db.Index(
             'ix_nf_entries_num_nf_trgm', 
             db.text('unaccent(num_nf)'), 

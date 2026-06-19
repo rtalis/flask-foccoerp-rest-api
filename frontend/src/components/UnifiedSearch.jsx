@@ -738,32 +738,35 @@ function PurchaseRow(props) {
                         >
                           {formatNumber(attended)} {item.unidade_medida}
                         </TableCell>
-                        <TableCell
-                          align="center"
-                          sx={
-                            isFullyCanceled
-                              ? {
+                      <TableCell
+                        align="center"
+                        sx={
+                          isFullyCanceled
+                            ? {
                                 textDecoration: "line-through",
                                 color: "#9e9e9e",
                               }
-                              : {}
-                          }
-                        >
-                          {purchase.order.nfes.map((nf) => (
-                            <div key={nf.id}>
-                              {nf.linha == item.linha && (
-                                <>
-                                  {nf.dt_ent ? formatDate(nf.dt_ent) : ""}
-                                  {nf.qtde
-                                    ? ` (${formatNumber(
-                                      normalizeNumber(nf?.qtde),
-                                    )} ${item.unidade_medida})`
-                                    : ""}
-                                </>
-                              )}
-                            </div>
+                            : {}
+                        }
+                      >
+                        {purchase.order.nfes
+                          .filter((nf) => nf.linha == item.linha)
+                          .map((nf, index, array) => (
+                            <span key={nf.id} style={{ fontSize: "0.875rem", whiteSpace: "nowrap" }}>
+                                      {nf.dt_ent ? `${formatDate(nf.dt_ent)}` : ""}
+                              
+                              <span style={{ fontWeight: 600, color: nf.origem === 'XML' ? '#d97706' : '#059669' }}>
+                              {` - `}
+                              </span>
+                              {nf.qtde ? ` (${formatNumber(normalizeNumber(nf.qtde))} ${item.unidade_medida})` : ""}
+                              
+                              {index < array.length - 1 ? ","  : ""}
+                             <br/>
+                              
+                            </span> 
                           ))}
-                        </TableCell>
+
+                      </TableCell>
                         {canViewNfes && (
                           <TableCell
                             align="center"
@@ -1122,11 +1125,7 @@ function PurchaseRow(props) {
                         </Typography>
                         <Typography variant="body2">
                           <strong>Data Emissão:</strong>{" "}
-                          {nfe.data_emissao
-                            ? new Date(nfe.data_emissao).toLocaleDateString(
-                              "pt-BR",
-                            )
-                            : ""}
+                          {nfe.data_emissao ? formatDate(nfe.data_emissao) : ""}
                         </Typography>
                         <Typography variant="body2">
                           <strong>Valor:</strong>{" "}
@@ -1950,10 +1949,16 @@ const UnifiedSearch = () => {
     setSelectedItemId(null);
   };
 
-  const formatDate = (dateString) => {
-    const options = { day: "2-digit", month: "2-digit", year: "2-digit" };
-    return new Date(dateString).toLocaleDateString(options);
+const formatDate = (dateString) => {
+  const options = { 
+    timeZone: "UTC", 
+    day: "2-digit", 
+    month: "2-digit", 
+    year: "2-digit" 
   };
+  
+  return new Date(dateString).toLocaleDateString("pt-BR", options);
+};
 
   const formatNumber = (number) => {
     if (number === undefined || number === null || isNaN(parseFloat(number))) {

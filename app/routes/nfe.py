@@ -92,7 +92,6 @@ def get_nfentry():
             'cod_pedc': entry.cod_pedc,
             'linha': entry.linha,
             'num_nf': entry.num_nf,
-            'text_field': entry.text_field
         })
 
     return jsonify(result), 200

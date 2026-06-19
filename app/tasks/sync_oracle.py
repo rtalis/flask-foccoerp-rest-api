@@ -396,55 +396,61 @@ def sync_purchase_installments(oracle_conn, start_date):
     logger.info(f"Successfully synced {len(data)} installments.")
     
     
-    
 def sync_nf_entries(oracle_conn, start_date):
-    """Step 4: Sync Invoices directly into NFEntry (Matches + Metadata)"""
-    logger.info("Syncing NF Entries...")
+    """Step 4: Sync Invoices garantindo a substituição de dados provisórios do XML"""
+    logger.info("Syncing NF Entries from db...")
+    
     query_entries = """
         SELECT 
+            TO_CHAR(itnfe.ID) AS itnfe_id,      
+            'FOCCO' AS origem,
             TO_CHAR(emp.ID) AS cod_emp1,
             TO_CHAR(pdc.COD_PEDC) AS cod_pedc,
             TO_CHAR(itpdc.LINHA) AS linha,
             TO_CHAR(nfe.NUM_NF) AS num_nf,
-            
             nfe.DT_ENT AS dt_ent,
-            nfe.OBS AS text_field,
             nfe.OBS_CONF AS obs_conf,
             nfe.CHAVE_ACESSO_NFEL AS chave_acesso_nfel,
             TO_CHAR(itnfe.QTDE) AS qtde
-            
         FROM FOCCO3I.TNFS_ENTRADA nfe
         JOIN FOCCO3I.TEMPRESAS emp ON nfe.EMPR_ID = emp.ID
         JOIN FOCCO3I.TITENS_NFE itnfe ON itnfe.NFE_ID = nfe.ID
         JOIN FOCCO3I.TPEDC_ITEM itpdc ON itnfe.PEDCITEM_ID = itpdc.ID
         JOIN FOCCO3I.TPED_COMPRA pdc ON itpdc.TPEDC_ID = pdc.ID
         WHERE nfe.DT_ENT >= :start_date
-    
     """
     entries = fetch_oracle_data(oracle_conn, query_entries, start_date)
     if not entries: 
-        logger.info("No new NF Entries found.")
+        logger.info("No NF Entries found in this window.")
         return
 
+    notas_coletadas = list(set([row['num_nf'] for row in entries]))
+    if notas_coletadas:
+        db.session.query(NFEntry).filter(
+            NFEntry.num_nf.in_(notas_coletadas),
+            NFEntry.origem == 'XML'
+        ).delete(synchronize_session=False)
+        db.session.commit()
+        
     chunk_count = 0
     for chunk in chunk_data(entries, chunk_size=2000):
         stmt_e = insert(NFEntry).values(chunk)
         
         on_conflict_e = stmt_e.on_conflict_do_update(
-            constraint='uq_nf_entry',
+            index_elements=['itnfe_id'],  
             set_={
                 'dt_ent': stmt_e.excluded.dt_ent,
                 'qtde': stmt_e.excluded.qtde,
-                'text_field': stmt_e.excluded.text_field,
                 'obs_conf': stmt_e.excluded.obs_conf,
-                'chave_acesso_nfel': stmt_e.excluded.chave_acesso_nfel
+                'chave_acesso_nfel': stmt_e.excluded.chave_acesso_nfel,
+                'origem': stmt_e.excluded.origem
             }
         )
         db.session.execute(on_conflict_e)
         chunk_count += 1
         
     db.session.commit()
-    logger.info(f"Successfully synced {len(entries)} NF Entries across {chunk_count} batches.")
+    logger.info(f"Successfully synced {len(entries)} precise NF entries from Oracle.")
     
 
 def run_sync():

@@ -166,7 +166,8 @@ def _build_purchase_payload(items):
                             'id': nf_entry.id if can_view_nfes else None,
                             'dt_ent': nf_entry.dt_ent,
                             'qtde': nf_entry.qtde,
-                            'linha': nf_entry.linha
+                            'linha': nf_entry.linha,
+                            'origem':nf_entry.origem
                         }
                         for nf_entry in order_nf_entries
                     ] 
