@@ -4,24 +4,21 @@ import sys
 import oracledb
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+from sqlalchemy import tuple_
 from sqlalchemy.dialects.postgresql import insert
 from pathlib import Path
 from dotenv import load_dotenv
 
-# --- 1. PATH FIX FOR SCRIPT EXECUTION ---
 current_file = Path(__file__).resolve()
 repo_root = current_file.parents[2]
 sys.path.insert(0, str(repo_root))
 
-# --- 2. NOW IMPORT FLASK APP AND MODELS ---
-# Added Supplier to the imports
 from app import create_app, db
 from app.models import (
     Company, PurchaseAdjustment, PurchasePaymentInstallment, PurchasePaymentInstallment, Supplier, PurchaseOrder, PurchaseItem, 
     NFEntry
 )
 
-# --- 3. CONFIGURATION & ENV VARIABLES ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -37,7 +34,6 @@ ORACLE_USER = os.getenv('ORACLE_USER', 'your_oracle_user')
 ORACLE_PASSWORD = os.getenv('ORACLE_PASSWORD', 'your_oracle_password')
 ORACLE_DSN = os.getenv('ORACLE_DSN', 'your_oracle_host:1521/your_service_name')
 
-# --- 4. HELPER FUNCTIONS ---
 def get_oracle_connection():
     """Establish connection to Oracle DB."""
     try:
@@ -65,8 +61,10 @@ def chunk_data(data_list, chunk_size=2000):
     for i in range(0, len(data_list), chunk_size):
         yield data_list[i:i + chunk_size]
 
+
+
 def sync_purchase_adjustments(oracle_conn, start_date):
-    """Step 3.5: Sync Purchase Adjustments (Traduzindo siglas para o cálculo)"""
+    """Step 3.5: Sync Purchase Adjustments com Tradutor de IDs"""
     logger.info("Syncing Purchase Adjustments...")
     
     query = """
@@ -100,13 +98,33 @@ def sync_purchase_adjustments(oracle_conn, start_date):
         JOIN FOCCO3I.TPED_COMPRA pdc ON adj.TPEDC_ID = pdc.ID
         WHERE pdc.DT_EMIS >= :start_date
     """
-    data = fetch_oracle_data(oracle_conn, query, start_date)
-    if not data: 
+    raw_data = fetch_oracle_data(oracle_conn, query, start_date)
+    if not raw_data: 
         logger.info("No new purchase adjustments found.")
         return
 
+    order_keys = list(set((row['cod_emp1'], row['cod_pedc']) for row in raw_data))
+
+    pg_orders = db.session.query(PurchaseOrder.id, PurchaseOrder.cod_emp1, PurchaseOrder.cod_pedc)\
+                          .filter(tuple_(PurchaseOrder.cod_emp1, PurchaseOrder.cod_pedc).in_(order_keys))\
+                          .all()
+
+    order_id_map = {(o.cod_emp1, o.cod_pedc): o.id for o in pg_orders}
+
+    valid_adjustments = []
+    for row in raw_data:
+        key = (row['cod_emp1'], row['cod_pedc'])
+        pg_order_id = order_id_map.get(key)
+        
+        if pg_order_id:
+            row['purchase_order_id'] = pg_order_id
+            valid_adjustments.append(row)
+
+    if not valid_adjustments:
+        logger.warning("Nenhum ajuste pôde ser vinculado a um pedido existente no banco.")
+        return
     chunk_count = 0
-    for chunk in chunk_data(data, chunk_size=2000):
+    for chunk in chunk_data(valid_adjustments, chunk_size=2000):
         stmt = insert(PurchaseAdjustment).values(chunk)
         
         on_conflict = stmt.on_conflict_do_update(
@@ -122,7 +140,9 @@ def sync_purchase_adjustments(oracle_conn, start_date):
         chunk_count += 1
         
     db.session.commit()
-    logger.info(f"Successfully synced {len(data)} purchase adjustments across {chunk_count} batches.")
+    logger.info(f"Successfully synced {len(valid_adjustments)} purchase adjustments across {chunk_count} batches.")
+    
+    
     
     
     
@@ -227,21 +247,19 @@ def sync_suppliers(oracle_conn):
     db.session.commit()
     logger.info(f"Successfully synced {len(data)} suppliers.")
     
-
-
-
 def sync_purchase_orders(oracle_conn, start_date):
-    """Step 2: Sync Purchase Orders com totais, transportadora e pgto"""
+    """Step 2: Sync Purchase Orders usando id_ped_focco e cálculo nativo de Fulfillment"""
     logger.info(f"Syncing Purchase Orders since {start_date.strftime('%Y-%m-%d')}...")
+    
     query = """
         SELECT 
-            pdc.ID AS id,
+            pdc.ID AS id_ped_focco,
             pdc.COD_PEDC AS cod_pedc,
             pdc.DT_EMIS AS dt_emis,
             TO_CHAR(emp.ID) AS cod_emp1, 
             NVL(forn.ID, 0) AS fornecedor_id,
             forn.DESCRICAO AS fornecedor_descricao,
-            uf.UF AS for_uf,               -- CORREÇÃO 1: Nome correto da coluna de UF
+            uf.UF AS for_uf,              
             func.NOME AS func_nome,
             pdc.POSICAO AS posicao,
             pdc.POSICAO AS posicao_hist,
@@ -265,80 +283,112 @@ def sync_purchase_orders(oracle_conn, start_date):
             pdc.TP_VLR_FRETE_RED AS tp_vlr_frete_red,
             
             -- Condição Pagamento e Moeda
-            TO_CHAR(pdc.TP_PGTO) AS cf_pgto, -- CORREÇÃO 2: Puxando direto do pedido (a tabela TCOND_PGTO não tem vínculo direto aqui)
-            moe.SIGLA AS moeped
+            TO_CHAR(pdc.TP_PGTO) AS cf_pgto, 
+            moe.SIGLA AS moeped,
+            
+            CASE WHEN 
+                (SELECT COUNT(1) FROM FOCCO3I.TPEDC_ITEM itm WHERE itm.TPEDC_ID = pdc.ID) > 0 
+                AND 
+                (SELECT COUNT(1) 
+                 FROM FOCCO3I.TPEDC_ITEM itm 
+                 WHERE itm.TPEDC_ID = pdc.ID 
+                   AND itm.QTDE > 0 
+                   AND (NVL(itm.QTDE_ATENDIDA, 0) + NVL(itm.QTDE_CANC, 0) + NVL(itm.QTDE_CANC_TOLER, 0)) < itm.QTDE
+                ) = 0 
+            THEN 1 ELSE 0 END AS is_fulfilled_raw
             
         FROM FOCCO3I.TPED_COMPRA pdc
         JOIN FOCCO3I.TEMPRESAS emp ON pdc.EMPR_ID = emp.ID
         LEFT JOIN FOCCO3I.TFORNECEDORES forn ON pdc.TFOR_ID = forn.ID
         LEFT JOIN FOCCO3I.TCIDADES cid ON forn.CID_ID = cid.ID
-        LEFT JOIN FOCCO3I.TUFS uf ON cid.UF_ID = uf.ID     -- CORREÇÃO 1: Tabela no plural (TUFS)
+        LEFT JOIN FOCCO3I.TUFS uf ON cid.UF_ID = uf.ID     
         LEFT JOIN FOCCO3I.TFUNCIONARIOS func ON pdc.FUNC_ID = func.ID
         LEFT JOIN FOCCO3I.TMOEDAS moe ON pdc.MOE_ID = moe.ID
         WHERE pdc.DT_EMIS >= :start_date
     """
-    data = fetch_oracle_data(oracle_conn, query, start_date)
-    if not data: return
+    raw_data = fetch_oracle_data(oracle_conn, query, start_date)
+    if not raw_data: 
+        return
 
-    for chunk in chunk_data(data, chunk_size=2000):
+    valid_orders = []
+    for row in raw_data:
+        row['is_fulfilled'] = bool(row.pop('is_fulfilled_raw', 0))
+        valid_orders.append(row)
+
+    for chunk in chunk_data(valid_orders, chunk_size=2000):
         stmt = insert(PurchaseOrder).values(chunk)
+        
         on_conflict = stmt.on_conflict_do_update(
-            index_elements=['id'],
+            index_elements=['id_ped_focco'], 
             set_={
+                'cod_pedc': stmt.excluded.cod_pedc,
+                'cod_emp1': stmt.excluded.cod_emp1,
+                'dt_emis': stmt.excluded.dt_emis,
+                'fornecedor_id': stmt.excluded.fornecedor_id,
+                'fornecedor_descricao': stmt.excluded.fornecedor_descricao,
+                'for_uf': stmt.excluded.for_uf,
+                'func_nome': stmt.excluded.func_nome,
                 'posicao': stmt.excluded.posicao,
+                'posicao_hist': stmt.excluded.posicao_hist,
                 'observacao': stmt.excluded.observacao,
+                'contato': stmt.excluded.contato,
+                'num_talao': stmt.excluded.num_talao,
                 'total_pedido_com_ipi': stmt.excluded.total_pedido_com_ipi,
                 'total_bruto': stmt.excluded.total_bruto,
                 'total_liquido': stmt.excluded.total_liquido,
                 'total_liquido_ipi': stmt.excluded.total_liquido_ipi,
-                'contato': stmt.excluded.contato,
-                'cf_pgto': stmt.excluded.cf_pgto,
                 'vlr_icms_st': stmt.excluded.vlr_icms_st,
                 'vlr_frete_tra': stmt.excluded.vlr_frete_tra,
                 'tp_frete_tra': stmt.excluded.tp_frete_tra,
+                'tp_vlr_frete_tra': stmt.excluded.tp_vlr_frete_tra,
                 'vlr_frete_red': stmt.excluded.vlr_frete_red,
-                'posicao_hist': stmt.excluded.posicao_hist
+                'tp_frete_red': stmt.excluded.tp_frete_red,
+                'tp_vlr_frete_red': stmt.excluded.tp_vlr_frete_red,
+                'cf_pgto': stmt.excluded.cf_pgto,
+                'moeped': stmt.excluded.moeped,
+                'is_fulfilled': stmt.excluded.is_fulfilled  
             }
         )
         db.session.execute(on_conflict)
     db.session.commit()
-    logger.info(f"Successfully synced {len(data)} purchase orders.")
+    logger.info(f"Successfully synced {len(valid_orders)} purchase orders.")
     
-
-
-
+    
+    
 def sync_purchase_items(oracle_conn, start_date):
-    """Step 3: Sync Purchase Items com Unidades, Prazos e Impostos"""
+    """Step 3: Sync Purchase Items usando id_item_focco como chave única absoluta"""
     logger.info("Syncing Purchase Items...")
+    
     query = """
         SELECT 
-            itpdc.ID AS id,
+            itpdc.ID AS id_item_focco,       
+            
             pdc.DT_EMIS AS dt_emis,
-            itpdc.TPEDC_ID AS purchase_order_id,
-            pdc.COD_PEDC AS cod_pedc,
+            TO_CHAR(pdc.COD_PEDC) AS cod_pedc,
             TO_CHAR(emp.ID) AS cod_emp1,
-            TO_CHAR(itpdc.ID) AS linha,
+            itpdc.LINHA AS linha,                  
+            
             NVL(item.COD_ITEM, 'N/A') AS item_id,
             itpdc.DESCRICAO_ITEM AS descricao,
-            itpdc.OBS AS observacao,              -- CORREÇÃO: No item a coluna é OBS
-            um.COD_UNID_MED AS unidade_medida,    -- CORREÇÃO: Tabela TUNID_MED e coluna COD_UNID_MED
+            itpdc.OBS AS observacao,              
+            um.COD_UNID_MED AS unidade_medida,    
             itpdc.DT_ENTREGA AS dt_entrega,
             
             -- Quantidades
             itpdc.QTDE AS quantidade,
-            NVL(itpdc.QTDE_ATENDIDA, 0) AS qtde_atendida,  -- CORREÇÃO: Coluna nativa é QTDE_ATENDIDA
+            NVL(itpdc.QTDE_ATENDIDA, 0) AS qtde_atendida,  
             NVL(itpdc.QTDE_CANC, 0) AS qtde_canc,
-            NVL(itpdc.QTDE_SALDO, 0) AS qtde_saldo,        -- CORREÇÃO: Puxando o saldo já calculado pelo Focco
+            NVL(itpdc.QTDE_SALDO, 0) AS qtde_saldo,        
             NVL(itpdc.QTDE_CANC_TOLER, 0) AS qtde_canc_toler,
             NVL(itpdc.PERC_TOLER, 0) AS perc_toler,
             
             -- Valores e Impostos
             itpdc.PRECO_UNITARIO AS preco_unitario,
-            itpdc.TOT_BRUTO AS total,                      -- CORREÇÃO: O Focco já grava o TOT_BRUTO (Qtd * Preço)
+            itpdc.TOT_BRUTO AS total,                      
             NVL(itpdc.PERC_IPI, 0) AS perc_ipi,
-            itpdc.TOT_LIQUIDO_IPI AS tot_liquido_ipi,      -- CORREÇÃO: Valor nativo já calculado pelo ERP
-            NVL(itpdc.TOT_DESCONTOS, 0) AS tot_descontos,  -- CORREÇÃO: Nome correto da coluna
-            NVL(itpdc.TOT_ACRESCIMOS, 0) AS tot_acrescimos -- CORREÇÃO: Nome correto da coluna
+            itpdc.TOT_LIQUIDO_IPI AS tot_liquido_ipi,      
+            NVL(itpdc.TOT_DESCONTOS, 0) AS tot_descontos,  
+            NVL(itpdc.TOT_ACRESCIMOS, 0) AS tot_acrescimos 
             
         FROM FOCCO3I.TPEDC_ITEM itpdc
         JOIN FOCCO3I.TPED_COMPRA pdc ON itpdc.TPEDC_ID = pdc.ID
@@ -346,17 +396,45 @@ def sync_purchase_items(oracle_conn, start_date):
         LEFT JOIN FOCCO3I.TITENS_SUPRIMENTOS itsup ON itpdc.ITEM_ID = itsup.ID
         LEFT JOIN FOCCO3I.TITENS_EMPR itempr ON itsup.ITEMPR_ID = itempr.ID
         LEFT JOIN FOCCO3I.TITENS item ON itempr.ITEM_ID = item.ID
-        LEFT JOIN FOCCO3I.TUNID_MED um ON itpdc.UNID_MED_ID = um.ID  -- CORREÇÃO: Tabela correta e Join correto
+        LEFT JOIN FOCCO3I.TUNID_MED um ON itpdc.UNID_MED_ID = um.ID  
         WHERE pdc.DT_EMIS >= :start_date
     """
-    data = fetch_oracle_data(oracle_conn, query, start_date)
-    if not data: return
+    raw_data = fetch_oracle_data(oracle_conn, query, start_date=start_date)
+    if not raw_data: 
+        logger.info("No new purchase items found.")
+        return
+    
+    order_keys = list(set((row['cod_emp1'], row['cod_pedc']) for row in raw_data))
 
-    for chunk in chunk_data(data, chunk_size=2000):
+    pg_orders = db.session.query(PurchaseOrder.id, PurchaseOrder.cod_emp1, PurchaseOrder.cod_pedc)\
+                          .filter(tuple_(PurchaseOrder.cod_emp1, PurchaseOrder.cod_pedc).in_(order_keys))\
+                          .all()
+
+    order_id_map = {(o.cod_emp1, o.cod_pedc): o.id for o in pg_orders}
+
+    valid_items = []
+    for row in raw_data:
+        key = (row['cod_emp1'], row['cod_pedc'])
+        pg_order_id = order_id_map.get(key)
+        
+        if pg_order_id:
+            row['purchase_order_id'] = pg_order_id
+            valid_items.append(row)
+
+    if not valid_items:
+        logger.warning("Nenhum item pôde ser vinculado a um pedido existente no banco.")
+        return
+
+    chunk_count = 0
+    for chunk in chunk_data(valid_items, chunk_size=2000):
         stmt = insert(PurchaseItem).values(chunk)
+        
         on_conflict = stmt.on_conflict_do_update(
-            index_elements=['id'],
+            index_elements=['id_item_focco'],  
             set_={
+                'linha': stmt.excluded.linha,
+                'item_id': stmt.excluded.item_id,
+                'descricao': stmt.excluded.descricao,
                 'quantidade': stmt.excluded.quantidade,
                 'preco_unitario': stmt.excluded.preco_unitario,
                 'total': stmt.excluded.total,
@@ -368,17 +446,20 @@ def sync_purchase_items(oracle_conn, start_date):
                 'tot_liquido_ipi': stmt.excluded.tot_liquido_ipi,
                 'tot_descontos': stmt.excluded.tot_descontos,
                 'tot_acrescimos': stmt.excluded.tot_acrescimos,
-                'observacao': stmt.excluded.observacao
+                'observacao': stmt.excluded.observacao,
+                'unidade_medida': stmt.excluded.unidade_medida,
+                'dt_emis': stmt.excluded.dt_emis
             }
         )
         db.session.execute(on_conflict)
+        chunk_count += 1
+        
     db.session.commit()
-    logger.info(f"Successfully synced {len(data)} purchase items.")
+    logger.info(f"Successfully synced {len(valid_items)} purchase items across {chunk_count} batches.")
     
     
-
 def sync_purchase_installments(oracle_conn, start_date):
-    """Step 3.6: Sync Purchase Payment Installments (Condições de Pagamento)"""
+    """Step 3.6: Sync Purchase Payment Installments com Tradutor de IDs"""
     logger.info("Syncing Purchase Installments...")
     
     query = """
@@ -394,12 +475,34 @@ def sync_purchase_installments(oracle_conn, start_date):
         JOIN FOCCO3I.TPED_COMPRA pdc ON pgto.TPEDC_ID = pdc.ID
         WHERE pdc.DT_EMIS >= :start_date
     """
-    data = fetch_oracle_data(oracle_conn, query, start_date)
-    if not data: 
+    raw_data = fetch_oracle_data(oracle_conn, query, start_date)
+    if not raw_data: 
         logger.info("No new installments found.")
         return
 
-    for chunk in chunk_data(data, chunk_size=2000):
+    order_keys = list(set((row['cod_emp1'], row['cod_pedc']) for row in raw_data))
+
+    pg_orders = db.session.query(PurchaseOrder.id, PurchaseOrder.cod_emp1, PurchaseOrder.cod_pedc)\
+                          .filter(tuple_(PurchaseOrder.cod_emp1, PurchaseOrder.cod_pedc).in_(order_keys))\
+                          .all()
+
+    order_id_map = {(o.cod_emp1, o.cod_pedc): o.id for o in pg_orders}
+
+    valid_installments = []
+    for row in raw_data:
+        key = (row['cod_emp1'], row['cod_pedc'])
+        pg_order_id = order_id_map.get(key)
+        
+        if pg_order_id:
+            row['purchase_order_id'] = pg_order_id
+            valid_installments.append(row)
+
+    if not valid_installments:
+        logger.warning("Nenhuma parcela pôde ser vinculada a um pedido existente no banco.")
+        return
+
+    chunk_count = 0
+    for chunk in chunk_data(valid_installments, chunk_size=2000):
         stmt = insert(PurchasePaymentInstallment).values(chunk)
         
         on_conflict = stmt.on_conflict_do_update(
@@ -411,10 +514,10 @@ def sync_purchase_installments(oracle_conn, start_date):
             }
         )
         db.session.execute(on_conflict)
+        chunk_count += 1
         
     db.session.commit()
-    logger.info(f"Successfully synced {len(data)} installments.")
-    
+    logger.info(f"Successfully synced {len(valid_installments)} installments across {chunk_count} batches.")
     
     
 def sync_nf_entries(oracle_conn, start_date):

@@ -42,6 +42,7 @@ class PurchaseOrder(db.Model):
     vlr_frete_red = db.Column(db.Float, nullable=True)
     num_talao = db.Column(db.String, nullable=True)
     tipo = db.Column(db.String, nullable=True)
+    id_ped_focco = db.Column(db.Integer, nullable=True)
 
     items = db.relationship('PurchaseItem', backref='purchase_order', lazy=True)
 
@@ -64,6 +65,7 @@ class PurchaseOrder(db.Model):
             postgresql_using='gin', 
             postgresql_ops={'unaccent(cod_pedc)': 'gin_trgm_ops'}
         ),
+        db.UniqueConstraint('cod_emp1', 'cod_pedc', name='uq_purchase_order_emp_pedc'),
     )
 
 class PurchaseItem(db.Model):
@@ -92,6 +94,8 @@ class PurchaseItem(db.Model):
     qtde_saldo = db.Column(db.Float, nullable=True)
     cod_emp1 = db.Column(db.String, nullable=True, index=True)
     observacao = db.Column(db.String, nullable=True)
+    id_item_focco = db.Column(db.Integer, nullable=True) 
+    
     __table_args__ = (
         db.Index(
             'ix_purchase_items_descricao_trgm', 
@@ -105,6 +109,7 @@ class PurchaseItem(db.Model):
             postgresql_using='gin', 
             postgresql_ops={'unaccent(item_id)': 'gin_trgm_ops'}
         ),
+        db.UniqueConstraint('purchase_order_id', 'linha', name='uq_purchase_item_order_linha'),
     )
     
 class NFEntry(db.Model):

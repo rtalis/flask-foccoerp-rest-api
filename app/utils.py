@@ -148,6 +148,7 @@ def parse_xml(xml_data):
                 'vlr_frete_red': float(order.find('VLR_FRETE_RED').text.replace(',', '.')) if order.find('VLR_FRETE_RED') is not None and order.find('VLR_FRETE_RED').text else None,
                 'num_talao': order.find('NUM_TALAO').text if order.find('NUM_TALAO') is not None else None,
                 'tipo': order.find('TIPO').text if order.find('TIPO') is not None else None,
+                'id_ped_focco': order.find('ID2').text if order.find('ID2') is not None else None,
                 'adjustments': adjustments,
                 'installments': installments,
                 'items': []
@@ -179,7 +180,8 @@ def parse_xml(xml_data):
                     'qtde_atendida': float(item.find('QTDE_ATENDIDA').text.replace(',', '.')) if item.find('QTDE_ATENDIDA') is not None and item.find('QTDE_ATENDIDA').text else None,
                     'qtde_saldo': float(item.find('QTDE_SALDO').text.replace(',', '.')) if item.find('QTDE_SALDO') is not None and item.find('QTDE_SALDO').text else None,
                     'cod_emp1': item.find('COD_EMP1').text if item.find('COD_EMP1') is not None else None,
-                    'observacao': item.find('OBS').text if item.find('OBS') is not None else None
+                    'observacao': item.find('OBS').text if item.find('OBS') is not None else None,
+                    'id_item_focco': item.find('ID5').text if item.find('ID5') is not None else None
                 }
                 order_data['items'].append(item_data)
 
@@ -239,7 +241,8 @@ def format_for_db(data):
                 'moered': order.get('moered'),
                 'vlr_frete_red': order.get('vlr_frete_red'),
                 'num_talao': order.get('num_talao'),
-                'tipo': order.get('tipo')
+                'tipo': order.get('tipo'),
+                'id_ped_focco': order.get('id_ped_focco')
             })
 
             for adj in order.get('adjustments', []):
@@ -284,7 +287,8 @@ def format_for_db(data):
                     'qtde_saldo': item['qtde_saldo'],
                     'purchase_order_id': cod_pedc,
                     'cod_emp1': item['cod_emp1'],
-                    'observacao': item.get('observacao')
+                    'observacao': item.get('observacao'),
+                    'id_item_focco': item.get('id_item_focco')
                 })
 
         return formatted_orders, formatted_items, formatted_adjustments, formatted_installments
@@ -459,6 +463,7 @@ def import_ruah(file_content):
                 'vlr_frete_red': order_data.get('vlr_frete_red'),
                 'num_talao': order_data.get('num_talao'),
                 'tipo': order_data.get('tipo'),
+                'id_ped_focco': order_data.get('id_ped_focco')
             }
 
             if existing_order:
@@ -512,7 +517,8 @@ def import_ruah(file_content):
                     qtde_atendida=item_data['qtde_atendida'],
                     qtde_saldo=item_data['qtde_saldo'],
                     cod_emp1=item_data['cod_emp1'],
-                    observacao=item_data.get('observacao')
+                    observacao=item_data.get('observacao'),
+                    id_item_focco=item_data.get('id_item_focco')
                 )
                 itemcount += 1
                 db.session.add(item)
