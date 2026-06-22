@@ -735,7 +735,7 @@ def search_advanced():
         base_query = base_query.filter(and_(*token_filters))
 
     if score_cutoff < 100 and valid_tokens:
-        items = base_query.order_by(PurchaseOrder.dt_emis.desc(), PurchaseItem.id.desc()).all()
+        items = base_query.order_by(PurchaseOrder.dt_emis.desc(), PurchaseOrder.cod_pedc.desc(), PurchaseItem.id.desc()).all()
         items = fuzzy_search(' '.join(valid_tokens), items, score_cutoff, 'descricao' in fields, 'observacao' in fields)
         purchases_payload = _build_purchase_payload(items)
         return jsonify({
@@ -782,7 +782,7 @@ def search_advanced():
     items = (
         base_query
         .filter(PurchaseItem.purchase_order_id.in_(paginated_order_ids))
-        .order_by(PurchaseOrder.dt_emis.desc(), PurchaseItem.id.desc())
+        .order_by(PurchaseOrder.dt_emis.desc(), PurchaseOrder.cod_pedc.desc(), PurchaseItem.id.desc())
         .all()
     )
 
