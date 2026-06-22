@@ -34,6 +34,8 @@ export const exportPurchaseOrdersToExcel = (results, options = {}) => {
             "Código Pedido": order.order.cod_pedc,
             "Data Emissão": formatDateForExcel(order.order.dt_emis),
             Fornecedor: order.order.fornecedor_descricao,
+              "CNPJ/CPF": order.order.cnpj_cpf,
+
           };
           if (canViewFinancials) {
             row["Total Bruto"] = order.order.total_bruto;
@@ -75,8 +77,8 @@ export const exportPurchaseOrdersToExcel = (results, options = {}) => {
           row["Perc. Tolerância"] = item.perc_toler;
 
           if (canViewNfes) {
-            row["NFEs"] = (item.nfes || []).map((nfe) => nfe.num_nf).join(", ");
-          }
+              row["NFEs"] = (order.order.nfes || []).map((nfe) => nfe.num_nf).join(", ");          
+            }
 
           return row;
         });

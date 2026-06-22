@@ -1,18 +1,6 @@
 [
 
-  {
-    "version": "2.2.2",
-    "notes": [
-      "Adicionado botão para visualização do pedido de compra na tela de busca de notas fiscais e busca de pedidos de compra.",
-      "Adicionado nova visualização de itens na tela de busca de notas fiscais"
-    ]
-  },
-  {
-    "version": "2.2.3",
-    "notes": [
-      "Adicionado indices no banco de dados e Two-pass-fetch - pesquisas devem ser mais rápidas e com um primeiro resultado imediato."
-    ]
-  },
+
   {
     "version": "2.2.4",
     "notes": [
@@ -23,6 +11,15 @@
     "version": "2.2.5",
     "notes": [
       "Adicionado nova tela de relatório de pedidos de compra - disponível no menu Relatórios > Pedidos de Compra (Para quem tem acesso a esse relatório)."
+    ]
+  },
+  {
+    "version": "2.2.6",
+    "notes": [
+      "Campo de CNPJ e notas fiscais adicionados a exportação Excel da tela de busca de pedidos de compra",
+      "Atualizadas versões do PyJWT, Vite and formdata para corrigir vulnerabilidades de segurança.",
+      "Corrigido sincronização de notas do SIEG que ultrapassavam o limite de acessos da api por lotes",
+      "Inicio do desenvolvimento de sincronização dos pedidos com base do focco em tempo real"
     ]
   }
 ]

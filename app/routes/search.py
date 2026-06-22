@@ -53,12 +53,17 @@ def _build_purchase_payload(items):
     grouped_results = {}
     order_keys = set()
     item_ids = set()
+    fornecedor_ids = set()
 
     for item in items:
         order = item.purchase_order
         if not order:
             continue
         order_keys.add((order.cod_emp1, item.cod_pedc))
+        
+        if order.fornecedor_id:
+            fornecedor_ids.add(str(order.fornecedor_id))
+            
         if item.qtde_saldo and item.qtde_saldo > 0:
             item_ids.add(item.id)
 
@@ -91,6 +96,14 @@ def _build_purchase_payload(items):
                     'nfe_chave': match.nfe_chave,
                     'nfe_data_emissao': match.nfe_data_emissao.isoformat() if match.nfe_data_emissao else None
                 }
+                
+                
+    supplier_cnpj_map = {}
+    if fornecedor_ids:
+        suppliers = Supplier.query.filter(Supplier.cod_for.in_(list(fornecedor_ids))).all()
+        for sup in suppliers:
+            # Map by cod_for so we can look it up instantly later
+            supplier_cnpj_map[sup.cod_for] = sup.nvl_forn_cnpj_forn_cpf
 
     user_caps = getattr(current_user, 'capabilities', []) or []
     can_view_financials = 'view_financials' in user_caps or current_user.role == 'admin'
@@ -115,11 +128,15 @@ def _build_purchase_payload(items):
                     'order_id': order.id,
                     'cod_pedc': cod_pedc,
                     'dt_emis': _parse_date(order.dt_emis),
+                    
                     'fornecedor_id': order.fornecedor_id,
                     'fornecedor_descricao': order.fornecedor_descricao,
                     'total_bruto': order.total_bruto if can_view_financials else None,
                     'total_pedido_com_ipi': order.total_pedido_com_ipi if can_view_financials else None,
                     'adjusted_total': adjusted_total if can_view_financials else None,
+                    
+                    'cnpj_cpf': supplier_cnpj_map.get(str(order.fornecedor_id)),
+                    
                     'adjustments': [
                         {
                             'tp_apl': adj.tp_apl,
