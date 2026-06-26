@@ -16,10 +16,10 @@
   {
     "version": "2.2.6",
     "notes": [
-      "Campo de CNPJ e notas fiscais adicionados a exportação Excel da tela de busca de pedidos de compra",
+      "Campo de CNPJ e notas fiscais adicionados a exportação Excel da tela de busca de pedidos de compra.",
       "Atualizadas versões do PyJWT, Vite and formdata para corrigir vulnerabilidades de segurança.",
-      "Corrigido sincronização de notas do SIEG que ultrapassavam o limite de acessos da api por lotes",
-      "Inicio do desenvolvimento de sincronização dos pedidos com base do focco em tempo real"
+      "Corrigido sincronização de notas do SIEG que ultrapassavam o limite de acessos da api por lotes.",
+      "Inicio do desenvolvimento de sincronização dos pedidos com base do focco em tempo real."
     ]
   }
 ]

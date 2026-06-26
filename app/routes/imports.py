@@ -117,68 +117,75 @@ def process_file():
 
 @bp.route('/import', methods=['POST'])
 @token_required
-def import_file(user):
+def import_file_bulk(user):
     """
-    Import and process XML file directly.
-    Supports RPDC0250, RPDC0250C, RCOT0300, and RFOR0302 document types.
-    
-    Request:
-        - Content-Type: multipart/form-data
-        - file: XML file to process
-    
-    Returns:
-        - Processed import result from appropriate handler
+    Import and process XML files in bulk.
+    Accepts multiple files under the 'files' form key.
     """
-    try:
-        # Check if file is present in request
-        if 'file' not in request.files:
-            return jsonify({'error': 'No file provided. Please upload an XML file.'}), 400
-        
-        file = request.files['file']
-        
-        # Check if file is empty
-        if file.filename == '':
-            return jsonify({'error': 'No file selected'}), 400
-        
-        # Validate file extension
-        if not allowed_file(file.filename):
-            return jsonify({'error': 'File must be in XML format (.xml)'}), 400
-        
-        # Read file content
-        content = file.read()
-        
-        if not content:
-            return jsonify({'error': 'File is empty'}), 400
-        
-        # Validate XML structure
-        if not is_valid_xml(content):
-            return jsonify({'error': 'Invalid XML file. Failed to parse XML structure.'}), 400
-        
-        # Determine document type and select handler
-        if b'<RPDC0250_RUAH>' in content or b'<RPDC0250>' in content:
-            doc_type = 'RPDC0250'
-            handler = import_ruah
-        elif b'<RPDC0250C>' in content:
-            doc_type = 'RPDC0250C'
-            handler = import_rpdc0250c
-        elif b'<RCOT0300>' in content:
-            doc_type = 'RCOT0300'
-            handler = import_rcot0300
-        elif b'<RFOR0302>' in content:
-            doc_type = 'RFOR0302'
-            handler = import_rfor0302
-        else:
-            return jsonify({
-                'error': 'Unsupported XML document type. Supported types: RPDC0250, RPDC0250C, RCOT0300, RFOR0302'
-            }), 400
-        
-        # Process file with appropriate handler
-        result = handler(content)
-        
-        return result
-    
-    except Exception as e:
-        # Rollback any database changes on error
-        db.session.rollback()
-        current_app.logger.exception("import_file: failure | filename=%s", request.files.get('file', {}).filename if 'file' in request.files else 'unknown')
-        return jsonify({'error': f'Error processing file: {str(e)}'}), 500
+    uploaded_files = request.files.getlist('files')
+    if 'file' in request.files:
+        uploaded_files.extend(request.files.getlist('file'))
+
+    if not uploaded_files or all(f.filename == '' for f in uploaded_files):
+        return jsonify({'error': 'No files provided. Please upload XML files.'}), 400
+
+    results = {
+        'successful': [],
+        'failed': [],
+        'total_processed': 0
+    }
+
+    for file in uploaded_files:
+        filename = file.filename
+        if filename == '':
+            continue
+
+        results['total_processed'] += 1
+
+        if not allowed_file(filename):
+            results['failed'].append({'filename': filename, 'reason': 'Must be XML format'})
+            continue
+
+        try:
+            content = file.read()
+            if not content:
+                results['failed'].append({'filename': filename, 'reason': 'File is empty'})
+                continue
+
+            if not is_valid_xml(content):
+                results['failed'].append({'filename': filename, 'reason': 'Invalid XML structure'})
+                continue
+
+            if b'<RPDC0250_RUAH>' in content or b'<RPDC0250>' in content:
+                handler = import_ruah
+            elif b'<RPDC0250C>' in content:
+                handler = import_rpdc0250c
+            elif b'<RCOT0300>' in content:
+                handler = import_rcot0300
+            elif b'<RFOR0302>' in content:
+                handler = import_rfor0302
+            else:
+                results['failed'].append({'filename': filename, 'reason': 'Unsupported XML document type'})
+                continue
+         
+            handler_result = handler(content)
+            
+            results['successful'].append({
+                'filename': filename, 
+                'details': handler_result.get_json() if hasattr(handler_result, 'get_json') else 'Processed'
+            })
+
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.exception(f"Bulk import failure | filename={filename}")
+            results['failed'].append({'filename': filename, 'reason': str(e)})
+
+    # Determine standard HTTP status code
+    if not results['failed']:
+        status_code = 200 # All good
+    elif not results['successful']:
+        status_code = 400 # All failed
+    else:
+        status_code = 207 # Multi-Status (Partial success)
+
+    return jsonify(results), status_code
