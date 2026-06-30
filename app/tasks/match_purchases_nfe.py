@@ -16,7 +16,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 from app import create_app, db
 from app.models import PurchaseOrder, PurchaseItem, NFEData, NFEItem, PurchaseItemNFEMatch
-from app.utils import score_purchase_nfe_match
+#from app.utils import score_purchase_nfe_match
+from app.utils import score_purchase_nfe_match  # Import the scoring function from test.py
 
 # Configure logging
 logging.basicConfig(
