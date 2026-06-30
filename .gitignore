@@ -22,6 +22,9 @@ build/
 .vscode
 
 
+
+
+local_models/
 tests/*.xml
 /*.xml
 cookies.txt

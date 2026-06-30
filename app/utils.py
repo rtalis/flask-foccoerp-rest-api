@@ -1,6 +1,7 @@
 import logging
 from collections import defaultdict
 from datetime import datetime, date
+import os
 import re
 from flask import jsonify, current_app, has_app_context
 from app.models import NFEntry, PurchaseAdjustment, PurchaseItem, PurchaseOrder, Quotation, PurchaseItemNFEMatch, Company
@@ -1530,14 +1531,28 @@ def score_qty_and_price(po_qty, po_price, po_uom, nfe_qty, nfe_price, nfe_uom, n
 # --------------------------------------------------------------------------- #
 
 _EMBED_MODEL = None
+# Define the local path where the model will live permanently
+MODEL_DIR = './local_models/paraphrase-multilingual'
 
 def _load_embedding_model():
     global _EMBED_MODEL
     if _EMBED_MODEL is None:
         from sentence_transformers import SentenceTransformer
-        _EMBED_MODEL = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+        logger = logging.getLogger(__name__)
+        
+        if not os.path.exists(MODEL_DIR):
+            logger.info("Local model not found. Downloading for the first time...")
+            
+            _EMBED_MODEL = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+            
+            os.makedirs(MODEL_DIR, exist_ok=True)
+            _EMBED_MODEL.save(MODEL_DIR)
+            logger.info(f"Model saved permanently to {MODEL_DIR}")
+        else:
+            # Load directly from disk - completely offline and fast
+            _EMBED_MODEL = SentenceTransformer(MODEL_DIR)
+            
     return _EMBED_MODEL
-
 def _cos_sim(a, b):
     from sentence_transformers import util
     return util.cos_sim(a, b).item()
