@@ -48,6 +48,7 @@ import {
   Skeleton,
   Tooltip,
   SvgIcon,
+  Chip
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
@@ -1097,7 +1098,7 @@ function PurchaseRow(props) {
         fullWidth
       >
         <DialogTitle>
-          Notas Fiscais - Pedido {purchase.order.cod_pedc}
+          Notas Fiscais Emitidas pelo fornecedor no perídodo próximo ao Pedido {purchase.order.cod_pedc}
         </DialogTitle>
         <DialogContent>
           {loadingNfe ? (
@@ -1117,9 +1118,28 @@ function PurchaseRow(props) {
                       }}
                     >
                       <Box sx={{ flex: 1 }}>
-                        <Typography variant="h6" gutterBottom>
-                          NF-e Nº {nfe.numero}
-                        </Typography>
+                        
+                        {/* --- UPDATED HEADER WITH SCORE CHIP --- */}
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+                          <Typography variant="h6" sx={{ mb: 0 }}>
+                            NF-e Nº {nfe.numero}
+                          </Typography>
+                          
+                          {/* Only show the chip if there is a match score greater than 0 */}
+                          {nfe.match_score > 0 && (
+                            <Chip 
+                              label={`Compatibilidade: ${nfe.match_score.toFixed(1)}%`} 
+                              size="small"
+                              color={
+                                nfe.match_score >= 80 ? "success" : 
+                                nfe.match_score >= 50 ? "warning" : "error"
+                              }
+                              variant={nfe.match_score >= 80 ? "filled" : "outlined"}
+                            />
+                          )}
+                        </Box>
+                        {/* -------------------------------------- */}
+
                         <Typography variant="body2">
                           <strong>Fornecedor:</strong> {nfe.fornecedor}
                         </Typography>
@@ -1133,33 +1153,10 @@ function PurchaseRow(props) {
                             ? formatCurrency(parseFloat(nfe.valor))
                             : ""}
                         </Typography>
-                        <Typography variant="body2">
+                        <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
                           <strong>Chave:</strong> {nfe.chave}
                         </Typography>
                       </Box>
-                      {/*
-                      <Tooltip title="Marcar se esta nota atende ao pedido de compra">
-                        <FormControlLabel
-                          control={
-                            <Checkbox
-                              checked={nfeChecked[nfe.id] || false}
-                              onChange={(e) => {
-                                handleNfeCheckboxChange(nfe, e.target.checked);
-                                console.log(
-                                  "Checkbox changed for NFE",
-                                  nfe,
-                                  e.target.checked,
-                                );
-                              }}
-                              disabled={matchingInProgress}
-                              color="primary"
-                            />
-                          }
-                          label="Atende"
-                          sx={{ ml: 2, whiteSpace: "nowrap" }}
-                        />
-                      </Tooltip>
-                      */}
                     </Box>
                   </CardContent>
                   <CardActions>
