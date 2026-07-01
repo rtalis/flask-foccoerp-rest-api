@@ -1,12 +1,7 @@
 [
 
 
-  {
-    "version": "2.2.4",
-    "notes": [
-    "Adicionado checkbox no login para manter o usuário logado por 15 dias em um computador confiavel - sem necessidade de login a cada acesso."
-    ]
-  },
+
   {
     "version": "2.2.5",
     "notes": [
@@ -20,6 +15,14 @@
       "Atualizadas versões do PyJWT, Vite and formdata para corrigir vulnerabilidades de segurança.",
       "Corrigido sincronização de notas do SIEG que ultrapassavam o limite de acessos da api por lotes.",
       "Inicio do desenvolvimento de sincronização dos pedidos com base do focco em tempo real."
+    ]
+  },
+  {
+    "version": "2.2.7",
+    "notes": [
+      "Ao clicar na lupa para mostrar notas fiscais emitidas por um fornecedor em um pedido de compra, um prazo maior será mostrado: 30 < DATA_PEDIDO < 60 dias.",
+      "Modelo de IA que faz o pareamento dos pedidos de compra com base em notas fiscais emitidas de produtos que ainda não deram entrada no sistema foi atualizado para melhorar a assertividade do pareamento.",
+      "Corrigido bug na ordenação dos pedidos do carregamento rápido e do resultado final"
     ]
   }
 ]

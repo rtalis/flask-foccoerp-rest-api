@@ -746,18 +746,21 @@ def search_advanced():
         }), 200
 
     order_ids_subquery = (
-        base_query
-        .with_entities(PurchaseItem.purchase_order_id)
-        .distinct()
-        .subquery()
-    )
+            base_query
+            .with_entities(PurchaseItem.purchase_order_id)
+            .distinct()
+            .subquery()
+        )
+        
+    order_by_clauses = [PurchaseOrder.dt_emis.desc(), PurchaseOrder.id.desc()]
+
     if quick_load:
         orders = (
             PurchaseOrder.query
             .filter(PurchaseOrder.id.in_(
                 db.session.query(order_ids_subquery.c.purchase_order_id)
             ))
-            .order_by(PurchaseOrder.dt_emis.desc(), PurchaseOrder.id.desc())
+            .order_by(*order_by_clauses)
             .limit(per_page)
             .all()
         )
@@ -771,7 +774,7 @@ def search_advanced():
             .filter(PurchaseOrder.id.in_(
                 db.session.query(order_ids_subquery.c.purchase_order_id)
             ))
-            .order_by(PurchaseOrder.dt_emis.desc(), PurchaseOrder.id.desc())
+            .order_by(*order_by_clauses)
             .paginate(page=page, per_page=per_page, count=True)
         )
         paginated_order_ids = [o.id for o in orders_paginated.items]
@@ -782,7 +785,8 @@ def search_advanced():
     items = (
         base_query
         .filter(PurchaseItem.purchase_order_id.in_(paginated_order_ids))
-        .order_by(PurchaseOrder.dt_emis.desc(), PurchaseOrder.cod_pedc.desc(), PurchaseItem.id.desc())
+        # Use the exact same clauses for the PO, then append the Item tie-breaker
+        .order_by(*order_by_clauses, PurchaseItem.id.desc())
         .all()
     )
 
