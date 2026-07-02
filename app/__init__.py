@@ -14,6 +14,7 @@ from flask_mail import Mail
 from datetime import date, datetime
 from flask.json.provider import DefaultJSONProvider
 
+
 mail = Mail()
 
 db = SQLAlchemy()
@@ -45,6 +46,9 @@ def create_app():
     db.init_app(app)
     migrate.init_app(app, db)
 
+
+            
+            
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'
 
@@ -175,6 +179,7 @@ def create_app():
                 db.session.commit()
                 
         return None
+
 
     return app
 

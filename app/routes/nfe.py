@@ -1172,7 +1172,9 @@ def get_nfe_by_purchase():
         for nfe in nfe_data:
             nfe['match_score'] = score_map.get(nfe['chave'], 0.0)
             
+        nfe_data.sort(key=lambda x: x.get('data_emissao'), reverse=True)
         nfe_data.sort(key=lambda x: x.get('match_score', 0.0), reverse=True)
+        
        
 
         return jsonify({
@@ -1198,20 +1200,11 @@ def extract_xml_value(root, xpath):
 def search_nfe():
     """
     Search for NFEs and find linked purchase orders.
-    
-    Parameters:
-    - query: Search term (NFE number, chave, supplier name, or item description)
-    - start_date: Filter by start date (YYYY-MM-DD)
-    - end_date: Filter by end date (YYYY-MM-DD)
-    - search_by_number: Search by NFE number (default: true)
-    - search_by_chave: Search by chave de acesso (default: true)
-    - search_by_fornecedor: Search by supplier name (default: false)
-    - search_by_item: Search by item description (default: true)
-    - include_estimated: Include AI-estimated matches (default: true)
     """
     from app.models import NFEData, NFEEmitente, NFEItem, NFEntry, PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch
     from datetime import datetime
     from fuzzywuzzy import fuzz
+    from sqlalchemy import and_, or_
     
     query = request.args.get('query', '').strip()
     start_date_str = request.args.get('start_date')
@@ -1242,7 +1235,6 @@ def search_nfe():
         # Only add search filters if query is provided
         if query:
             if search_by_number:
-                # Use exact match or LIKE based on exact_term_search
                 nfe_filters.append(NFEData.numero == query)
                 if not exact_term_search:
                     nfe_filters.append(NFEData.numero.ilike(f'%{query}%'))
@@ -1266,10 +1258,9 @@ def search_nfe():
         
         # Order by most recent first
         nfe_query = nfe_query.order_by(NFEData.data_emissao.desc())
-        
         nfes = nfe_query.limit(50).all()
         
-        # If searching by supplier, also filter by emitente name
+        # If searching by supplier
         if search_by_fornecedor and query:
             if exact_term_search:
                 supplier_nfes = NFEData.query.join(NFEEmitente).filter(
@@ -1286,22 +1277,24 @@ def search_nfe():
             
             supplier_nfes = supplier_nfes.order_by(NFEData.data_emissao.desc()).limit(50).all()
             
-            # Merge results
             existing_ids = {n.id for n in nfes}
             for nfe in supplier_nfes:
                 if nfe.id not in existing_ids:
                     nfes.append(nfe)
         
-        # If searching by item description, search NFEItem
+        # If searching by item description
         if search_by_item and query:
             if exact_term_search:
                 item_nfes = NFEData.query.join(NFEItem).filter(
                     NFEItem.descricao == query
                 )
             else:
+                search_terms = query.split()
+                term_filters = [NFEItem.descricao.ilike(f'%{term}%') for term in search_terms]
                 item_nfes = NFEData.query.join(NFEItem).filter(
-                    NFEItem.descricao.ilike(f'%{query}%')
+                    and_(*term_filters)
                 )
+                    
             if start_date:
                 item_nfes = item_nfes.filter(NFEData.data_emissao >= start_date)
             if end_date:
@@ -1309,25 +1302,18 @@ def search_nfe():
             
             item_nfes = item_nfes.order_by(NFEData.data_emissao.desc()).limit(50).all()
             
-            # Merge results
             existing_ids = {n.id for n in nfes}
             for nfe in item_nfes:
                 if nfe.id not in existing_ids:
                     nfes.append(nfe)
         
-        # Sort all NFEs by date (most recent first) after merging
         nfes = sorted(nfes, key=lambda x: x.data_emissao or datetime.min, reverse=True)
-        
-        # Hard cap on total NFEs to prevent slow responses on broad queries
         nfes = nfes[:50]
         
-        # Format NFE results
         nfe_results = []
         nfe_numbers = set()
-        # Track all linked purchases (keys that matched at least one NFE)
-        linked_purchase_keys = set()  # (cod_pedc, cod_emp1, linha)
-        # Track all potential purchases for checking if they match any NFE
-        all_potential_purchases = {}  # key: (cod_pedc, cod_emp1, linha), value: purchase info
+        linked_purchase_keys = set() 
+        all_potential_purchases = {}
         
         for nfe in nfes:
             emitente = NFEEmitente.query.filter_by(nfe_id=nfe.id).first()
@@ -1337,12 +1323,6 @@ def search_nfe():
             }
 
             def _resolve_nfe_item_for_purchase(entry, purchase_item, match_obj=None):
-                """
-                Resolve NFE item for a purchase line with robust fallbacks:
-                1) explicit match object nfe_item_id,
-                2) saved PurchaseItemNFEMatch for this PO line + NFE number,
-                3) weighted score using description + price + quantity (+ line hint).
-                """
                 if match_obj and match_obj.nfe_item_id:
                     nfe_item_from_match = db.session.get(NFEItem, match_obj.nfe_item_id)
                     if nfe_item_from_match:
@@ -1376,16 +1356,8 @@ def search_nfe():
 
                 if purchase_item and nfe_items:
                     po_desc = (purchase_item.descricao or "").lower()
-                    po_price = (
-                        float(purchase_item.preco_unitario)
-                        if purchase_item.preco_unitario is not None
-                        else None
-                    )
-                    po_qty = (
-                        float(purchase_item.quantidade)
-                        if purchase_item.quantidade is not None
-                        else None
-                    )
+                    po_price = float(purchase_item.preco_unitario) if purchase_item.preco_unitario is not None else None
+                    po_qty = float(purchase_item.quantidade) if purchase_item.quantidade is not None else None
                     po_item_code_raw = (purchase_item.item_id or "").strip()
 
                     def _closeness(a, b):
@@ -1401,36 +1373,20 @@ def search_nfe():
                     def _normalize_code(code_value):
                         if not code_value:
                             return None
-                        normalized = "".join(
-                            ch for ch in str(code_value).upper() if ch.isalnum()
-                        )
+                        normalized = "".join(ch for ch in str(code_value).upper() if ch.isalnum())
                         return normalized or None
 
                     def _is_valid_code(code_value):
                         normalized = _normalize_code(code_value)
                         if not normalized:
                             return False
-                        invalid_tokens = {
-                            "SEMGTIN",
-                            "NOGTIN",
-                            "NA",
-                            "NONE",
-                            "NULL",
-                            "0",
-                            "000",
-                            "0000",
-                        }
+                        invalid_tokens = {"SEMGTIN", "NOGTIN", "NA", "NONE", "NULL", "0", "000", "0000"}
                         if normalized in invalid_tokens:
                             return False
                         return len(normalized) >= 3
 
-                    po_item_code = (
-                        _normalize_code(po_item_code_raw)
-                        if _is_valid_code(po_item_code_raw)
-                        else None
-                    )
+                    po_item_code = _normalize_code(po_item_code_raw) if _is_valid_code(po_item_code_raw) else None
 
-                    # Calculate total item price for PO
                     po_total_price = None
                     if po_price is not None and po_qty is not None and po_price > 0 and po_qty > 0:
                         po_total_price = po_price * po_qty
@@ -1441,17 +1397,9 @@ def search_nfe():
                         normalized_nfe_code = _normalize_code(nfe_code)
                         if po_code == normalized_nfe_code:
                             return 1.0
-                        # Allow strong partial match for structured material codes
-                        if (
-                            len(po_code) >= 6
-                            and len(normalized_nfe_code) >= 6
-                            and (
-                                po_code.endswith(normalized_nfe_code)
-                                or normalized_nfe_code.endswith(po_code)
-                                or po_code in normalized_nfe_code
-                                or normalized_nfe_code in po_code
-                            )
-                        ):
+                        if (len(po_code) >= 6 and len(normalized_nfe_code) >= 6 and 
+                            (po_code.endswith(normalized_nfe_code) or normalized_nfe_code.endswith(po_code) or 
+                             po_code in normalized_nfe_code or normalized_nfe_code in po_code)):
                             return 0.9
                         return 0.0
 
@@ -1462,64 +1410,26 @@ def search_nfe():
 
                     for nfe_item_candidate in nfe_items:
                         candidate_desc = (nfe_item_candidate.descricao or "").lower()
-                        desc_score = (
-                            fuzz.token_set_ratio(po_desc, candidate_desc) / 100.0
-                            if po_desc and candidate_desc
-                            else 0.0
-                        )
-                        price_score = _closeness(
-                            po_price, nfe_item_candidate.valor_unitario_comercial
-                        )
-                        qty_score = _closeness(
-                            po_qty, nfe_item_candidate.quantidade_comercial
-                        )
-                        code_score = _code_match_score(
-                            po_item_code, nfe_item_candidate.codigo
-                        )
-                        line_score = (
-                            1.0
-                            if nfe_item_candidate.numero_item in linha_candidates
-                            else 0.0
-                        )
+                        desc_score = fuzz.token_set_ratio(po_desc, candidate_desc) / 100.0 if po_desc and candidate_desc else 0.0
+                        price_score = _closeness(po_price, nfe_item_candidate.valor_unitario_comercial)
+                        qty_score = _closeness(po_qty, nfe_item_candidate.quantidade_comercial)
+                        code_score = _code_match_score(po_item_code, nfe_item_candidate.codigo)
+                        line_score = 1.0 if nfe_item_candidate.numero_item in linha_candidates else 0.0
 
-                        # Calculate total item price for NFE
                         nfe_total_price = None
-                        nfe_qty = (
-                            float(nfe_item_candidate.quantidade_comercial)
-                            if nfe_item_candidate.quantidade_comercial is not None
-                            else None
-                        )
-                        nfe_unit_price = (
-                            float(nfe_item_candidate.valor_unitario_comercial)
-                            if nfe_item_candidate.valor_unitario_comercial is not None
-                            else None
-                        )
-                        if (nfe_unit_price is not None and nfe_qty is not None 
-                            and nfe_unit_price > 0 and nfe_qty > 0):
+                        nfe_qty = float(nfe_item_candidate.quantidade_comercial) if nfe_item_candidate.quantidade_comercial is not None else None
+                        nfe_unit_price = float(nfe_item_candidate.valor_unitario_comercial) if nfe_item_candidate.valor_unitario_comercial is not None else None
+                        if nfe_unit_price is not None and nfe_qty is not None and nfe_unit_price > 0 and nfe_qty > 0:
                             nfe_total_price = nfe_unit_price * nfe_qty
 
-                        # Calculate total price match score
                         total_price_score = _closeness(po_total_price, nfe_total_price)
 
-                        # Dynamic weighting: boost price weight when total price matches perfectly
                         if total_price_score is not None and total_price_score >= 0.99:
-                            # Perfect or near-perfect total price match: give price dominant weight
-                            weight_desc = 0.10
-                            weight_price = 0.75
-                            weight_code = 0.10
-                            weight_qty = 0.05
+                            weight_desc, weight_price, weight_code, weight_qty = 0.10, 0.75, 0.10, 0.05
                         elif price_score is not None and price_score >= 0.98 and desc_score < 0.45:
-                            # High unit price match with diverging description
-                            weight_desc = 0.15
-                            weight_price = 0.65
-                            weight_code = 0.15
-                            weight_qty = 0.05
+                            weight_desc, weight_price, weight_code, weight_qty = 0.15, 0.65, 0.15, 0.05
                         else:
-                            # Default weights
-                            weight_desc = 0.45
-                            weight_price = 0.35
-                            weight_code = 0.15
-                            weight_qty = 0.05
+                            weight_desc, weight_price, weight_code, weight_qty = 0.45, 0.35, 0.15, 0.05
 
                         weighted_sum = desc_score * weight_desc
                         weight_total = weight_desc
@@ -1534,14 +1444,11 @@ def search_nfe():
                             weighted_sum += qty_score * weight_qty
                             weight_total += weight_qty
 
-                        # Soft tie-breaker bonus for matching line number.
                         if linha_candidates:
                             weighted_sum += line_score * 0.03
                             weight_total += 0.03
 
-                        final_score = (
-                            (weighted_sum / weight_total) if weight_total > 0 else 0.0
-                        )
+                        final_score = (weighted_sum / weight_total) if weight_total > 0 else 0.0
 
                         if final_score > best_weighted_score:
                             best_weighted_score = final_score
@@ -1549,60 +1456,39 @@ def search_nfe():
                             best_price_score = price_score or 0.0
                             best_item = nfe_item_candidate
 
-                    # Accept high-confidence code match quickly.
                     if best_item and po_item_code and _is_valid_code(best_item.codigo):
                         if _normalize_code(best_item.codigo) == po_item_code:
                             return best_item
 
-                    # Require reasonable confidence; allow price-led match when price is almost exact.
-                    if best_item and (
-                        best_desc_score >= 0.60
-                        or best_weighted_score >= 0.72
-                        or (best_price_score >= 0.99 and best_weighted_score >= 0.64)
-                    ):
+                    if best_item and (best_desc_score >= 0.60 or best_weighted_score >= 0.72 or (best_price_score >= 0.99 and best_weighted_score >= 0.64)):
                         return best_item
 
-                # Last fallback: strict line/item number mapping when present
                 for linha_cand in linha_candidates:
                     if linha_cand in nfe_items_by_numero:
                         return nfe_items_by_numero[linha_cand]
 
                 return None
-            # Get matched items if searching by item
+            
             matched_items = []
             if search_by_item:
                 if exact_term_search:
-                    items = NFEItem.query.filter(
-                        NFEItem.nfe_id == nfe.id,
-                        NFEItem.descricao == query
-                    ).all()
+                    items = NFEItem.query.filter(NFEItem.nfe_id == nfe.id, NFEItem.descricao == query).all()
                 else:
-                    items = NFEItem.query.filter(
-                        NFEItem.nfe_id == nfe.id,
-                        NFEItem.descricao.ilike(f'%{query}%')
-                    ).all()
-                matched_items = [item.descricao for item in items[:3]]  # Limit to 3
+                    search_terms = query.split()
+                    term_filters = [NFEItem.descricao.ilike(f'%{term}%') for term in search_terms]
+                    items = NFEItem.query.filter(NFEItem.nfe_id == nfe.id, and_(*term_filters)).all()
+                matched_items = [item.descricao for item in items[:3]]
             
-            # Find linked purchase orders via NFEntry for this NFE
-            # Only include purchases where the supplier matches the NFE emitente
             linked_purchases = []
             estimated_purchases = []
             if nfe.numero:
                 nf_entries = NFEntry.query.filter(NFEntry.num_nf == nfe.numero).all()
                 for entry in nf_entries:
-                    po = PurchaseOrder.query.filter_by(
-                        cod_pedc=entry.cod_pedc,
-                        cod_emp1=entry.cod_emp1
-                    ).first()
+                    po = PurchaseOrder.query.filter_by(cod_pedc=entry.cod_pedc, cod_emp1=entry.cod_emp1).first()
                     if po:
-                        item = PurchaseItem.query.filter_by(
-                            cod_pedc=entry.cod_pedc,
-                            cod_emp1=entry.cod_emp1,
-                            linha=str(entry.linha) if entry.linha else None
-                        ).first()
+                        item = PurchaseItem.query.filter_by(cod_pedc=entry.cod_pedc, cod_emp1=entry.cod_emp1, linha=str(entry.linha) if entry.linha else None).first()
                         nfe_item = _resolve_nfe_item_for_purchase(entry, item)
 
-                        # Calculate adjusted total from adjustments
                         adjustments = getattr(po, 'adjustments', [])
                         base_total = po.total_pedido_com_ipi or 0
                         adjusted_total = apply_adjustments(base_total, adjustments) + (po.vlr_frete_tra or 0)
@@ -1652,33 +1538,22 @@ def search_nfe():
                         }
                         
                         key = (po.cod_pedc, po.cod_emp1, entry.linha)
-                        
-                        # Track all potential purchases
                         if key not in all_potential_purchases:
                             all_potential_purchases[key] = purchase_info
                         
-                        # Check if supplier matches NFE emitente
                         if _check_supplier_match(po, emitente):
                             linked_purchases.append(purchase_info)
                             linked_purchase_keys.add(key)
                 
-                # Also include estimated matches from PurchaseItemNFEMatch for this NFE
                 if include_estimated:
-                    estimated_matches = PurchaseItemNFEMatch.query.filter(
-                        PurchaseItemNFEMatch.nfe_numero == nfe.numero
-                    ).all()
-                    
+                    estimated_matches = PurchaseItemNFEMatch.query.filter(PurchaseItemNFEMatch.nfe_numero == nfe.numero).all()
                     for match in estimated_matches:
                         item = db.session.get(PurchaseItem, match.purchase_item_id)
                         if item:
                             po = db.session.get(PurchaseOrder, item.purchase_order_id)
                             if po:
-                                # Check if already in linked_purchases
                                 key = (po.cod_pedc, po.cod_emp1, str(item.linha) if item.linha else None)
-                                already_linked = any(
-                                    p['cod_pedc'] == po.cod_pedc and p['linha'] == item.linha 
-                                    for p in linked_purchases
-                                )
+                                already_linked = any(p['cod_pedc'] == po.cod_pedc and p['linha'] == item.linha for p in linked_purchases)
                                 if not already_linked:
                                     nfe_item = _resolve_nfe_item_for_purchase(None, item, match)
                                     purchase_info = {
@@ -1716,6 +1591,7 @@ def search_nfe():
                 'valor_total': nfe.valor_total,
                 'fornecedor': emitente.nome if emitente else None,
                 'cnpj': emitente.cnpj if emitente else None,
+                'informacoes_adicionais': nfe.informacoes_adicionais,
                 'matched_items': matched_items,
                 'linked_purchases': linked_purchases,
                 'estimated_purchases': estimated_purchases,
@@ -1731,50 +1607,28 @@ def search_nfe():
             if nfe.numero:
                 nfe_numbers.add(nfe.numero)
         
-        # Build unlinked_purchases_map: purchases that didn't match ANY NFE
-        unlinked_purchases_map = {
-            k: v for k, v in all_potential_purchases.items() 
-            if k not in linked_purchase_keys
-        }
-        
-        # Find linked purchase orders
         purchase_orders = []
         
-        # 1. Search in NFEntry (direct links)
+        # 1. Search in NFEntry
         if exact_term_search:
             nf_entries = NFEntry.query.filter(NFEntry.num_nf == query).all()
         else:
             nf_entries = NFEntry.query.filter(
-                or_(
-                    NFEntry.num_nf == query,
-                    NFEntry.num_nf.ilike(f'%{query}%') #??
-                )
+                or_(NFEntry.num_nf == query, NFEntry.num_nf.ilike(f'%{query}%'))
             ).order_by(NFEntry.cod_pedc.desc()).limit(100).all()
         
         for entry in nf_entries:
-            po = PurchaseOrder.query.filter_by(
-                cod_pedc=entry.cod_pedc,
-                cod_emp1=entry.cod_emp1
-            ).first()
-            
+            po = PurchaseOrder.query.filter_by(cod_pedc=entry.cod_pedc, cod_emp1=entry.cod_emp1).first()
             if po:
-                item = PurchaseItem.query.filter_by(
-                    cod_pedc=entry.cod_pedc,
-                    cod_emp1=entry.cod_emp1,
-                    linha=str(entry.linha) if entry.linha else None
-                ).first()
-                
-                # Check if this purchase was already linked to any NFE
+                item = PurchaseItem.query.filter_by(cod_pedc=entry.cod_pedc, cod_emp1=entry.cod_emp1, linha=str(entry.linha) if entry.linha else None).first()
                 purchase_key = (po.cod_pedc, po.cod_emp1, entry.linha)
                 is_linked = purchase_key in linked_purchase_keys
                 
-                # Find linked NFEData for this num_nf
                 linked_nfe_data = None
                 if entry.num_nf:
                     nfe_data = NFEData.query.filter_by(numero=entry.num_nf).first()
                     if nfe_data:
                         emitente = NFEEmitente.query.filter_by(nfe_id=nfe_data.id).first()
-                        
                         linked_nfe_data = {
                             'id': nfe_data.id,
                             'numero': nfe_data.numero,
@@ -1783,6 +1637,7 @@ def search_nfe():
                             'valor_total': nfe_data.valor_total,
                             'fornecedor': emitente.nome if emitente else None,
                             'cnpj': emitente.cnpj if emitente else None,
+                            'informacoes_adicionais': nfe_data.informacoes_adicionais,
                         }
                 
                 purchase_orders.append({
@@ -1797,18 +1652,13 @@ def search_nfe():
                     'nfe_data': linked_nfe_data,
                 })
         
-        # 2. Search in PurchaseItemNFEMatch (AI-estimated matches)
+        # 2. Search in PurchaseItemNFEMatch
         if include_estimated:
             if exact_term_search:
-                estimated_matches = PurchaseItemNFEMatch.query.filter(
-                    PurchaseItemNFEMatch.nfe_numero == query
-                ).all()
+                estimated_matches = PurchaseItemNFEMatch.query.filter(PurchaseItemNFEMatch.nfe_numero == query).all()
             else:
                 estimated_matches = PurchaseItemNFEMatch.query.filter(
-                    or_(
-                        PurchaseItemNFEMatch.nfe_numero == query,
-                        PurchaseItemNFEMatch.nfe_numero.ilike(f'%{query}%')
-                    )
+                    or_(PurchaseItemNFEMatch.nfe_numero == query, PurchaseItemNFEMatch.nfe_numero.ilike(f'%{query}%'))
                 ).all()
             
             for match in estimated_matches:
@@ -1816,25 +1666,16 @@ def search_nfe():
                 if item:
                     po = db.session.get(PurchaseOrder, item.purchase_order_id)
                     if po:
-                        # Check if this PO is already in the list
-                        existing = next(
-                            (p for p in purchase_orders 
-                             if p['cod_pedc'] == po.cod_pedc and p.get('item_descricao') == item.descricao),
-                            None
-                        )
+                        existing = next((p for p in purchase_orders if p['cod_pedc'] == po.cod_pedc and p.get('item_descricao') == item.descricao), None)
                         if not existing:
-                            # Check if this purchase was linked to any NFE
-                            # For estimated matches, we check by (cod_pedc, cod_emp1, linha)
                             purchase_key = (po.cod_pedc, po.cod_emp1, str(item.linha) if item.linha else None)
                             is_linked = purchase_key in linked_purchase_keys
                             
-                            # Find linked NFEData for this nfe_numero
                             linked_nfe_data = None
                             if match.nfe_numero:
                                 nfe_data = NFEData.query.filter_by(numero=match.nfe_numero).first()
                                 if nfe_data:
                                     emitente = NFEEmitente.query.filter_by(nfe_id=nfe_data.id).first()
-                                    
                                     linked_nfe_data = {
                                         'id': nfe_data.id,
                                         'numero': nfe_data.numero,
@@ -1843,6 +1684,7 @@ def search_nfe():
                                         'valor_total': nfe_data.valor_total,
                                         'fornecedor': emitente.nome if emitente else None,
                                         'cnpj': emitente.cnpj if emitente else None,
+                                        'informacoes_adicionais': nfe_data.informacoes_adicionais,
                                     }
                             
                             purchase_orders.append({
@@ -1858,48 +1700,28 @@ def search_nfe():
                                 'nfe_data': linked_nfe_data,
                             })
         
-        # 3. Search by purchase order number (cod_pedc) to find linked NFEs
+        # 3. Search by purchase order number
         if exact_term_search:
-            purchase_entries = NFEntry.query.filter(
-                NFEntry.cod_pedc == query
-            ).order_by(NFEntry.cod_pedc.desc()).limit(100).all()
+            purchase_entries = NFEntry.query.filter(NFEntry.cod_pedc == query).order_by(NFEntry.cod_pedc.desc()).limit(100).all()
         else:
-            purchase_entries = NFEntry.query.filter(
-                NFEntry.cod_pedc.ilike(f'%{query}%')
-            ).order_by(NFEntry.cod_pedc.desc()).limit(100).all()
+            purchase_entries = NFEntry.query.filter(NFEntry.cod_pedc.ilike(f'%{query}%')).order_by(NFEntry.cod_pedc.desc()).limit(100).all()
         
         for entry in purchase_entries:
-            # Check if already added from section 1
-            already_added = any(
-                p['cod_pedc'] == entry.cod_pedc and p.get('nfe_numero') == entry.num_nf 
-                for p in purchase_orders
-            )
+            already_added = any(p['cod_pedc'] == entry.cod_pedc and p.get('nfe_numero') == entry.num_nf for p in purchase_orders)
             if already_added:
                 continue
                 
-            po = PurchaseOrder.query.filter_by(
-                cod_pedc=entry.cod_pedc,
-                cod_emp1=entry.cod_emp1
-            ).first()
-            
+            po = PurchaseOrder.query.filter_by(cod_pedc=entry.cod_pedc, cod_emp1=entry.cod_emp1).first()
             if po:
-                item = PurchaseItem.query.filter_by(
-                    cod_pedc=entry.cod_pedc,
-                    cod_emp1=entry.cod_emp1,
-                    linha=str(entry.linha) if entry.linha else None
-                ).first()
-                
-                # Check if this purchase was linked to any NFE
+                item = PurchaseItem.query.filter_by(cod_pedc=entry.cod_pedc, cod_emp1=entry.cod_emp1, linha=str(entry.linha) if entry.linha else None).first()
                 purchase_key = (po.cod_pedc, po.cod_emp1, entry.linha)
                 is_linked = purchase_key in linked_purchase_keys
                 
-                # Find linked NFEData for this num_nf
                 linked_nfe_data = None
                 if entry.num_nf:
                     nfe_data = NFEData.query.filter_by(numero=entry.num_nf).first()
                     if nfe_data:
                         emitente = NFEEmitente.query.filter_by(nfe_id=nfe_data.id).first()
-                        
                         linked_nfe_data = {
                             'id': nfe_data.id,
                             'numero': nfe_data.numero,
@@ -1908,8 +1730,8 @@ def search_nfe():
                             'valor_total': nfe_data.valor_total,
                             'fornecedor': emitente.nome if emitente else None,
                             'cnpj': emitente.cnpj if emitente else None,
+                            'informacoes_adicionais': nfe_data.informacoes_adicionais,
                         }
-                        # Also add to nfe_results if not already there and is_linked
                         if is_linked and not any(n['id'] == nfe_data.id for n in nfe_results):
                             nfe_data_items = NFEItem.query.filter_by(nfe_id=nfe_data.id).all()
                             nfe_results.append({
@@ -1920,6 +1742,7 @@ def search_nfe():
                                 'valor_total': nfe_data.valor_total,
                                 'fornecedor': emitente.nome if emitente else None,
                                 'cnpj': emitente.cnpj if emitente else None,
+                                'informacoes_adicionais': nfe_data.informacoes_adicionais,
                                 'matched_items': [],
                                 'linked_purchases': [{
                                     'cod_pedc': po.cod_pedc,
@@ -1951,19 +1774,13 @@ def search_nfe():
                     'nfe_data': linked_nfe_data,
                 })
         
-        # Convert unlinked_purchases_map to list and sort by dt_emis (most recent first)
-        unlinked_purchase_orders = sorted(
-            unlinked_purchases_map.values(),
-            key=lambda x: x.get('dt_emis') or '',
-            reverse=True
-        )
-        
         return jsonify({
             'nfes': nfe_results,
             'purchase_orders': purchase_orders,
-            'unlinked_purchase_orders': unlinked_purchase_orders,
             'query': query,
         }), 200
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
