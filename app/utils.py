@@ -1854,7 +1854,8 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1, nfe_cache=None):
         supplier_similarity = 0
 
         if purchase_order.fornecedor_id == 1160:
-            supplier_match_type = 'mercadopago_marketplace'
+            supplier_match_type = 'high_similarity'
+            
         else:
             if nfe_supplier and supplier_name:
                 supplier_similarity = fuzz.token_set_ratio(nfe_supplier.lower(), supplier_name)
