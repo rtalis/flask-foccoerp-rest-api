@@ -1369,7 +1369,7 @@ from app.models import (
 # Tunables
 # --------------------------------------------------------------------------- #
 
-COMMON_PACK_SIZES = {1, 2, 3, 4, 5, 6, 10, 12, 20, 24, 25, 30, 40, 48, 50, 60, 100, 120, 144}
+COMMON_PACK_SIZES = {1, 2, 3, 4, 5, 6, 10, 12, 20, 24, 25, 30, 40, 48, 50, 60, 100, 120, 144, 150, 200, 250, 500, 1000}
 MIN_DESC_SCORE_FLOOR = 40
 MIN_PRICE_SCORE_TO_PASS = 60
 MIN_QTY_SCORE_TO_PASS = 90
@@ -1577,21 +1577,37 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
             continue
 
         po_uom = po_item.get('unidade_medida', '')
+        po_price = po_item.get('preco_unitario', 0)
 
         for j, nfe_item in enumerate(nfe_items_db):
             if nfe_item.id in matched_nfe_ids:
                 continue
             nfe_codes = nfe_codes_list[j]
             if nfe_codes and (po_codes & nfe_codes):
-                nfe_qty = float(nfe_item.quantidade_comercial or 0)
-                nfe_price = float(nfe_item.valor_unitario_comercial or 0)
                 nfe_uom = nfe_item.unidade_comercial
                 pack_size = extract_pack_size(nfe_item.descricao or '')
-                
-                qty_score, price_score, pack_used = score_qty_and_price(
-                    po_qty, po_item['preco_unitario'], po_uom, 
-                    nfe_qty, nfe_price, nfe_uom, pack_size
+
+                nfe_qty_com = float(nfe_item.quantidade_comercial or 0)
+                nfe_price_com = float(nfe_item.valor_unitario_comercial or 0)
+
+                nfe_qty_trib = float(nfe_item.quantidade_tributavel or 0)
+                nfe_price_trib = float(nfe_item.valor_unitario_tributavel or 0)
+
+                qty_score_com, price_score_com, pack_used_com = score_qty_and_price(
+                    po_qty, po_price, po_uom, nfe_qty_com, nfe_price_com, nfe_uom, pack_size
                 )
+
+                qty_score_trib, price_score_trib, pack_used_trib = score_qty_and_price(
+                    po_qty, po_price, po_uom, nfe_qty_trib, nfe_price_trib, po_uom, 1
+                )
+
+                if (qty_score_trib + price_score_trib) > (qty_score_com + price_score_com):
+                    qty_score, price_score, pack_used = qty_score_trib, price_score_trib, pack_used_trib
+                    nfe_qty, nfe_price = nfe_qty_trib, nfe_price_trib
+                else:
+                    qty_score, price_score, pack_used = qty_score_com, price_score_com, pack_used_com
+                    # FIX: Assign the commercial variables if they win
+                    nfe_qty, nfe_price = nfe_qty_com, nfe_price_com
                 
                 combined = (CODE_MATCH_DESC_SCORE * 0.5) + (qty_score * 0.3) + (price_score * 0.2)
                 matches.append({
@@ -1605,7 +1621,7 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
                     'combined_score': round(combined, 2),
                     'po_qty': po_qty,
                     'nfe_qty': nfe_qty,
-                    'po_price': po_item['preco_unitario'],
+                    'po_price': po_price,
                     'nfe_price': nfe_price,
                     'pack_size_used': pack_used,
                     'match_method': 'exact_code',
@@ -1623,7 +1639,7 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
         if po_qty <= 0:
             continue
 
-        po_price = po_item['preco_unitario']
+        po_price = po_item.get('preco_unitario', 0)
         po_uom = po_item.get('unidade_medida', '')
         best_match = None
         best_score = 0
@@ -1631,10 +1647,6 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
         for j, nfe_item in enumerate(nfe_items_db):
             if nfe_item.id in matched_nfe_ids:
                 continue
-
-            nfe_qty = float(nfe_item.quantidade_comercial or 0)
-            nfe_price = float(nfe_item.valor_unitario_comercial or 0)
-            nfe_uom = nfe_item.unidade_comercial
 
             desc_score = 0
             if len(po_embeddings) > i and len(nfe_embeddings) > j:
@@ -1644,11 +1656,30 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
             if desc_score < MIN_DESC_SCORE_FLOOR:
                 continue
 
+            nfe_uom = nfe_item.unidade_comercial
             pack_size = extract_pack_size(nfe_item.descricao or '')
-            qty_score, price_score, pack_used = score_qty_and_price(
-                po_qty, po_price, po_uom, 
-                nfe_qty, nfe_price, nfe_uom, pack_size
+
+            nfe_qty_com = float(nfe_item.quantidade_comercial or 0)
+            nfe_price_com = float(nfe_item.valor_unitario_comercial or 0)
+
+            nfe_qty_trib = float(nfe_item.quantidade_tributavel or 0)
+            nfe_price_trib = float(nfe_item.valor_unitario_tributavel or 0)
+
+            qty_score_com, price_score_com, pack_used_com = score_qty_and_price(
+                po_qty, po_price, po_uom, nfe_qty_com, nfe_price_com, nfe_uom, pack_size
             )
+
+            qty_score_trib, price_score_trib, pack_used_trib = score_qty_and_price(
+                po_qty, po_price, po_uom, nfe_qty_trib, nfe_price_trib, po_uom, 1
+            )
+
+            if (qty_score_trib + price_score_trib) > (qty_score_com + price_score_com):
+                qty_score, price_score, pack_used = qty_score_trib, price_score_trib, pack_used_trib
+                nfe_qty, nfe_price = nfe_qty_trib, nfe_price_trib
+            else:
+                qty_score, price_score, pack_used = qty_score_com, price_score_com, pack_used_com
+                # FIX: Assign the commercial variables if they win
+                nfe_qty, nfe_price = nfe_qty_com, nfe_price_com
 
             if price_score < MIN_PRICE_SCORE_TO_PASS and qty_score < MIN_QTY_SCORE_TO_PASS:
                 continue
@@ -1690,6 +1721,7 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
     avg_score = sum(m['combined_score'] for m in matches) / len(matches) if matches else 0
 
     return matches, avg_score, coverage
+
 
 # --------------------------------------------------------------------------- #
 # Main entrypoint
