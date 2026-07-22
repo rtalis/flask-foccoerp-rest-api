@@ -1727,6 +1727,7 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
 # Main entrypoint
 # --------------------------------------------------------------------------- #
 
+
 def score_purchase_nfe_match(cod_pedc, cod_emp1, nfe_cache=None):
     if nfe_cache is None:
         nfe_cache = {}
@@ -1735,6 +1736,10 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1, nfe_cache=None):
         return {'error': 'cod_pedc is required'}
     if not cod_emp1:
         return {'error': 'cod_emp1 is required'}
+
+    from app.models import PurchaseOrder, PurchaseItem, NFEData, NFEItem, NFEEmitente, NFEntry
+    # Assuming db is accessible. If not, use PurchaseOrder.query.session
+    session = PurchaseOrder.query.session
 
     purchase_order = PurchaseOrder.query.filter_by(
         cod_pedc=str(cod_pedc), cod_emp1=str(cod_emp1)
@@ -1803,6 +1808,18 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1, nfe_cache=None):
 
     po_num_clean = clean_digits(str(cod_pedc))
 
+    # Query for NFE numbers that have already been used by other purchase orders from the same supplier
+    used_nfe_query = session.query(NFEntry.num_nf).join(
+        PurchaseOrder,
+        (NFEntry.cod_pedc == PurchaseOrder.cod_pedc) & 
+        (NFEntry.cod_emp1 == PurchaseOrder.cod_emp1)
+    ).filter(
+        PurchaseOrder.fornecedor_id == purchase_order.fornecedor_id,
+        PurchaseOrder.id != purchase_order.id  # Exclude matches belonging to the current PO
+    ).all()
+    
+    used_nfe_numbers_set = {str(row[0]).strip() for row in used_nfe_query if row[0]}
+
     # Compute PO embeddings once, on normalized text.
     all_items = po_data['itens']
     po_descriptions_norm = [item['descricao_norm'] for item in all_items]
@@ -1816,6 +1833,9 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1, nfe_cache=None):
     results = []
 
     for nfe in all_nfes:
+        if str(nfe.numero).strip() in used_nfe_numbers_set:
+            continue
+
         if nfe.id not in nfe_cache:
             emitente = NFEEmitente.query.filter_by(nfe_id=nfe.id).first()
             nfe_items_db = NFEItem.query.filter_by(nfe_id=nfe.id).all()
