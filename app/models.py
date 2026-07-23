@@ -128,7 +128,6 @@ class NFEntry(db.Model):
     chave_acesso_nfel = db.Column(db.String(44), nullable=True)
 
     __table_args__ = (
-        # A restrição antiga 'uq_nf_entry' foi removida daqui
         db.Index(
             'ix_nf_entries_num_nf_trgm', 
             db.text('unaccent(num_nf)'), 

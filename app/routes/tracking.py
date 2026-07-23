@@ -357,11 +357,15 @@ def sync_company_nfes_chunk(company_id):
     """Sync a single 15-day chunk of NFEs for a company. Returns progress info."""
     import requests
     import base64
+    import time
+    import logging
     import xml.etree.ElementTree as ET
     from config import Config
     from datetime import datetime
     from app.models import Company, NFEData
     from app.utils import parse_and_store_nfe_xml
+    
+    logger = logging.getLogger(__name__)
     
     company = db.session.get(Company, company_id)
     if not company:
@@ -383,29 +387,77 @@ def sync_company_nfes_chunk(company_id):
     already_existed = 0
     errors = []
     
+    sieg_request_data = {
+        "XmlType": 1,
+        "DataEmissaoInicio": chunk_start,
+        "DataEmissaoFim": chunk_end,
+        "CnpjDest": cnpj_clean,
+    }
+    
+    max_retries = 3
+    backoff = 5  # Initial backoff in seconds if Retry-After is missing
+    response = None
+    
+    # --- RETRY LOOP FOR EXTERNAL API ---
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(
+                f'https://api.sieg.com/BaixarXmlsV2?api_key={Config.SIEG_API_KEY}',
+                json=sieg_request_data,
+                headers={'Content-Type': 'application/json', 'Accept': 'application/json'},
+                timeout=60
+            )
+            
+            if response.status_code == 200:
+                break  # Success, exit the retry loop
+                
+            if response.status_code == 429:
+                retry_after = response.headers.get('Retry-After')
+                if retry_after:
+                    try:
+                        wait = int(retry_after)
+                    except ValueError:
+                        wait = backoff
+                else:
+                    wait = backoff
+
+                logger.warning(
+                    f"Rate limited (429) for company {company.cnpj}. "
+                    f"Retry {attempt+1}/{max_retries} after {wait}s"
+                )
+                time.sleep(wait)
+                backoff *= 2  # Exponential backoff for the next iteration
+                continue
+            
+            # If it's another error (500, 401, etc.), break and handle it outside
+            break
+            
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Request exception for company {company.cnpj}: {str(e)}")
+            if attempt == max_retries - 1:
+                return jsonify({
+                    'status': 'error',
+                    'error': f'Request failed after {max_retries} attempts: {str(e)}',
+                    'chunk_start': chunk_start,
+                    'chunk_end': chunk_end,
+                }), 200
+            
+            time.sleep(backoff)
+            backoff *= 2
+            continue
+
+    # Evaluate final response after all retries are exhausted
+    if not response or response.status_code != 200:
+        status_code = response.status_code if response else 'Unknown'
+        return jsonify({
+            'status': 'error',
+            'error': f'SIEG API error: {status_code}',
+            'chunk_start': chunk_start,
+            'chunk_end': chunk_end,
+        }), 200
+
+    # --- DB TRANSACTION BLOCK ---
     try:
-        sieg_request_data = {
-            "XmlType": 1,
-            "DataEmissaoInicio": chunk_start,
-            "DataEmissaoFim": chunk_end,
-            "CnpjDest": cnpj_clean,
-        }
-        
-        response = requests.post(
-            f'https://api.sieg.com/BaixarXmlsV2?api_key={Config.SIEG_API_KEY}',
-            json=sieg_request_data,
-            headers={'Content-Type': 'application/json', 'Accept': 'application/json'},
-            timeout=60
-        )
-        
-        if response.status_code != 200:
-            return jsonify({
-                'status': 'error',
-                'error': f'SIEG API error: {response.status_code}',
-                'chunk_start': chunk_start,
-                'chunk_end': chunk_end,
-            }), 200
-        
         result = response.json()
         xmls = result.get('xmls', [])
         
@@ -452,4 +504,3 @@ def sync_company_nfes_chunk(company_id):
             'chunk_start': chunk_start,
             'chunk_end': chunk_end,
         }), 200
-
