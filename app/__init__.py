@@ -54,19 +54,20 @@ def create_app():
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'
 
-    # Get allowed origins from env, default to localhost for development
+    allowed_regex = re.compile(
+        r"^https://(.*\.lovableproject\.com|.*\.lovable\.dev|.*\.roxel\.dev)$"
+    )
+    
+    
+    allowed_origins = [
+        allowed_regex
+    ]
+
     allowed_origins_env = os.getenv('ALLOWED_ORIGINS', '')
     if allowed_origins_env:
-        allowed_origins = [origin.strip() for origin in allowed_origins_env.split(',')]
-    else:
-        allowed_origins = [
-            "http://localhost:5173",  
-            "http://localhost:3000", 
-            "http://127.0.0.1:5173",
-            re.compile(r"^https://.*\.lovableproject\.com$"),
-            re.compile(r"^https://.*\.lovable\.dev$"),
-            re.compile(r"^https://.*\.roxel\.dev$"),
-        ]
+        env_origins = [origin.strip() for origin in allowed_origins_env.split(',')]
+        allowed_origins.extend(env_origins)
+
     CORS(app, resources={r"/*": {"origins": allowed_origins}}, supports_credentials=True)
 
     with app.app_context():
@@ -84,7 +85,6 @@ def create_app():
     @app.after_request
     def log_request(response):
         if current_user.is_authenticated and hasattr(request, '_start_time'):
-            # Skip logging for static files
             if request.path.startswith('/static'):
                 return response
             try:
