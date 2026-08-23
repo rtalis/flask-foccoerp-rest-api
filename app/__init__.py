@@ -1,3 +1,5 @@
+import re
+
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
@@ -61,9 +63,9 @@ def create_app():
             "http://localhost:5173",  
             "http://localhost:3000", 
             "http://127.0.0.1:5173",
-            "http://*.lovableprojects.com",
-            "https://*.lovable.com",
-            "https://*.roxel.dev",
+            re.compile(r"^http://.*\.lovableprojects\.com$"),
+            re.compile(r"^https://.*\.lovable\.dev$"),
+            re.compile(r"^https://.*\.roxel\.dev$"),
         ]
     CORS(app, resources={r"/*": {"origins": allowed_origins}}, supports_credentials=True)
 
