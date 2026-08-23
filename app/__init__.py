@@ -61,6 +61,9 @@ def create_app():
             "http://localhost:5173",  
             "http://localhost:3000", 
             "http://127.0.0.1:5173",
+            "http://*.lovableprojects.com",
+            "https://*.lovable.com",
+            "https://*.roxel.dev",
         ]
     CORS(app, resources={r"/*": {"origins": allowed_origins}}, supports_credentials=True)
 
