@@ -63,7 +63,7 @@ def create_app():
             "http://localhost:5173",  
             "http://localhost:3000", 
             "http://127.0.0.1:5173",
-            re.compile(r"^http://.*\.lovableprojects\.com$"),
+            re.compile(r"^https://.*\.lovableproject\.com$"),
             re.compile(r"^https://.*\.lovable\.dev$"),
             re.compile(r"^https://.*\.roxel\.dev$"),
         ]
