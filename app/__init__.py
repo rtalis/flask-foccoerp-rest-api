@@ -55,9 +55,8 @@ def create_app():
     login_manager.login_view = 'auth.login'
 
     allowed_regex = re.compile(
-        r"^https://(.*\.lovableproject\.com|.*\.lovable\.app|.*\.lovable\.dev|.*\.roxel\.dev)(:\d+)?$"
+        r"^https?://(localhost|127\.0\.0\.1|.*\.lovableproject\.com|.*\.lovable\.app|.*\.lovable\.dev|.*\.roxel\.dev)(:\d+)?$"
     )
-    
     
     allowed_origins = [
         allowed_regex
