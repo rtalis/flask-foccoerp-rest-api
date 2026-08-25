@@ -116,8 +116,12 @@ def login():
         login_history = _record_login_event(user, request, method='password')
         send_login_notification_email(user, login_history.login_ip)
 
+        token, actual_minutes, record = _issue_token_for_user(user, expires_minutes=None, created_by=user)
+
         resp = make_response(jsonify({
             'message': 'Logged in successfully',
+            'token': token,  
+            'expires_in_minutes': actual_minutes,
             'user': {
                 'username': user.username,
                 'email': user.email,
