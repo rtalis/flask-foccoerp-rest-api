@@ -1481,6 +1481,9 @@ def search_nfe():
             
             linked_purchases = []
             estimated_purchases = []
+            
+            purchase_info = None 
+            
             if nfe.numero:
                 nf_entries = NFEntry.query.filter(NFEntry.num_nf == nfe.numero).all()
                 for entry in nf_entries:
@@ -1546,44 +1549,44 @@ def search_nfe():
                             linked_purchase_keys.add(key)
                 
                 if include_estimated:
-                    if not purchase_info:
-                        estimated_matches = PurchaseItemNFEMatch.query.filter(PurchaseItemNFEMatch.nfe_numero == nfe.numero).all()
-                        for match in estimated_matches:
-                            item = db.session.get(PurchaseItem, match.purchase_item_id)
-                            if item:
-                                po = db.session.get(PurchaseOrder, item.purchase_order_id)
-                                if po:
-                                    key = (po.cod_pedc, po.cod_emp1, str(item.linha) if item.linha else None)
-                                    already_linked = any(p['cod_pedc'] == po.cod_pedc and p['linha'] == item.linha for p in linked_purchases)
-                                    if not already_linked:
-                                        nfe_item = _resolve_nfe_item_for_purchase(None, item, match)
-                                        purchase_info = {
-                                            'cod_pedc': po.cod_pedc,
-                                            'cod_emp1': po.cod_emp1,
-                                            'fornecedor': po.fornecedor_descricao,
-                                            'dt_emis': po.dt_emis.isoformat() if po.dt_emis else None,
-                                            'total_pedido': po.total_liquido,
-                                            'func_nome': po.func_nome,
-                                            'item_descricao': item.descricao,
-                                            'linha': item.linha,
-                                            'quantidade': item.quantidade,
-                                            'qtde_atendida': item.qtde_atendida,
-                                            'qtde_saldo': item.qtde_saldo,
-                                            'preco_unitario': item.preco_unitario,
-                                            'total_item': item.total,
-                                            'unidade_medida': item.unidade_medida,
-                                            'dt_entrega': item.dt_entrega.isoformat() if item.dt_entrega else None,
-                                            'nfe_numero': nfe.numero,
-                                            'is_estimated': True,
-                                            'match_score': match.match_score,
-                                            'nfe_item_numero': nfe_item.numero_item if nfe_item else None,
-                                            'nfe_item_descricao': match.nfe_item_descricao or (nfe_item.descricao if nfe_item else None),
-                                            'nfe_item_quantidade': match.nfe_item_quantidade,
-                                            'nfe_item_unidade': nfe_item.unidade_comercial if nfe_item else None,
-                                            'nfe_item_preco': match.nfe_item_preco,
-                                        }
-                                        estimated_purchases.append(purchase_info)
-            
+
+                    estimated_matches = PurchaseItemNFEMatch.query.filter(PurchaseItemNFEMatch.nfe_numero == nfe.numero).all()
+                    for match in estimated_matches:
+                        item = db.session.get(PurchaseItem, match.purchase_item_id)
+                        if item:
+                            po = db.session.get(PurchaseOrder, item.purchase_order_id)
+                            if po:
+                                key = (po.cod_pedc, po.cod_emp1, str(item.linha) if item.linha else None)
+                                already_linked = any(p['cod_pedc'] == po.cod_pedc and p['linha'] == item.linha for p in linked_purchases)
+                                if not already_linked:
+                                    nfe_item = _resolve_nfe_item_for_purchase(None, item, match)
+                         
+                                    estimated_info = {
+                                        'cod_pedc': po.cod_pedc,
+                                        'cod_emp1': po.cod_emp1,
+                                        'fornecedor': po.fornecedor_descricao,
+                                        'dt_emis': po.dt_emis.isoformat() if po.dt_emis else None,
+                                        'total_pedido': po.total_liquido,
+                                        'func_nome': po.func_nome,
+                                        'item_descricao': item.descricao,
+                                        'linha': item.linha,
+                                        'quantidade': item.quantidade,
+                                        'qtde_atendida': item.qtde_atendida,
+                                        'qtde_saldo': item.qtde_saldo,
+                                        'preco_unitario': item.preco_unitario,
+                                        'total_item': item.total,
+                                        'unidade_medida': item.unidade_medida,
+                                        'dt_entrega': item.dt_entrega.isoformat() if item.dt_entrega else None,
+                                        'nfe_numero': nfe.numero,
+                                        'is_estimated': True,
+                                        'match_score': match.match_score,
+                                        'nfe_item_numero': nfe_item.numero_item if nfe_item else None,
+                                        'nfe_item_descricao': match.nfe_item_descricao or (nfe_item.descricao if nfe_item else None),
+                                        'nfe_item_quantidade': match.nfe_item_quantidade,
+                                        'nfe_item_unidade': nfe_item.unidade_comercial if nfe_item else None,
+                                        'nfe_item_preco': match.nfe_item_preco,
+                                    }
+                                    estimated_purchases.append(estimated_info)  
             nfe_results.append({
                 'id': nfe.id,
                 'numero': nfe.numero,

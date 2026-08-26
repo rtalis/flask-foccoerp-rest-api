@@ -34,14 +34,15 @@ export const exportPurchaseOrdersToExcel = (results, options = {}) => {
             "Código Pedido": order.order.cod_pedc,
             "Data Emissão": formatDateForExcel(order.order.dt_emis),
             Fornecedor: order.order.fornecedor_descricao,
-              "CNPJ/CPF": order.order.cnpj_cpf,
-
+            "CNPJ/CPF": order.order.cnpj_cpf,
           };
+          
           if (canViewFinancials) {
             row["Total Bruto"] = order.order.total_bruto;
             row["Total Líquido"] = order.order.total_liquido;
             row["Total Final"] = order.order.adjusted_total;
           }
+          
           row["Posição"] = order.order.posicao;
           row["Observação"] = order.order.observacao;
           row["Contato"] = order.order.contato;
@@ -61,7 +62,8 @@ export const exportPurchaseOrdersToExcel = (results, options = {}) => {
           }
 
           row["Unidade Medida"] = item.unidade_medida;
-          row["Data Entrega"] = formatDateForExcel(item.dt_entrega);
+          // Renamed to clarify this is the order's delivery date
+          row["Data Entrega Pedido"] = formatDateForExcel(item.dt_entrega); 
 
           if (canViewFinancials) {
             row["Perc. IPI"] = item.perc_ipi;
@@ -77,8 +79,21 @@ export const exportPurchaseOrdersToExcel = (results, options = {}) => {
           row["Perc. Tolerância"] = item.perc_toler;
 
           if (canViewNfes) {
-              row["NFEs"] = (order.order.nfes || []).map((nfe) => nfe.num_nf).join(", ");          
-            }
+            // Filter NFEs strictly to the ones that match this item's line (linha)
+            const itemNfes = (order.order.nfes || []).filter(
+              (nfe) => String(nfe.linha) === String(item.linha)
+            );
+
+            // Extract unique NFE numbers
+            row["NFEs"] = [...new Set(itemNfes.map((nfe) => nfe.num_nf))]
+              .filter(Boolean)
+              .join(", ");
+              
+            // Extract unique NFE delivery dates (dt_ent)
+            row["Data Entrada NFE"] = [...new Set(itemNfes.map((nfe) => formatDateForExcel(nfe.dt_ent)))]
+              .filter(Boolean)
+              .join(", ");
+          }
 
           return row;
         });
