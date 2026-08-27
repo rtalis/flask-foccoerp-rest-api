@@ -1196,14 +1196,14 @@ def extract_xml_value(root, xpath):
     except:
         return ''
 
-
 @bp.route('/search_nfe', methods=['GET'])
 @login_required
 def search_nfe():
     """
     Search for NFEs and find linked purchase orders.
     """
-    from app.models import NFEData, NFEEmitente, NFEItem, NFEntry, PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch, Company
+    # 1. Added NFEDestinatario to imports
+    from app.models import NFEData, NFEEmitente, NFEDestinatario, NFEItem, NFEntry, PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch, Company
     from datetime import datetime
     from fuzzywuzzy import fuzz
     from sqlalchemy import and_, or_
@@ -1226,6 +1226,15 @@ def search_nfe():
             clean_cnpj = ''.join(filter(str.isdigit, str(c.cnpj)))
             if clean_cnpj:
                 own_cnpjs.append(clean_cnpj)
+
+    # 2. Capture and sanitize destination CNPJs from frontend
+    dest_cnpjs_param = request.args.get('destinatario_cnpjs', '')
+    dest_cnpjs = []
+    if dest_cnpjs_param:
+        for c in dest_cnpjs_param.split(','):
+            clean_c = ''.join(filter(str.isdigit, str(c)))
+            if clean_c:
+                dest_cnpjs.append(clean_c)
     
     # Allow empty query if date range is provided
     if not query and not start_date_str and not end_date_str:
@@ -1243,7 +1252,6 @@ def search_nfe():
         # Build NFE query
         nfe_filters = []
         
-        # Only add search filters if query is provided
         if query:
             if search_by_number:
                 nfe_filters.append(NFEData.numero == query)
@@ -1259,9 +1267,12 @@ def search_nfe():
         # Query NFEs
         nfe_query = NFEData.query
         
-        # Apply exclusion filter if requested
         if hide_group_companies and own_cnpjs:
             nfe_query = nfe_query.join(NFEEmitente).filter(~NFEEmitente.cnpj.in_(own_cnpjs))
+            
+        # 3. Apply target destination filter on base query
+        if dest_cnpjs:
+            nfe_query = nfe_query.join(NFEDestinatario).filter(NFEDestinatario.cnpj.in_(dest_cnpjs))
             
         if nfe_filters:
             nfe_query = nfe_query.filter(or_(*nfe_filters))
@@ -1272,7 +1283,6 @@ def search_nfe():
         if end_date:
             nfe_query = nfe_query.filter(NFEData.data_emissao <= end_date)
         
-        # Order by most recent first
         nfe_query = nfe_query.order_by(NFEData.data_emissao.desc())
         nfes = nfe_query.limit(50).all()
         
@@ -1282,6 +1292,10 @@ def search_nfe():
             
             if hide_group_companies and own_cnpjs:
                 supplier_query = supplier_query.filter(~NFEEmitente.cnpj.in_(own_cnpjs))
+                
+            # 4. Apply target destination filter on supplier query
+            if dest_cnpjs:
+                supplier_query = supplier_query.join(NFEDestinatario).filter(NFEDestinatario.cnpj.in_(dest_cnpjs))
                 
             if exact_term_search:
                 supplier_nfes = supplier_query.filter(NFEEmitente.nome == query)
@@ -1306,6 +1320,10 @@ def search_nfe():
             
             if hide_group_companies and own_cnpjs:
                 item_query = item_query.join(NFEEmitente).filter(~NFEEmitente.cnpj.in_(own_cnpjs))
+                
+            # 5. Apply target destination filter on item query
+            if dest_cnpjs:
+                item_query = item_query.join(NFEDestinatario).filter(NFEDestinatario.cnpj.in_(dest_cnpjs))
                 
             if exact_term_search:
                 item_nfes = item_query.filter(NFEItem.descricao == query)
