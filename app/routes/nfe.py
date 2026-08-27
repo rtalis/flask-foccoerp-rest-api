@@ -1306,22 +1306,16 @@ def search_nfe():
             'nfe_item_full_qty': round(nfe_full_qty, 4),
             'fully_claimed_across_pos': fully_claimed,
         }
-
-    def compute_item_status(po_item, nfe_item_preco, nfe_item_qty, nfe_item_id=None, nfe_uom=None):
+        
+    def compute_item_status(po_item, nfe_item_preco, nfe_item_qty, nfe_item_id=None,
+                         nfe_uom=None, is_estimated=False):
         """
         Computes the 3-dot traffic light status for a PO item <-> NFE item pairing.
-
-        Returns a dict:
-        {
-            'unit_price': {'status': 'green'|'yellow'|'red'|'gray', 'diff_pct': float|None, 'converted': bool},
-            'line_total': {'status': ..., 'diff_pct': float|None},
-            'order_balance': {'status': ..., 'is_split': bool, 'fully_claimed_across_pos': bool},
-        }
         """
         result = {
             'unit_price': {'status': 'gray', 'diff_pct': None, 'converted': False},
             'line_total': {'status': 'gray', 'diff_pct': None},
-            'order_balance': {'status': 'gray', 'is_split': False, 'fully_claimed_across_pos': False},
+            'order_balance': {'status': 'gray', 'is_split': False, 'fully_claimed_across_pos': False, 'pending': False},
         }
 
         if not po_item:
@@ -1335,8 +1329,7 @@ def search_nfe():
         # --- Dot 1: unit price -------------------------------------------------
         converted = bool(po_uom_clean and nfe_uom_clean and po_uom_clean != nfe_uom_clean)
         unit_diff = _pct_diff(po_price, nfe_item_preco)
-        # If units differ, a raw unit-price diff is not directly comparable —
-        # widen tolerance and flag as "converted" instead of a hard red.
+
         if converted:
             result['unit_price']['status'] = 'yellow' if unit_diff is not None else 'gray'
         else:
@@ -1352,7 +1345,11 @@ def search_nfe():
             else None
         )
         line_diff = _pct_diff(po_line_total, nfe_line_total)
-        result['line_total']['status'] = _status_from_diff(line_diff)
+        # unreliable in the exact same way it makes unit price unreliable.
+        if converted:
+            result['line_total']['status'] = 'yellow' if line_diff is not None else 'gray'
+        else:
+            result['line_total']['status'] = _status_from_diff(line_diff)
         result['line_total']['diff_pct'] = round(line_diff, 2) if line_diff is not None else None
 
         # --- Dot 3: order balance / saldo ---------------------------------------
@@ -1364,17 +1361,22 @@ def search_nfe():
         qty_total = float(po_item.quantidade) if po_item.quantidade is not None else 0.0
 
         if split_info['is_split'] and split_info.get('fully_claimed_across_pos'):
-            # The NFE line is fully accounted for once you sum every PO it feeds —
-            # this PO's own partial qtde_atendida is not a problem.
             result['order_balance']['status'] = 'green'
         elif qty_total > 0 and qty_atendida >= qty_total:
             result['order_balance']['status'] = 'green'
         elif qty_atendida > 0:
             result['order_balance']['status'] = 'yellow'
         else:
-            result['order_balance']['status'] = 'red'
+        
+            if is_estimated:
+                result['order_balance']['status'] = 'gray'
+                result['order_balance']['pending'] = True
+            else:
+                result['order_balance']['status'] = 'red'
 
         return result
+
+   
 
     try:
         # Parse dates
@@ -1673,7 +1675,8 @@ def search_nfe():
                             nfe_item_qty=nfe_item.quantidade_comercial if nfe_item else None,
                             nfe_item_id=nfe_item.id if nfe_item else None,
                             nfe_uom=nfe_item.unidade_comercial if nfe_item else None,
-                        )
+                            is_estimated=False,
+                            )
 
                         purchase_info = {
                             'cod_pedc': po.cod_pedc,
@@ -1750,6 +1753,7 @@ def search_nfe():
                                         ),
                                         nfe_item_id=match.nfe_item_id or (nfe_item.id if nfe_item else None),
                                         nfe_uom=nfe_item.unidade_comercial if nfe_item else None,
+                                        is_estimated=True,
                                     )
 
                                     estimated_info = {
