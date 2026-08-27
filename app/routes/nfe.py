@@ -1587,6 +1587,7 @@ def search_nfe():
                                         'nfe_item_preco': match.nfe_item_preco,
                                     }
                                     estimated_purchases.append(estimated_info)  
+
             nfe_results.append({
                 'id': nfe.id,
                 'numero': nfe.numero,
@@ -1596,9 +1597,22 @@ def search_nfe():
                 'fornecedor': emitente.nome if emitente else None,
                 'cnpj': emitente.cnpj if emitente else None,
                 'informacoes_adicionais': nfe.informacoes_adicionais,
+                
+                # NFE Total Taxes
+                'impostos_totais': {
+                    'valor_icms': nfe.valor_icms,
+                    'valor_icms_st': nfe.valor_icms_st,
+                    'valor_ipi': nfe.valor_ipi,
+                    'valor_pis': nfe.valor_pis,
+                    'valor_cofins': nfe.valor_cofins,
+                    'valor_imposto_total': nfe.valor_imposto,
+                },
+
                 'matched_items': matched_items,
                 'linked_purchases': linked_purchases,
                 'estimated_purchases': estimated_purchases,
+                
+                # Include Item-level Taxes & Details
                 'nfe_items': [{
                     'id': item.id,
                     'numero_item': item.numero_item,
@@ -1606,7 +1620,21 @@ def search_nfe():
                     'unidade': item.unidade_comercial,
                     'quantidade': item.quantidade_comercial,
                     'preco_unitario': item.valor_unitario_comercial,
-                } for item in nfe_items],
+                    'valor_total_bruto': item.valor_total_bruto,
+                    
+                    # Tax Info
+                    'ncm': item.ncm,
+                    'cfop': item.cfop,
+                    'icms_cst': item.icms_cst,
+                    'icms_aliquota': item.icms_picms,
+                    'icms_valor': item.icms_vicms,
+                    'ipi_cst': item.ipi_cst,
+                    'pis_aliquota': item.pis_ppis,
+                    'pis_valor': item.pis_vpis,
+                    'cofins_aliquota': item.cofins_pcofins,
+                    'cofins_valor': item.cofins_vcofins,
+                    'valor_total_tributos': item.valor_total_tributos,
+                } for item in nfe_items], # Make sure to use nfe_data_items for the second block!
             })
             if nfe.numero:
                 nfe_numbers.add(nfe.numero)
