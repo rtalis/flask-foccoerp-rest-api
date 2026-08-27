@@ -1195,15 +1195,13 @@ def extract_xml_value(root, xpath):
         return element.text if element is not None else ''
     except:
         return ''
-    
-
-@bp.route('/search_nfe', methods=['GET'])
+    @bp.route('/search_nfe', methods=['GET'])
 @login_required
 def search_nfe():
     """
     Search for NFEs and find linked purchase orders.
     """
-    from app.models import NFEData, NFEEmitente, NFEItem, NFEntry, PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch
+    from app.models import NFEData, NFEEmitente, NFEItem, NFEntry, PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch, Company
     from datetime import datetime
     from fuzzywuzzy import fuzz
     from sqlalchemy import and_, or_
@@ -1217,6 +1215,15 @@ def search_nfe():
     search_by_item = request.args.get('search_by_item', 'true').lower() == 'true'
     include_estimated = request.args.get('include_estimated', 'true').lower() == 'true'
     exact_term_search = request.args.get('exact_term_search', 'true').lower() == 'true'
+    hide_group_companies = request.args.get('hide_group_companies', 'false').lower() == 'true'
+    
+    own_cnpjs = []
+    if hide_group_companies:
+        companies = Company.query.filter(Company.cnpj.isnot(None)).all()
+        for c in companies:
+            clean_cnpj = ''.join(filter(str.isdigit, str(c.cnpj)))
+            if clean_cnpj:
+                own_cnpjs.append(clean_cnpj)
     
     # Allow empty query if date range is provided
     if not query and not start_date_str and not end_date_str:
@@ -1249,6 +1256,11 @@ def search_nfe():
         
         # Query NFEs
         nfe_query = NFEData.query
+        
+        # Apply exclusion filter if requested
+        if hide_group_companies and own_cnpjs:
+            nfe_query = nfe_query.join(NFEEmitente).filter(~NFEEmitente.cnpj.in_(own_cnpjs))
+            
         if nfe_filters:
             nfe_query = nfe_query.filter(or_(*nfe_filters))
         
@@ -1264,14 +1276,16 @@ def search_nfe():
         
         # If searching by supplier
         if search_by_fornecedor and query:
+            supplier_query = NFEData.query.join(NFEEmitente)
+            
+            if hide_group_companies and own_cnpjs:
+                supplier_query = supplier_query.filter(~NFEEmitente.cnpj.in_(own_cnpjs))
+                
             if exact_term_search:
-                supplier_nfes = NFEData.query.join(NFEEmitente).filter(
-                    NFEEmitente.nome == query
-                )
+                supplier_nfes = supplier_query.filter(NFEEmitente.nome == query)
             else:
-                supplier_nfes = NFEData.query.join(NFEEmitente).filter(
-                    NFEEmitente.nome.ilike(f'%{query}%')
-                )
+                supplier_nfes = supplier_query.filter(NFEEmitente.nome.ilike(f'%{query}%'))
+                
             if start_date:
                 supplier_nfes = supplier_nfes.filter(NFEData.data_emissao >= start_date)
             if end_date:
@@ -1286,16 +1300,17 @@ def search_nfe():
         
         # If searching by item description
         if search_by_item and query:
+            item_query = NFEData.query.join(NFEItem)
+            
+            if hide_group_companies and own_cnpjs:
+                item_query = item_query.join(NFEEmitente).filter(~NFEEmitente.cnpj.in_(own_cnpjs))
+                
             if exact_term_search:
-                item_nfes = NFEData.query.join(NFEItem).filter(
-                    NFEItem.descricao == query
-                )
+                item_nfes = item_query.filter(NFEItem.descricao == query)
             else:
                 search_terms = query.split()
                 term_filters = [NFEItem.descricao.ilike(f'%{term}%') for term in search_terms]
-                item_nfes = NFEData.query.join(NFEItem).filter(
-                    and_(*term_filters)
-                )
+                item_nfes = item_query.filter(and_(*term_filters))
                     
             if start_date:
                 item_nfes = item_nfes.filter(NFEData.data_emissao >= start_date)
@@ -1551,7 +1566,6 @@ def search_nfe():
                             linked_purchase_keys.add(key)
                 
                 if include_estimated:
-
                     estimated_matches = PurchaseItemNFEMatch.query.filter(PurchaseItemNFEMatch.nfe_numero == nfe.numero).all()
                     for match in estimated_matches:
                         item = db.session.get(PurchaseItem, match.purchase_item_id)
@@ -1562,7 +1576,6 @@ def search_nfe():
                                 already_linked = any(p['cod_pedc'] == po.cod_pedc and p['linha'] == item.linha for p in linked_purchases)
                                 if not already_linked:
                                     nfe_item = _resolve_nfe_item_for_purchase(None, item, match)
-                         
                                     estimated_info = {
                                         'cod_pedc': po.cod_pedc,
                                         'cod_emp1': po.cod_emp1,
@@ -1588,8 +1601,8 @@ def search_nfe():
                                         'nfe_item_unidade': nfe_item.unidade_comercial if nfe_item else None,
                                         'nfe_item_preco': match.nfe_item_preco,
                                     }
-                                    estimated_purchases.append(estimated_info)  
-
+                                    estimated_purchases.append(estimated_info)
+            
             nfe_results.append({
                 'id': nfe.id,
                 'numero': nfe.numero,
@@ -1600,7 +1613,6 @@ def search_nfe():
                 'cnpj': emitente.cnpj if emitente else None,
                 'informacoes_adicionais': nfe.informacoes_adicionais,
                 
-                # NFE Total Taxes
                 'impostos_totais': {
                     'valor_icms': nfe.valor_icms,
                     'valor_icms_st': nfe.valor_icms_st,
@@ -1614,7 +1626,6 @@ def search_nfe():
                 'linked_purchases': linked_purchases,
                 'estimated_purchases': estimated_purchases,
                 
-                # Include Item-level Taxes & Details
                 'nfe_items': [{
                     'id': item.id,
                     'numero_item': item.numero_item,
@@ -1624,7 +1635,6 @@ def search_nfe():
                     'preco_unitario': item.valor_unitario_comercial,
                     'valor_total_bruto': item.valor_total_bruto,
                     
-                    # Tax Info
                     'ncm': item.ncm,
                     'cfop': item.cfop,
                     'icms_cst': item.icms_cst,
@@ -1636,7 +1646,7 @@ def search_nfe():
                     'cofins_aliquota': item.cofins_pcofins,
                     'cofins_valor': item.cofins_vcofins,
                     'valor_total_tributos': item.valor_total_tributos,
-                } for item in nfe_items], # Make sure to use nfe_data_items for the second block!
+                } for item in nfe_items],
             })
             if nfe.numero:
                 nfe_numbers.add(nfe.numero)
@@ -1777,6 +1787,16 @@ def search_nfe():
                                 'fornecedor': emitente.nome if emitente else None,
                                 'cnpj': emitente.cnpj if emitente else None,
                                 'informacoes_adicionais': nfe_data.informacoes_adicionais,
+                                
+                                'impostos_totais': {
+                                    'valor_icms': nfe_data.valor_icms,
+                                    'valor_icms_st': nfe_data.valor_icms_st,
+                                    'valor_ipi': nfe_data.valor_ipi,
+                                    'valor_pis': nfe_data.valor_pis,
+                                    'valor_cofins': nfe_data.valor_cofins,
+                                    'valor_imposto_total': nfe_data.valor_imposto,
+                                },
+                                
                                 'matched_items': [],
                                 'linked_purchases': [{
                                     'cod_pedc': po.cod_pedc,
@@ -1786,6 +1806,7 @@ def search_nfe():
                                     'linha': entry.linha,
                                 }],
                                 'estimated_purchases': [],
+                                
                                 'nfe_items': [{
                                     'id': nfe_item.id,
                                     'numero_item': nfe_item.numero_item,
@@ -1793,6 +1814,19 @@ def search_nfe():
                                     'unidade': nfe_item.unidade_comercial,
                                     'quantidade': nfe_item.quantidade_comercial,
                                     'preco_unitario': nfe_item.valor_unitario_comercial,
+                                    'valor_total_bruto': nfe_item.valor_total_bruto,
+                                    
+                                    'ncm': nfe_item.ncm,
+                                    'cfop': nfe_item.cfop,
+                                    'icms_cst': nfe_item.icms_cst,
+                                    'icms_aliquota': nfe_item.icms_picms,
+                                    'icms_valor': nfe_item.icms_vicms,
+                                    'ipi_cst': nfe_item.ipi_cst,
+                                    'pis_aliquota': nfe_item.pis_ppis,
+                                    'pis_valor': nfe_item.pis_vpis,
+                                    'cofins_aliquota': nfe_item.cofins_pcofins,
+                                    'cofins_valor': nfe_item.cofins_vcofins,
+                                    'valor_total_tributos': nfe_item.valor_total_tributos,
                                 } for nfe_item in nfe_data_items],
                             })
                 
