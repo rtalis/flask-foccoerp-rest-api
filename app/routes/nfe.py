@@ -6,6 +6,8 @@ from fuzzywuzzy import fuzz
 from flask import request, jsonify
 from flask_login import login_required, current_user
 from sqlalchemy import and_, or_
+from flask import make_response
+
 
 from app import db
 from app.models import (
@@ -1816,3 +1818,28 @@ def search_nfe():
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+    
+    
+
+@bp.route('/download_nfe_xml', methods=['GET'])
+@login_required
+def download_nfe_xml():
+    """Download the raw XML file of an NFE."""
+    from app.models import NFEData
+    
+    chave = request.args.get('chave')
+    if not chave:
+        return jsonify({'error': 'A chave da NFE é obrigatória'}), 400
+
+    nfe = NFEData.query.filter_by(chave=chave).first()
+    
+    if not nfe or not nfe.xml_content:
+        return jsonify({'error': 'Arquivo XML não encontrado no banco de dados'}), 404
+
+    # Create the file response
+    response = make_response(nfe.xml_content)
+    response.headers['Content-Type'] = 'application/xml'
+    # This header tells the browser to trigger a file download
+    response.headers['Content-Disposition'] = f'attachment; filename="NFe_{chave}.xml"'
+    
+    return response
