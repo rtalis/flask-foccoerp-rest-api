@@ -1195,7 +1195,9 @@ def extract_xml_value(root, xpath):
         return element.text if element is not None else ''
     except:
         return ''
-    @bp.route('/search_nfe', methods=['GET'])
+
+
+@bp.route('/search_nfe', methods=['GET'])
 @login_required
 def search_nfe():
     """
