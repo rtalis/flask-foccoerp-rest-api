@@ -1202,7 +1202,6 @@ def search_nfe():
     """
     Search for NFEs and find linked purchase orders.
     """
-    # 1. Added NFEDestinatario to imports
     from app.models import NFEData, NFEEmitente, NFEDestinatario, NFEItem, NFEntry, PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch, Company
     from datetime import datetime
     from fuzzywuzzy import fuzz
@@ -1227,7 +1226,6 @@ def search_nfe():
             if clean_cnpj:
                 own_cnpjs.append(clean_cnpj)
 
-    # 2. Capture and sanitize destination CNPJs from frontend
     dest_cnpjs_param = request.args.get('destinatario_cnpjs', '')
     dest_cnpjs = []
     if dest_cnpjs_param:
@@ -1270,7 +1268,6 @@ def search_nfe():
         if hide_group_companies and own_cnpjs:
             nfe_query = nfe_query.join(NFEEmitente).filter(~NFEEmitente.cnpj.in_(own_cnpjs))
             
-        # 3. Apply target destination filter on base query
         if dest_cnpjs:
             nfe_query = nfe_query.join(NFEDestinatario).filter(NFEDestinatario.cnpj.in_(dest_cnpjs))
             
@@ -1293,7 +1290,6 @@ def search_nfe():
             if hide_group_companies and own_cnpjs:
                 supplier_query = supplier_query.filter(~NFEEmitente.cnpj.in_(own_cnpjs))
                 
-            # 4. Apply target destination filter on supplier query
             if dest_cnpjs:
                 supplier_query = supplier_query.join(NFEDestinatario).filter(NFEDestinatario.cnpj.in_(dest_cnpjs))
                 
@@ -1321,7 +1317,6 @@ def search_nfe():
             if hide_group_companies and own_cnpjs:
                 item_query = item_query.join(NFEEmitente).filter(~NFEEmitente.cnpj.in_(own_cnpjs))
                 
-            # 5. Apply target destination filter on item query
             if dest_cnpjs:
                 item_query = item_query.join(NFEDestinatario).filter(NFEDestinatario.cnpj.in_(dest_cnpjs))
                 
@@ -1354,6 +1349,7 @@ def search_nfe():
         
         for nfe in nfes:
             emitente = NFEEmitente.query.filter_by(nfe_id=nfe.id).first()
+            destinatario = NFEDestinatario.query.filter_by(nfe_id=nfe.id).first()
             nfe_items = NFEItem.query.filter_by(nfe_id=nfe.id).all()
             nfe_items_by_numero = {
                 item.numero_item: item for item in nfe_items if item.numero_item is not None
@@ -1631,6 +1627,11 @@ def search_nfe():
                 'valor_total': nfe.valor_total,
                 'fornecedor': emitente.nome if emitente else None,
                 'cnpj': emitente.cnpj if emitente else None,
+                'destinatario': {
+                    'nome': destinatario.nome if destinatario else None,
+                    'cnpj': destinatario.cnpj if destinatario else None,
+                    'cpf': destinatario.cpf if destinatario else None,
+                } if destinatario else None,
                 'informacoes_adicionais': nfe.informacoes_adicionais,
                 
                 'impostos_totais': {
@@ -1693,6 +1694,7 @@ def search_nfe():
                     nfe_data = NFEData.query.filter_by(numero=entry.num_nf).first()
                     if nfe_data:
                         emitente = NFEEmitente.query.filter_by(nfe_id=nfe_data.id).first()
+                        destinatario = NFEDestinatario.query.filter_by(nfe_id=nfe_data.id).first()
                         linked_nfe_data = {
                             'id': nfe_data.id,
                             'numero': nfe_data.numero,
@@ -1701,6 +1703,11 @@ def search_nfe():
                             'valor_total': nfe_data.valor_total,
                             'fornecedor': emitente.nome if emitente else None,
                             'cnpj': emitente.cnpj if emitente else None,
+                            'destinatario': {
+                                'nome': destinatario.nome if destinatario else None,
+                                'cnpj': destinatario.cnpj if destinatario else None,
+                                'cpf': destinatario.cpf if destinatario else None,
+                            } if destinatario else None,
                             'informacoes_adicionais': nfe_data.informacoes_adicionais,
                         }
                 
@@ -1740,6 +1747,7 @@ def search_nfe():
                                 nfe_data = NFEData.query.filter_by(numero=match.nfe_numero).first()
                                 if nfe_data:
                                     emitente = NFEEmitente.query.filter_by(nfe_id=nfe_data.id).first()
+                                    destinatario = NFEDestinatario.query.filter_by(nfe_id=nfe_data.id).first()
                                     linked_nfe_data = {
                                         'id': nfe_data.id,
                                         'numero': nfe_data.numero,
@@ -1748,6 +1756,11 @@ def search_nfe():
                                         'valor_total': nfe_data.valor_total,
                                         'fornecedor': emitente.nome if emitente else None,
                                         'cnpj': emitente.cnpj if emitente else None,
+                                        'destinatario': {
+                                            'nome': destinatario.nome if destinatario else None,
+                                            'cnpj': destinatario.cnpj if destinatario else None,
+                                            'cpf': destinatario.cpf if destinatario else None,
+                                        } if destinatario else None,
                                         'informacoes_adicionais': nfe_data.informacoes_adicionais,
                                     }
                             
@@ -1786,6 +1799,7 @@ def search_nfe():
                     nfe_data = NFEData.query.filter_by(numero=entry.num_nf).first()
                     if nfe_data:
                         emitente = NFEEmitente.query.filter_by(nfe_id=nfe_data.id).first()
+                        destinatario = NFEDestinatario.query.filter_by(nfe_id=nfe_data.id).first()
                         linked_nfe_data = {
                             'id': nfe_data.id,
                             'numero': nfe_data.numero,
@@ -1794,6 +1808,11 @@ def search_nfe():
                             'valor_total': nfe_data.valor_total,
                             'fornecedor': emitente.nome if emitente else None,
                             'cnpj': emitente.cnpj if emitente else None,
+                            'destinatario': {
+                                'nome': destinatario.nome if destinatario else None,
+                                'cnpj': destinatario.cnpj if destinatario else None,
+                                'cpf': destinatario.cpf if destinatario else None,
+                            } if destinatario else None,
                             'informacoes_adicionais': nfe_data.informacoes_adicionais,
                         }
                         if is_linked and not any(n['id'] == nfe_data.id for n in nfe_results):
@@ -1806,6 +1825,11 @@ def search_nfe():
                                 'valor_total': nfe_data.valor_total,
                                 'fornecedor': emitente.nome if emitente else None,
                                 'cnpj': emitente.cnpj if emitente else None,
+                                'destinatario': {
+                                    'nome': destinatario.nome if destinatario else None,
+                                    'cnpj': destinatario.cnpj if destinatario else None,
+                                    'cpf': destinatario.cpf if destinatario else None,
+                                } if destinatario else None,
                                 'informacoes_adicionais': nfe_data.informacoes_adicionais,
                                 
                                 'impostos_totais': {
