@@ -290,85 +290,6 @@ def search_items():
     return jsonify(result), 200
 
 
-@bp.route('/search_purchases', methods=['GET'])
-@login_required
-def search_purchases():
-    cod_pedc = request.args.get('cod_pedc')
-    fornecedor_descricao = request.args.get('fornecedor_descricao')
-    observacao = request.args.get('observacao')
-
-    query = PurchaseOrder.query
-    query = apply_user_scopes(query, PurchaseOrder)
-    
-    filters = []
-
-    if cod_pedc:
-        filters.append(PurchaseOrder.cod_pedc.ilike(f'%{cod_pedc}%'))
-    if fornecedor_descricao:
-        filters.append(PurchaseOrder.fornecedor_descricao.ilike(f'%{fornecedor_descricao}%'))
-    if observacao:
-        filters.append(PurchaseOrder.observacao.ilike(f'%{observacao}%'))
-
-    if filters:
-        query = query.filter(or_(*filters))
-        orders = query.order_by(PurchaseOrder.dt_emis.desc()).all()
-    else:
-        orders = query.order_by(PurchaseOrder.dt_emis.desc()).limit(200).all()
-
-    
-    result = []
-    for order in orders:
-        items = PurchaseItem.query.filter_by(purchase_order_id=order.id).all()
-        order_data = {
-            'order_id': order.id,
-            'cod_pedc': order.cod_pedc,
-            'dt_emis': _parse_date(order.dt_emis),
-            'fornecedor_id': order.fornecedor_id,
-            'fornecedor_descricao': order.fornecedor_descricao,
-            'total_bruto': order.total_bruto,
-            'total_liquido': order.total_liquido,
-            'total_liquido_ipi': order.total_liquido_ipi,
-            'posicao': order.posicao,
-            'posicao_hist': order.posicao_hist,
-            'observacao': order.observacao,
-            'contato': order.contato,
-            'func_nome': order.func_nome,
-            'cf_pgto': order.cf_pgto,
-            'items': []
-        }
-
-        for item in items:
-            nf_entries = NFEntry.query.filter_by(
-                cod_emp1=order.cod_emp1,
-                cod_pedc=item.cod_pedc,
-                linha=item.linha
-            ).all()
-            nfes = [{'num_nf': nf_entry.num_nf, 'id': nf_entry.id, 'dt_ent': nf_entry.dt_ent} for nf_entry in NFEntry.query.filter_by(cod_emp1=item.purchase_order.cod_emp1, cod_pedc=item.cod_pedc, linha=item.linha).all()]
-
-            item_data = {
-                'id': item.id,
-                'item_id': item.item_id,
-                'descricao': item.descricao,
-                'quantidade': item.quantidade,
-                'preco_unitario': item.preco_unitario,
-                'total': item.total,
-                'unidade_medida': item.unidade_medida,
-                'dt_entrega': item.dt_entrega,
-                'perc_ipi': item.perc_ipi,
-                'tot_liquido_ipi': item.tot_liquido_ipi,
-                'tot_descontos': item.tot_descontos,
-                'tot_acrescimos': item.tot_acrescimos,
-                'qtde_canc': item.qtde_canc,
-                'qtde_canc_toler': item.qtde_canc_toler,
-                'qtde_atendida': item.qtde_atendida,
-                'qtde_saldo': item.qtde_saldo,
-                'perc_toler': item.perc_toler,
-                'nfes': nfes
-            }
-            order_data['items'].append(item_data)
-        result.append(order_data)
-    return jsonify(result), 200
-
 
 @bp.route('/search_item_id', methods=['GET'])
 @login_required
@@ -554,7 +475,7 @@ def search_advanced():
     """Advanced search with multiple filters, fuzzy matching, and pagination."""
     
     if request.args.get('legacy', 'false').lower() == 'true':
-        return search_combined()
+        return 'Legacy search endpoint is deprecated. Please use /search_purchases or /search_items instead.', 400
 
     normalized_query = request.args.get('query', '').strip()
     tokens = [token for token in re.split(r'\s+', normalized_query) if token]
