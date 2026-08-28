@@ -1699,6 +1699,9 @@ def _build_status_obj(po_qty, po_price, nfe_qty, nfe_price, pack_used, price_sco
         }
     }
 
+
+
+
 # --------------------------------------------------------------------------- #
 # Item matching core
 # --------------------------------------------------------------------------- #
@@ -1708,9 +1711,13 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
 
     matches = []
     matched_nfe_ids = set()
+    matched_po_ids = set()  # <--- Defined safely at the top!
 
     # --- Pass 1: exact code matches -----------------------------------------
     for i, po_item in enumerate(po_items):
+        if po_item['id'] in matched_po_ids:
+            continue
+            
         po_qty = po_item['quantidade'] if use_original_qty else po_item['qtde_remaining']
         if po_qty <= 0:
             continue
@@ -1772,9 +1779,8 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
                     'status': _build_status_obj(po_qty, po_price, nfe_qty, nfe_price, pack_used, price_score)
                 })
                 matched_nfe_ids.add(nfe_item.id)
+                matched_po_ids.add(po_item['id'])
                 break
-
-    matched_po_ids = {m['po_item_id'] for m in matches}
 
     # --- Pass 1.5: numeric fingerprint (exact price + qty) ------------------
     for i, po_item in enumerate(po_items):
@@ -1826,10 +1832,11 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
                 'status': _build_status_obj(po_qty, po_price, nfe_qty, nfe_price, 1, 100)
             })
             matched_nfe_ids.add(nfe_item.id)
+            matched_po_ids.add(po_item['id'])
 
-    matched_po_ids = {m['po_item_id'] for m in matches}
+    # --- Pass 2: fuzzy / semantic matching (Matrix Scoring) ------------------
+    all_potential_matches = []
 
-    # --- Pass 2: fuzzy / semantic matching ------------------------------------
     for i, po_item in enumerate(po_items):
         if po_item['id'] in matched_po_ids:
             continue
@@ -1839,10 +1846,6 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
 
         po_price = po_item.get('preco_unitario', 0)
         po_uom = po_item.get('unidade_medida', '')
-        
-        best_match = None
-        best_score = 0
-        second_best_score = 0
 
         for j, nfe_item in enumerate(nfe_items_db):
             if nfe_item.id in matched_nfe_ids:
@@ -1862,25 +1865,10 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
             nfe_qty_com = float(nfe_item.quantidade_comercial or 0)
             nfe_price_com = float(nfe_item.valor_unitario_comercial or 0)
 
-            nfe_qty_trib = float(nfe_item.quantidade_tributavel or 0)
-            nfe_price_trib = float(nfe_item.valor_unitario_tributavel or 0)
-
-            qty_score_com, price_score_com, pack_used_com = score_qty_and_price(
+            qty_score, price_score, pack_used = score_qty_and_price(
                 po_qty, po_price, po_uom, nfe_qty_com, nfe_price_com, nfe_uom, pack_size,
                 desc_score=desc_score
             )
-
-            qty_score_trib, price_score_trib, pack_used_trib = score_qty_and_price(
-                po_qty, po_price, po_uom, nfe_qty_trib, nfe_price_trib, po_uom, 1,
-                desc_score=desc_score
-            )
-
-            if (qty_score_trib + price_score_trib) > (qty_score_com + price_score_com):
-                qty_score, price_score, pack_used = qty_score_trib, price_score_trib, pack_used_trib
-                nfe_qty, nfe_price = nfe_qty_trib, nfe_price_trib
-            else:
-                qty_score, price_score, pack_used = qty_score_com, price_score_com, pack_used_com
-                nfe_qty, nfe_price = nfe_qty_com, nfe_price_com
 
             if price_score < MIN_PRICE_SCORE_TO_PASS and qty_score < MIN_QTY_SCORE_TO_PASS:
                 continue
@@ -1890,11 +1878,8 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
             else:
                 combined = (desc_score * 0.50) + (qty_score * 0.30) + (price_score * 0.20)
 
-            # Update best and second-best tracking
-            if combined > best_score:
-                second_best_score = best_score
-                best_score = combined
-                best_match = {
+            if combined >= MIN_COMBINED_ITEM_SCORE:
+                all_potential_matches.append({
                     'po_item_id': po_item['id'],
                     'po_item_desc': po_item['descricao'],
                     'nfe_item_id': nfe_item.id,
@@ -1904,27 +1889,27 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
                     'price_score': round(price_score, 2),
                     'combined_score': round(combined, 2),
                     'po_qty': po_qty,
-                    'nfe_qty': nfe_qty,
+                    'nfe_qty': nfe_qty_com,
                     'po_price': po_price,
-                    'nfe_price': nfe_price,
+                    'nfe_price': nfe_price_com,
                     'pack_size_used': pack_used,
                     'match_method': 'fuzzy',
-                    'status': _build_status_obj(po_qty, po_price, nfe_qty, nfe_price, pack_used, price_score)
-                }
-            elif combined > second_best_score:
-                second_best_score = combined
+                    'status': _build_status_obj(po_qty, po_price, nfe_qty_com, nfe_price_com, pack_used, price_score)
+                })
 
-        if best_match and best_match['combined_score'] >= MIN_COMBINED_ITEM_SCORE:
-            AMBIGUITY_MARGIN = 5
-            if (best_score - second_best_score) < AMBIGUITY_MARGIN:
-                shared, po_only, nfe_only = _token_diff_score(po_item['descricao'], best_match['nfe_item_desc'] or '')
-                if len(po_only) > 0:
-                    best_match = None  # Too risky to guess, discard the match
+    # Sort all potential matches globally by highest score
+    all_potential_matches.sort(key=lambda x: x['combined_score'], reverse=True)
 
-            if best_match:
-                matches.append(best_match)
-                matched_nfe_ids.add(best_match['nfe_item_id'])
+    # Lock them in order of absolute best score
+    for match in all_potential_matches:
+        if match['po_item_id'] in matched_po_ids or match['nfe_item_id'] in matched_nfe_ids:
+            continue
+        
+        matches.append(match)
+        matched_po_ids.add(match['po_item_id'])
+        matched_nfe_ids.add(match['nfe_item_id'])
 
+    # --- Final Summary Statistics ---
     if use_original_qty:
         items_to_match_count = len([i for i in po_items if i['quantidade'] > 0])
     else:
