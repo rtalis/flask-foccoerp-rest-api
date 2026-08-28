@@ -2064,25 +2064,26 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1, nfe_cache=None):
         score = 0
         breakdown = {}
 
-        # --- 1. CNPJ / Supplier match (0-30) -----------------------------
+       # --- 1. CNPJ / Supplier match (0-30) -----------------------------
         cnpj_score = 0
         supplier_match_type = 'none'
         supplier_similarity = 0
 
         if purchase_order.fornecedor_id == 1160:
-            supplier_match_type = 'high_similarity'
-            
+            supplier_match_type = 'mercadopago_marketplace'
+            cnpj_score = 15
         else:
             if nfe_supplier and supplier_name:
-                supplier_similarity = fuzz.token_set_ratio(nfe_supplier.lower(), supplier_name)
-            if supplier_similarity >= 85:
+                supplier_similarity = fuzz.token_set_ratio(nfe_supplier.lower(), supplier_name)            
+      
+            if supplier_similarity >= 90:
                 cnpj_score, supplier_match_type = 30, 'exact_name'
-            elif supplier_similarity >= 70:
-                cnpj_score, supplier_match_type = 25, 'high_similarity'
-            elif supplier_similarity >= 55:
-                cnpj_score, supplier_match_type = 15, 'partial_name'
-            elif supplier_similarity >= 40:
-                cnpj_score, supplier_match_type = 5, 'possible_related'
+            elif supplier_similarity >= 80:
+                cnpj_score, supplier_match_type = 20, 'high_similarity'
+            elif supplier_similarity >= 65:
+                cnpj_score, supplier_match_type = 5, 'partial_name'
+            else:
+                cnpj_score, supplier_match_type = 0, 'possible_related'
 
         score += cnpj_score
         breakdown.update(cnpj_score=cnpj_score, supplier_match_type=supplier_match_type,
