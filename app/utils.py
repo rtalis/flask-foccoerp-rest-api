@@ -1338,9 +1338,6 @@ def relink_purchase_item_nfe_matches():
 
 
 
-
-
-
 """
 Purchase Order <-> NFe matching engine.
 
@@ -1350,15 +1347,25 @@ Design goals (in priority order):
      floors on description AND (price OR quantity), not just a weighted blend.
   2. Use exact identifiers (EAN / supplier product code) as a hard short-circuit
      before falling back to fuzzy/semantic matching.
-  3. Normalize unit-of-measure mismatches (UN vs BOX/CX/FD) by strictly gating
-     pack-size inference behind an explicit UoM mismatch (e.g. PO is UN, NFe is CX).
-  4. Score Value primarily off the relationship between the PO's remaining
+  3. Treat an exact (or near-exact) price+quantity pair as strong independent
+     evidence that bypasses the description floor entirely, as long as it's
+     the ONLY such candidate on the invoice (ambiguity still falls through
+     to fuzzy matching, where description disambiguates).
+  4. Normalize unit-of-measure mismatches (UN vs BOX/CX/FD) by strictly gating
+     pack-size inference behind an explicit UoM mismatch (e.g. PO is UN, NFe is CX)
+     AND a minimum description score — a coincidental quantity ratio landing in
+     COMMON_PACK_SIZES is not enough evidence on its own to infer a conversion.
+  5. Score Value primarily off the relationship between the PO's remaining
      value and the NFe's value.
 """
 
 import re
-from datetime import  timedelta
+from datetime import timedelta
 from fuzzywuzzy import fuzz
+import re
+import unicodedata
+
+
 
 from app.models import (
     PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch,
@@ -1376,6 +1383,15 @@ MIN_QTY_SCORE_TO_PASS = 90
 MIN_COMBINED_ITEM_SCORE = 50
 CODE_MATCH_DESC_SCORE = 100
 
+# Numeric-fingerprint pass (exact price+qty match bypasses description floor)
+NUMERIC_PRICE_TOLERANCE_PCT = 2.0
+NUMERIC_QTY_TOLERANCE_PCT = 3.0
+
+# Pack-size inference guardrail: don't trust an inferred pack size (pack != 1)
+# unless the description clears this bar. Prevents a coincidental quantity
+# ratio from manufacturing a match on a weak/unrelated description.
+MIN_DESC_SCORE_FOR_PACK_INFERENCE = 55
+
 SYNONYM_MAP = {
     r'\blixa\b': 'abrasivo',
     r'\bdisco\s+lixa\b': 'disco abrasivo',
@@ -1387,6 +1403,9 @@ SYNONYM_MAP = {
     r'\bgrip\b': 'grip',
     r'\bgrao\s*:?\s*(\d+)\b': r'grao \1',
     r'\bpapel\b': 'papel',
+    r'\bcola\b': 'adesivo',
+    r'\bcolante\b': 'adesivo',
+    r'\bcolagem\b': 'adesivo',
 }
 
 PACK_SIZE_PATTERN = re.compile(
@@ -1470,17 +1489,35 @@ def extract_nfe_codes(nfe_item):
             codes.add(clean_digits(str(val)) or str(val).strip().lower())
     return codes
 
-def score_qty_and_price(po_qty, po_price, po_uom, nfe_qty, nfe_price, nfe_uom, nfe_pack_size):
+def _is_numeric_exact_match(po_price, po_qty, nfe_price, nfe_qty):
+    """
+    True if price AND quantity independently match within tight tolerance,
+    with no pack-size guessing involved. This is treated as strong enough
+    evidence to bypass the description floor entirely.
+    """
+    if not (po_price and po_qty and nfe_price and nfe_qty):
+        return False
+    if po_price <= 0 or po_qty <= 0 or nfe_price <= 0 or nfe_qty <= 0:
+        return False
+    price_diff = abs(po_price - nfe_price) / po_price * 100
+    qty_diff = abs(po_qty - nfe_qty) / po_qty * 100
+    return price_diff <= NUMERIC_PRICE_TOLERANCE_PCT and qty_diff <= NUMERIC_QTY_TOLERANCE_PCT
+
+def score_qty_and_price(po_qty, po_price, po_uom, nfe_qty, nfe_price, nfe_uom, nfe_pack_size,
+                         desc_score=None):
     """
     Returns (qty_score, price_score, pack_used).
-    Strictly gates ratio-based pack inference behind a validated UoM mismatch.
+    Strictly gates ratio-based pack inference behind a validated UoM mismatch,
+    and additionally requires a minimum description score before trusting any
+    inferred pack size != 1 (prevents a coincidental quantity ratio from
+    manufacturing a match on a weak/unrelated description).
     """
     candidates = [1]
-    
+
     po_uom_clean = normalize_uom(po_uom)
     nfe_uom_clean = normalize_uom(nfe_uom)
 
-    # ONLY attempt pack size inference if the Units of Measure differ explicitly 
+    # ONLY attempt pack size inference if the Units of Measure differ explicitly
     # OR if one of them is missing (to allow fallback recovery).
     if (po_uom_clean != nfe_uom_clean) or not po_uom_clean or not nfe_uom_clean:
         if nfe_pack_size > 1:
@@ -1524,6 +1561,13 @@ def score_qty_and_price(po_qty, po_price, po_uom, nfe_qty, nfe_price, nfe_uom, n
         if (qty_score + price_score) > (best[0] + best[1]):
             best = (qty_score, price_score, pack)
 
+    # Guardrail: an inferred pack size (pack != 1) is speculative by nature.
+    # Don't trust it unless the description gives independent corroborating
+    # evidence. Without this, a purely coincidental quantity ratio that lands
+    # in COMMON_PACK_SIZES can "explain away" a mismatch on an unrelated item.
+    if best[2] != 1 and (desc_score is None or desc_score < MIN_DESC_SCORE_FOR_PACK_INFERENCE):
+        return (0, 0, 1)
+
     return best
 
 # --------------------------------------------------------------------------- #
@@ -1531,7 +1575,6 @@ def score_qty_and_price(po_qty, po_price, po_uom, nfe_qty, nfe_price, nfe_uom, n
 # --------------------------------------------------------------------------- #
 
 _EMBED_MODEL = None
-# Define the local path where the model will live permanently
 MODEL_DIR = './local_models/paraphrase-multilingual'
 
 def _load_embedding_model():
@@ -1539,23 +1582,90 @@ def _load_embedding_model():
     if _EMBED_MODEL is None:
         from sentence_transformers import SentenceTransformer
         logger = logging.getLogger(__name__)
-        
+
         if not os.path.exists(MODEL_DIR):
             logger.info("Local model not found. Downloading for the first time...")
-            
+
             _EMBED_MODEL = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
-            
+
             os.makedirs(MODEL_DIR, exist_ok=True)
             _EMBED_MODEL.save(MODEL_DIR)
             logger.info(f"Model saved permanently to {MODEL_DIR}")
         else:
-            # Load directly from disk - completely offline and fast
             _EMBED_MODEL = SentenceTransformer(MODEL_DIR)
-            
+
     return _EMBED_MODEL
+
 def _cos_sim(a, b):
     from sentence_transformers import util
     return util.cos_sim(a, b).item()
+
+
+
+# --------------------------------------------------------------------------- #
+# Token-Diff Disambiguation Helpers
+# --------------------------------------------------------------------------- #
+
+def _normalize_token(tok):
+    """Strip accents/punctuation for token comparison, keep case-insensitive."""
+    tok = unicodedata.normalize('NFKD', tok).encode('ascii', 'ignore').decode('ascii')
+    tok = re.sub(r'[^\w]', '', tok)
+    return tok.upper()
+
+def _tokenize(desc):
+    if not desc:
+        return []
+    raw = re.split(r'[\s\-/,.()]+', desc)
+    return [_normalize_token(t) for t in raw if t and _normalize_token(t)]
+
+def _token_diff_score(po_desc, nfe_desc):
+    """
+    Returns (shared_count, po_only_tokens, nfe_only_tokens).
+    Token-set difference is far more robust than a code-regex for catching
+    the actual variation patterns seen in real supplier data: side/position
+    words (DIR/ESQ), colors (PRETO/AZUL), embedded codes (TC96497/TC107381),
+    and grit/spec numbers (GR:120/GR:100) — none of which are exclusively
+    trailing numeric codes.
+    """
+    po_tokens = set(_tokenize(po_desc))
+    nfe_tokens = set(_tokenize(nfe_desc))
+    
+    shared = po_tokens & nfe_tokens
+    po_only = po_tokens - nfe_tokens
+    nfe_only = nfe_tokens - po_tokens
+    
+    return len(shared), po_only, nfe_only
+
+def _resolve_numeric_ambiguity(po_item_desc, candidates):
+    """
+    Given multiple NFe items that all pass the numeric-exact price/qty check,
+    try to disambiguate using token overlap against the PO description.
+    """
+    po_tokens_set = set(_tokenize(po_item_desc))
+    if not po_tokens_set:
+        return None
+
+    scored = []
+    for j, nfe_item, nfe_price, nfe_qty in candidates:
+        shared, po_only, nfe_only = _token_diff_score(po_item_desc, nfe_item.descricao or '')
+        
+        # Penalize both missing PO tokens and extra NFe tokens equally
+        score = shared - len(po_only) - len(nfe_only)
+        scored.append((score, j, nfe_item, nfe_price, nfe_qty))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    best_score = scored[0][0]
+    second_score = scored[1][0] if len(scored) > 1 else float('-inf')
+
+    # Require the winner to be a PERFECT token-set match AND have a clear margin
+    MIN_MARGIN = 2
+    is_perfect_match = best_score == len(po_tokens_set)
+
+    if is_perfect_match and (best_score - second_score) >= MIN_MARGIN:
+        _, j, nfe_item, nfe_price, nfe_qty = scored[0]
+        return (j, nfe_item, nfe_price, nfe_qty)
+
+    return None
 
 # --------------------------------------------------------------------------- #
 # Item matching core
@@ -1563,11 +1673,11 @@ def _cos_sim(a, b):
 
 def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes_list,
                  po_codes_list, use_original_qty=False):
-    
+
     matches = []
     matched_nfe_ids = set()
 
-    # Pass 1: exact code matches
+    # --- Pass 1: exact code matches -----------------------------------------
     for i, po_item in enumerate(po_items):
         po_qty = po_item['quantidade'] if use_original_qty else po_item['qtde_remaining']
         if po_qty <= 0:
@@ -1594,11 +1704,13 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
                 nfe_price_trib = float(nfe_item.valor_unitario_tributavel or 0)
 
                 qty_score_com, price_score_com, pack_used_com = score_qty_and_price(
-                    po_qty, po_price, po_uom, nfe_qty_com, nfe_price_com, nfe_uom, pack_size
+                    po_qty, po_price, po_uom, nfe_qty_com, nfe_price_com, nfe_uom, pack_size,
+                    desc_score=CODE_MATCH_DESC_SCORE
                 )
 
                 qty_score_trib, price_score_trib, pack_used_trib = score_qty_and_price(
-                    po_qty, po_price, po_uom, nfe_qty_trib, nfe_price_trib, po_uom, 1
+                    po_qty, po_price, po_uom, nfe_qty_trib, nfe_price_trib, po_uom, 1,
+                    desc_score=CODE_MATCH_DESC_SCORE
                 )
 
                 if (qty_score_trib + price_score_trib) > (qty_score_com + price_score_com):
@@ -1606,9 +1718,8 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
                     nfe_qty, nfe_price = nfe_qty_trib, nfe_price_trib
                 else:
                     qty_score, price_score, pack_used = qty_score_com, price_score_com, pack_used_com
-                    # FIX: Assign the commercial variables if they win
                     nfe_qty, nfe_price = nfe_qty_com, nfe_price_com
-                
+
                 combined = (CODE_MATCH_DESC_SCORE * 0.5) + (qty_score * 0.3) + (price_score * 0.2)
                 matches.append({
                     'po_item_id': po_item['id'],
@@ -1631,7 +1742,60 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
 
     matched_po_ids = {m['po_item_id'] for m in matches}
 
-    # Pass 2: fuzzy / semantic matching
+    # --- Pass 1.5: numeric fingerprint (exact price + qty) ------------------
+    for i, po_item in enumerate(po_items):
+        if po_item['id'] in matched_po_ids:
+            continue
+        po_qty = po_item['quantidade'] if use_original_qty else po_item['qtde_remaining']
+        if po_qty <= 0:
+            continue
+        po_price = po_item.get('preco_unitario', 0)
+
+        candidates = []
+        for j, nfe_item in enumerate(nfe_items_db):
+            if nfe_item.id in matched_nfe_ids:
+                continue
+            nfe_price = float(nfe_item.valor_unitario_comercial or 0)
+            nfe_qty = float(nfe_item.quantidade_comercial or 0)
+            if _is_numeric_exact_match(po_price, po_qty, nfe_price, nfe_qty):
+                candidates.append((j, nfe_item, nfe_price, nfe_qty))
+
+        resolved = None
+        if len(candidates) == 1:
+            resolved = candidates[0]
+        elif len(candidates) > 1:
+            # Multiple items share identical price+qty — try to disambiguate via tokens
+            resolved = _resolve_numeric_ambiguity(po_item['descricao'], candidates)
+
+        if resolved:
+            j, nfe_item, nfe_price, nfe_qty = resolved
+            desc_score = 0
+            if len(po_embeddings) > i and len(nfe_embeddings) > j:
+                desc_score = max(0, int(_cos_sim(po_embeddings[i], nfe_embeddings[j]) * 100))
+
+            combined = min(100.0, (desc_score * 0.2) + 80.0)
+
+            matches.append({
+                'po_item_id': po_item['id'],
+                'po_item_desc': po_item['descricao'],
+                'nfe_item_id': nfe_item.id,
+                'nfe_item_desc': nfe_item.descricao,
+                'desc_score': desc_score,
+                'qty_score': 100,
+                'price_score': 100,
+                'combined_score': round(combined, 2),
+                'po_qty': po_qty,
+                'nfe_qty': nfe_qty,
+                'po_price': po_price,
+                'nfe_price': nfe_price,
+                'pack_size_used': 1,
+                'match_method': 'numeric_exact' if len(candidates) == 1 else 'numeric_exact_disambiguated',
+            })
+            matched_nfe_ids.add(nfe_item.id)
+
+    matched_po_ids = {m['po_item_id'] for m in matches}
+
+    # --- Pass 2: fuzzy / semantic matching ------------------------------------
     for i, po_item in enumerate(po_items):
         if po_item['id'] in matched_po_ids:
             continue
@@ -1641,8 +1805,10 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
 
         po_price = po_item.get('preco_unitario', 0)
         po_uom = po_item.get('unidade_medida', '')
+        
         best_match = None
         best_score = 0
+        second_best_score = 0
 
         for j, nfe_item in enumerate(nfe_items_db):
             if nfe_item.id in matched_nfe_ids:
@@ -1666,11 +1832,13 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
             nfe_price_trib = float(nfe_item.valor_unitario_tributavel or 0)
 
             qty_score_com, price_score_com, pack_used_com = score_qty_and_price(
-                po_qty, po_price, po_uom, nfe_qty_com, nfe_price_com, nfe_uom, pack_size
+                po_qty, po_price, po_uom, nfe_qty_com, nfe_price_com, nfe_uom, pack_size,
+                desc_score=desc_score
             )
 
             qty_score_trib, price_score_trib, pack_used_trib = score_qty_and_price(
-                po_qty, po_price, po_uom, nfe_qty_trib, nfe_price_trib, po_uom, 1
+                po_qty, po_price, po_uom, nfe_qty_trib, nfe_price_trib, po_uom, 1,
+                desc_score=desc_score
             )
 
             if (qty_score_trib + price_score_trib) > (qty_score_com + price_score_com):
@@ -1678,7 +1846,6 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
                 nfe_qty, nfe_price = nfe_qty_trib, nfe_price_trib
             else:
                 qty_score, price_score, pack_used = qty_score_com, price_score_com, pack_used_com
-                # FIX: Assign the commercial variables if they win
                 nfe_qty, nfe_price = nfe_qty_com, nfe_price_com
 
             if price_score < MIN_PRICE_SCORE_TO_PASS and qty_score < MIN_QTY_SCORE_TO_PASS:
@@ -1689,7 +1856,9 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
             else:
                 combined = (desc_score * 0.50) + (qty_score * 0.30) + (price_score * 0.20)
 
+            # Update best and second-best tracking
             if combined > best_score:
+                second_best_score = best_score
                 best_score = combined
                 best_match = {
                     'po_item_id': po_item['id'],
@@ -1707,11 +1876,26 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
                     'pack_size_used': pack_used,
                     'match_method': 'fuzzy',
                 }
+            elif combined > second_best_score:
+                second_best_score = combined
 
         if best_match and best_match['combined_score'] >= MIN_COMBINED_ITEM_SCORE:
-            matches.append(best_match)
-            matched_nfe_ids.add(best_match['nfe_item_id'])
+            AMBIGUITY_MARGIN = 5
+            if (best_score - second_best_score) < AMBIGUITY_MARGIN:
+                # Near-tie detected in semantic scoring. Try token-diff disambiguation 
+                # as a last resort before discarding the match.
+                shared, po_only, nfe_only = _token_diff_score(po_item['descricao'], best_match['nfe_item_desc'] or '')
+                
+                # Demand perfection when guessing near-ties: the winning NFe description
+                # MUST contain every single token present in the PO description.
+                if len(po_only) > 0:
+                    best_match = None  # Too risky to guess, discard the match
 
+            if best_match:
+                matches.append(best_match)
+                matched_nfe_ids.add(best_match['nfe_item_id'])
+
+    # Final summary statistics
     if use_original_qty:
         items_to_match_count = len([i for i in po_items if i['quantidade'] > 0])
     else:
@@ -1721,6 +1905,12 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
     avg_score = sum(m['combined_score'] for m in matches) / len(matches) if matches else 0
 
     return matches, avg_score, coverage
+
+
+
+
+
+
 
 
 # --------------------------------------------------------------------------- #

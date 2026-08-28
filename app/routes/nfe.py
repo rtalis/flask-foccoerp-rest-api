@@ -733,6 +733,8 @@ def match_purchase_nfe():
     }), 200
 
 
+
+
 @bp.route('/manual_match_nfe', methods=['POST'])
 @login_required
 def manual_match_nfe():
@@ -748,45 +750,39 @@ def manual_match_nfe():
         purchase_item_id = data.get('purchase_item_id')
         
         if not all([nfe_chave, cod_pedc, cod_emp1]):
-            return jsonify({
-                'error': 'Missing required fields: nfe_chave, cod_pedc, cod_emp1'
-            }), 400
+            return jsonify({'error': 'Missing required fields: nfe_chave, cod_pedc, cod_emp1'}), 400
         
         nfe = NFEData.query.filter_by(chave=nfe_chave).first()
         if not nfe:
             return jsonify({'error': f'NFE with chave {nfe_chave} not found'}), 404
         
-        purchase_order = PurchaseOrder.query.filter_by(
-            cod_pedc=cod_pedc,
-            cod_emp1=cod_emp1
-        ).first()
-        
+        purchase_order = PurchaseOrder.query.filter_by(cod_pedc=cod_pedc, cod_emp1=cod_emp1).first()
         if not purchase_order:
-            return jsonify({
-                'error': f'Purchase order {cod_pedc} for company {cod_emp1} not found'
-            }), 404
+            return jsonify({'error': f'Purchase order {cod_pedc} for company {cod_emp1} not found'}), 404
         
+        # Find the specific item the user is targeting
         if not purchase_item_id:
             unfulfilled_item = PurchaseItem.query.filter(
                 PurchaseItem.purchase_order_id == purchase_order.id,
-                (PurchaseItem.qtde_atendida == None) | 
-                (PurchaseItem.qtde_atendida < PurchaseItem.quantidade)
+                (PurchaseItem.qtde_atendida == None) | (PurchaseItem.qtde_atendida < PurchaseItem.quantidade)
             ).first()
-            
             if unfulfilled_item:
                 purchase_item_id = unfulfilled_item.id
+                
+        actual_item = db.session.get(PurchaseItem, purchase_item_id)
+        if not actual_item:
+            return jsonify({'error': 'Purchase item not found'}), 404
         
+        # Calculate scoring metadata for the match
         match_result = score_purchase_nfe_match(cod_pedc, cod_emp1)
-        
         if isinstance(match_result, dict) and 'error' in match_result:
             return jsonify(match_result), 400
         
-        nfe_matches = [m for m in match_result.get('matches', []) 
-                      if m.get('nfe_id') == nfe.id]
+        nfe_matches = [m for m in match_result.get('matches', []) if m.get('nfe_id') == nfe.id]
         
         if not nfe_matches:
             match_data = {
-                'match_score': 75,
+                'match_score': 100, # Manual matches are 100% confident by definition
                 'description_similarity': None,
                 'quantity_match': None,
                 'price_diff_pct': None,
@@ -795,16 +791,39 @@ def manual_match_nfe():
             }
         else:
             match_data = nfe_matches[0]
+            match_data['match_score'] = 100 # Force 100% confidence for manual override
+        
+        # Look for an existing match for this NFE on this Purchase Order
+        existing_match = PurchaseItemNFEMatch.query.filter_by(
+            cod_pedc=cod_pedc,
+            cod_emp1=cod_emp1,
+            nfe_id=nfe.id
+        ).first()
+        
+        if existing_match:
+            existing_match.purchase_item_id = purchase_item_id
+            existing_match.item_seq = actual_item.linha
+            existing_match.matched_by_user_id = str(current_user.id)
+            existing_match.match_type = 'manual'
+            existing_match.match_score = match_data.get('match_score', 100)
+            existing_match.updated_at = datetime.now()
+            
+            db.session.commit()
+            return jsonify({
+                'status': 'updated',
+                'match_id': existing_match.id,
+                'message': f'Match updated and locked by user {current_user.username}'
+            }), 200
         
         new_match = PurchaseItemNFEMatch(
             purchase_item_id=purchase_item_id,
             cod_pedc=cod_pedc,
             cod_emp1=cod_emp1,
-            item_seq=purchase_order.purchase_items[0].linha if purchase_order.purchase_items else None,
+            item_seq=actual_item.linha, 
             nfe_id=nfe.id,
             nfe_chave=nfe.chave,
             nfe_numero=nfe.numero,
-            match_score=match_data.get('match_score', 75),
+            match_score=match_data.get('match_score', 100),
             description_similarity=match_data.get('description_similarity'),
             quantity_match=match_data.get('quantity_match'),
             price_diff_pct=match_data.get('price_diff_pct'),
@@ -813,23 +832,6 @@ def manual_match_nfe():
             matched_by_user_id=str(current_user.id),
             match_type='manual'
         )
-        
-        existing_match = PurchaseItemNFEMatch.query.filter_by(
-            cod_pedc=cod_pedc,
-            cod_emp1=cod_emp1,
-            nfe_id=nfe.id
-        ).first()
-        
-        if existing_match:
-            existing_match.matched_by_user_id = str(current_user.id)
-            existing_match.match_type = 'manual'
-            existing_match.updated_at = datetime.now()
-            db.session.commit()
-            return jsonify({
-                'status': 'updated',
-                'match_id': existing_match.id,
-                'message': f'Match updated by user {current_user.username}'
-            }), 200
         
         db.session.add(new_match)
         db.session.commit()
@@ -841,12 +843,14 @@ def manual_match_nfe():
             'nfe_numero': new_match.nfe_numero,
             'match_score': new_match.match_score,
             'matched_by': current_user.username,
-            'message': f'NFE {nfe.numero} manually matched to purchase order {cod_pedc}'
+            'message': f'NFE {nfe.numero} manually locked to purchase order {cod_pedc}'
         }), 201
     
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+    
+    
 
 
 @bp.route('/view_danfe_template/<int:nfe_id>', methods=['GET'])
@@ -1307,15 +1311,85 @@ def search_nfe():
             'fully_claimed_across_pos': fully_claimed,
         }
         
-    def compute_item_status(po_item, nfe_item_preco, nfe_item_qty, nfe_item_id=None,
-                         nfe_uom=None, is_estimated=False):
+        
+    def _get_order_total_comparison(po, nfe, current_po_total):
         """
-        Computes the 3-dot traffic light status for a PO item <-> NFE item pairing.
+        Compares the full purchase order total (with adjustments/freight) against
+        the full NFe total value. Handles the case where one NFe is linked to
+        multiple POs by summing all linked POs' totals before comparing.
+
+        Returns dict: {status, diff_pct, is_split, fully_claimed_across_pos,
+                    po_total_compared, nfe_total}
+        """
+        nfe_total = float(nfe.valor_total) if nfe.valor_total else None
+
+        # Find every distinct PO linked to this same NFe (by num_nf), via both
+        # confirmed links (NFEntry) and AI-suggested links (PurchaseItemNFEMatch)
+        linked_po_keys = set()
+
+        if nfe.numero:
+            nf_entries = NFEntry.query.filter(NFEntry.num_nf == nfe.numero).all()
+            for e in nf_entries:
+                linked_po_keys.add((e.cod_pedc, e.cod_emp1))
+
+        match_rows = PurchaseItemNFEMatch.query.filter(
+            PurchaseItemNFEMatch.nfe_id == nfe.id
+        ).all()
+        for m in match_rows:
+            linked_po_keys.add((m.cod_pedc, m.cod_emp1))
+
+        is_split = len(linked_po_keys) > 1
+
+        if not is_split:
+            # Simple 1:1 case — just compare this PO's total to the NFe total
+            diff_pct = _pct_diff(current_po_total, nfe_total)
+            return {
+                'is_split': is_split,
+                'fully_claimed_across_pos': False,
+                'diff_pct': round(diff_pct, 2) if diff_pct is not None else None,
+                'po_total_compared': round(current_po_total, 2) if current_po_total else None,
+                'nfe_total': round(nfe_total, 2) if nfe_total else None,
+                'diff_source': diff_pct,
+            }
+
+        # Split case — sum the totals of every PO sharing this NFe and compare
+        # the sum against the NFe's full value.
+        total_sum = 0.0
+        for cod_pedc, cod_emp1 in linked_po_keys:
+            other_po = PurchaseOrder.query.filter_by(cod_pedc=cod_pedc, cod_emp1=cod_emp1).first()
+            if not other_po:
+                continue
+            adjustments = getattr(other_po, 'adjustments', [])
+            base_total = other_po.total_pedido_com_ipi or 0
+            total_sum += apply_adjustments(base_total, adjustments) + (other_po.vlr_frete_tra or 0)
+
+        diff_pct = _pct_diff(total_sum, nfe_total)
+        fully_claimed = diff_pct is not None and diff_pct < 5
+
+        return {
+            'is_split': is_split,
+            'fully_claimed_across_pos': fully_claimed,
+            'diff_pct': round(diff_pct, 2) if diff_pct is not None else None,
+            'po_total_compared': round(total_sum, 2),
+            'nfe_total': round(nfe_total, 2) if nfe_total else None,
+            'diff_source': diff_pct,
+        }
+
+
+    def compute_item_status(po_item, nfe_item_preco, nfe_item_qty, nfe_item_id=None,
+                         nfe_uom=None, is_estimated=False,
+                         po=None, nfe=None, po_total=None):
+        """
+        Computes the 3-dot traffic light status:
+        1. unit_price  — PO unit price vs NFe item unit price
+        2. line_total  — PO item total (qty x price) vs NFe item total
+        3. order_total — full PO total vs full NFe total (order-level, not item-level)
         """
         result = {
             'unit_price': {'status': 'gray', 'diff_pct': None, 'converted': False},
             'line_total': {'status': 'gray', 'diff_pct': None},
-            'order_balance': {'status': 'gray', 'is_split': False, 'fully_claimed_across_pos': False, 'pending': False},
+            'order_total': {'status': 'gray', 'diff_pct': None, 'is_split': False,
+                            'fully_claimed_across_pos': False, 'po_total': None, 'nfe_total': None},
         }
 
         if not po_item:
@@ -1345,37 +1419,40 @@ def search_nfe():
             else None
         )
         line_diff = _pct_diff(po_line_total, nfe_line_total)
-        # unreliable in the exact same way it makes unit price unreliable.
         if converted:
             result['line_total']['status'] = 'yellow' if line_diff is not None else 'gray'
         else:
             result['line_total']['status'] = _status_from_diff(line_diff)
         result['line_total']['diff_pct'] = round(line_diff, 2) if line_diff is not None else None
 
-        # --- Dot 3: order balance / saldo ---------------------------------------
-        split_info = _get_split_info(nfe_item_id, po_qty)
-        result['order_balance']['is_split'] = split_info['is_split']
-        result['order_balance']['fully_claimed_across_pos'] = split_info.get('fully_claimed_across_pos', False)
+        # --- Dot 3: order total (full PO vs full NFe) ---------------------------
+        if po is not None and nfe is not None and po_total is not None:
+            comparison = _get_order_total_comparison(po, nfe, po_total)
+            diff_pct = comparison['diff_source']
 
-        qty_atendida = float(po_item.qtde_atendida) if po_item.qtde_atendida is not None else 0.0
-        qty_total = float(po_item.quantidade) if po_item.quantidade is not None else 0.0
-
-        if split_info['is_split'] and split_info.get('fully_claimed_across_pos'):
-            result['order_balance']['status'] = 'green'
-        elif qty_total > 0 and qty_atendida >= qty_total:
-            result['order_balance']['status'] = 'green'
-        elif qty_atendida > 0:
-            result['order_balance']['status'] = 'yellow'
-        else:
-        
-            if is_estimated:
-                result['order_balance']['status'] = 'gray'
-                result['order_balance']['pending'] = True
+            if comparison['is_split'] and comparison['fully_claimed_across_pos']:
+                status = 'green'
             else:
-                result['order_balance']['status'] = 'red'
+                status = _status_from_diff(diff_pct)
+                # Unconfirmed AI matches: don't show a hard red purely from an
+                # order-total mismatch, since a wrong match (not a real
+                # discrepancy) is a likely cause. Cap severity at yellow.
+                if is_estimated and status == 'red':
+                    status = 'yellow'
+
+            result['order_total'] = {
+                'status': status,
+                'diff_pct': round(diff_pct, 2) if diff_pct is not None else None,
+                'is_split': comparison['is_split'],
+                'fully_claimed_across_pos': comparison['fully_claimed_across_pos'],
+                'po_total': comparison['po_total_compared'],
+                'nfe_total': comparison['nfe_total'],
+            }
 
         return result
-
+        
+  
+  
    
 
     try:
@@ -1669,6 +1746,7 @@ def search_nfe():
                         base_total = po.total_pedido_com_ipi or 0
                         adjusted_total = apply_adjustments(base_total, adjustments) + (po.vlr_frete_tra or 0)
 
+                        # linked_purchases
                         item_status = compute_item_status(
                             po_item=item,
                             nfe_item_preco=nfe_item.valor_unitario_comercial if nfe_item else None,
@@ -1676,7 +1754,10 @@ def search_nfe():
                             nfe_item_id=nfe_item.id if nfe_item else None,
                             nfe_uom=nfe_item.unidade_comercial if nfe_item else None,
                             is_estimated=False,
-                            )
+                            po=po,
+                            nfe=nfe,
+                            po_total=adjusted_total,   
+                        )
 
                         purchase_info = {
                             'cod_pedc': po.cod_pedc,
@@ -1743,6 +1824,11 @@ def search_nfe():
                                 if not already_linked:
                                     nfe_item = _resolve_nfe_item_for_purchase(None, item, match)
 
+                                    # estimated_purchases
+                                    adjustments = getattr(po, 'adjustments', [])
+                                    base_total = po.total_pedido_com_ipi or 0
+                                    po_total = apply_adjustments(base_total, adjustments) + (po.vlr_frete_tra or 0)
+
                                     item_status = compute_item_status(
                                         po_item=item,
                                         nfe_item_preco=match.nfe_item_preco if match.nfe_item_preco is not None else (
@@ -1754,8 +1840,10 @@ def search_nfe():
                                         nfe_item_id=match.nfe_item_id or (nfe_item.id if nfe_item else None),
                                         nfe_uom=nfe_item.unidade_comercial if nfe_item else None,
                                         is_estimated=True,
+                                        po=po,
+                                        nfe=nfe,
+                                        po_total=po_total,
                                     )
-
                                     estimated_info = {
                                         'cod_pedc': po.cod_pedc,
                                         'cod_emp1': po.cod_emp1,
