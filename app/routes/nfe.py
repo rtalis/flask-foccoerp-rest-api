@@ -1419,10 +1419,8 @@ def search_nfe():
             else None
         )
         line_diff = _pct_diff(po_line_total, nfe_line_total)
-        if converted:
-            result['line_total']['status'] = 'yellow' if line_diff is not None else 'gray'
-        else:
-            result['line_total']['status'] = _status_from_diff(line_diff)
+      
+        result['line_total']['status'] = _status_from_diff(line_diff)
         result['line_total']['diff_pct'] = round(line_diff, 2) if line_diff is not None else None
 
         # --- Dot 3: order total (full PO vs full NFe) ---------------------------

@@ -1336,8 +1336,6 @@ def relink_purchase_item_nfe_matches():
 
 
 
-
-
 """
 Purchase Order <-> NFe matching engine.
 
@@ -1362,10 +1360,7 @@ Design goals (in priority order):
 import re
 from datetime import timedelta
 from fuzzywuzzy import fuzz
-import re
 import unicodedata
-
-
 
 from app.models import (
     PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch,
@@ -1581,6 +1576,8 @@ def _load_embedding_model():
     global _EMBED_MODEL
     if _EMBED_MODEL is None:
         from sentence_transformers import SentenceTransformer
+        import logging
+        import os
         logger = logging.getLogger(__name__)
 
         if not os.path.exists(MODEL_DIR):
@@ -1599,8 +1596,6 @@ def _load_embedding_model():
 def _cos_sim(a, b):
     from sentence_transformers import util
     return util.cos_sim(a, b).item()
-
-
 
 # --------------------------------------------------------------------------- #
 # Token-Diff Disambiguation Helpers
@@ -1621,11 +1616,6 @@ def _tokenize(desc):
 def _token_diff_score(po_desc, nfe_desc):
     """
     Returns (shared_count, po_only_tokens, nfe_only_tokens).
-    Token-set difference is far more robust than a code-regex for catching
-    the actual variation patterns seen in real supplier data: side/position
-    words (DIR/ESQ), colors (PRETO/AZUL), embedded codes (TC96497/TC107381),
-    and grit/spec numbers (GR:120/GR:100) — none of which are exclusively
-    trailing numeric codes.
     """
     po_tokens = set(_tokenize(po_desc))
     nfe_tokens = set(_tokenize(nfe_desc))
@@ -1666,6 +1656,48 @@ def _resolve_numeric_ambiguity(po_item_desc, candidates):
         return (j, nfe_item, nfe_price, nfe_qty)
 
     return None
+
+# --------------------------------------------------------------------------- #
+# Data Status Builder Helper
+# --------------------------------------------------------------------------- #
+
+def _build_status_obj(po_qty, po_price, nfe_qty, nfe_price, pack_used, price_score):
+    """
+    Calculates explicit frontend colors so '0.0% line diff' is always green.
+    """
+    line_total_po = po_qty * po_price
+    line_total_nfe = nfe_qty * nfe_price
+    
+    line_diff_val = abs(line_total_po - line_total_nfe)
+    line_diff_pct = (line_diff_val / line_total_po * 100) if line_total_po > 0 else 0
+    
+    is_converted = pack_used not in (1, 0, -1)
+    
+    unit_diff_pct = 0.0
+    if po_price > 0:
+        adj_nfe_price = nfe_price / pack_used if pack_used >= 1 else nfe_price * abs(pack_used)
+        unit_diff_pct = abs(po_price - adj_nfe_price) / po_price * 100
+
+    # Rules for Unit Price (Ball 1)
+    if is_converted:
+        unit_price_status = 'yellow'  # Converted triggers warning for unit price
+    else:
+        unit_price_status = 'green' if unit_diff_pct <= 2.0 else 'red'
+
+    # Rules for Line Total (Ball 2) - FORCES GREEN IF DIFFERENCE IS <= 0.05%
+    line_total_status = 'green' if line_diff_pct <= 0.05 else ('yellow' if line_diff_pct <= 5.0 else 'red')
+
+    return {
+        'unit_price': {
+            'converted': is_converted,
+            'diff_pct': round(unit_diff_pct, 2),
+            'status': unit_price_status
+        },
+        'line_total': {
+            'diff_pct': round(line_diff_pct, 2),
+            'status': line_total_status
+        }
+    }
 
 # --------------------------------------------------------------------------- #
 # Item matching core
@@ -1721,6 +1753,7 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
                     nfe_qty, nfe_price = nfe_qty_com, nfe_price_com
 
                 combined = (CODE_MATCH_DESC_SCORE * 0.5) + (qty_score * 0.3) + (price_score * 0.2)
+                
                 matches.append({
                     'po_item_id': po_item['id'],
                     'po_item_desc': po_item['descricao'],
@@ -1736,6 +1769,7 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
                     'nfe_price': nfe_price,
                     'pack_size_used': pack_used,
                     'match_method': 'exact_code',
+                    'status': _build_status_obj(po_qty, po_price, nfe_qty, nfe_price, pack_used, price_score)
                 })
                 matched_nfe_ids.add(nfe_item.id)
                 break
@@ -1764,7 +1798,6 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
         if len(candidates) == 1:
             resolved = candidates[0]
         elif len(candidates) > 1:
-            # Multiple items share identical price+qty — try to disambiguate via tokens
             resolved = _resolve_numeric_ambiguity(po_item['descricao'], candidates)
 
         if resolved:
@@ -1790,6 +1823,7 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
                 'nfe_price': nfe_price,
                 'pack_size_used': 1,
                 'match_method': 'numeric_exact' if len(candidates) == 1 else 'numeric_exact_disambiguated',
+                'status': _build_status_obj(po_qty, po_price, nfe_qty, nfe_price, 1, 100)
             })
             matched_nfe_ids.add(nfe_item.id)
 
@@ -1875,6 +1909,7 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
                     'nfe_price': nfe_price,
                     'pack_size_used': pack_used,
                     'match_method': 'fuzzy',
+                    'status': _build_status_obj(po_qty, po_price, nfe_qty, nfe_price, pack_used, price_score)
                 }
             elif combined > second_best_score:
                 second_best_score = combined
@@ -1882,12 +1917,7 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
         if best_match and best_match['combined_score'] >= MIN_COMBINED_ITEM_SCORE:
             AMBIGUITY_MARGIN = 5
             if (best_score - second_best_score) < AMBIGUITY_MARGIN:
-                # Near-tie detected in semantic scoring. Try token-diff disambiguation 
-                # as a last resort before discarding the match.
                 shared, po_only, nfe_only = _token_diff_score(po_item['descricao'], best_match['nfe_item_desc'] or '')
-                
-                # Demand perfection when guessing near-ties: the winning NFe description
-                # MUST contain every single token present in the PO description.
                 if len(po_only) > 0:
                     best_match = None  # Too risky to guess, discard the match
 
@@ -1895,7 +1925,6 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
                 matches.append(best_match)
                 matched_nfe_ids.add(best_match['nfe_item_id'])
 
-    # Final summary statistics
     if use_original_qty:
         items_to_match_count = len([i for i in po_items if i['quantidade'] > 0])
     else:
@@ -1906,17 +1935,9 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
 
     return matches, avg_score, coverage
 
-
-
-
-
-
-
-
 # --------------------------------------------------------------------------- #
 # Main entrypoint
 # --------------------------------------------------------------------------- #
-
 
 def score_purchase_nfe_match(cod_pedc, cod_emp1, nfe_cache=None):
     if nfe_cache is None:
