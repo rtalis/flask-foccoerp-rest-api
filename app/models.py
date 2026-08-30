@@ -625,3 +625,16 @@ class RequestLog(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.now, index=True)
 
     user = db.relationship('User', backref=db.backref('request_logs', lazy='dynamic'))
+    
+    
+class POPriceChange(db.Model):
+    __tablename__ = 'po_price_changes'
+    id = db.Column(db.Integer, primary_key=True)
+    cod_pedc = db.Column(db.String(50), nullable=False)
+    cod_emp1 = db.Column(db.String(50), nullable=False)
+    old_price = db.Column(db.Numeric(15,2), nullable=False)
+    new_price = db.Column(db.Numeric(15,2), nullable=False)
+    change_date = db.Column(db.DateTime, default=datetime.now)
+    is_acknowledged = db.Column(db.Boolean, default=False)
+    acknowledged_by = db.Column(db.String(50))
+    acknowledged_at = db.Column(db.DateTime)

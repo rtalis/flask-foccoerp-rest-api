@@ -1314,21 +1314,23 @@ def search_nfe():
         
     def _get_order_total_comparison(po, nfe, current_po_total):
         """
-        Compares the full purchase order total (with adjustments/freight) against
-        the full NFe total value. Handles the case where one NFe is linked to
-        multiple POs by summing all linked POs' totals before comparing.
-
-        Returns dict: {status, diff_pct, is_split, fully_claimed_across_pos,
-                    po_total_compared, nfe_total}
+        Compares the full purchase order total against the full NFe total value.
+        Restricts linked PO search strictly to the same supplier to prevent 
+        collisions on common short invoice numbers like '7'.
         """
         nfe_total = float(nfe.valor_total) if nfe.valor_total else None
-
-        # Find every distinct PO linked to this same NFe (by num_nf), via both
-        # confirmed links (NFEntry) and AI-suggested links (PurchaseItemNFEMatch)
         linked_po_keys = set()
 
         if nfe.numero:
-            nf_entries = NFEntry.query.filter(NFEntry.num_nf == nfe.numero).all()
+            nf_entries = db.session.query(NFEntry).join(
+                PurchaseOrder,
+                and_(PurchaseOrder.cod_pedc == NFEntry.cod_pedc, 
+                     PurchaseOrder.cod_emp1 == NFEntry.cod_emp1)
+            ).filter(
+                NFEntry.num_nf == nfe.numero,
+                PurchaseOrder.fornecedor_id == po.fornecedor_id
+            ).all()
+            
             for e in nf_entries:
                 linked_po_keys.add((e.cod_pedc, e.cod_emp1))
 
@@ -1341,10 +1343,9 @@ def search_nfe():
         is_split = len(linked_po_keys) > 1
 
         if not is_split:
-            # Simple 1:1 case — just compare this PO's total to the NFe total
             diff_pct = _pct_diff(current_po_total, nfe_total)
             return {
-                'is_split': is_split,
+                'is_split': False,
                 'fully_claimed_across_pos': False,
                 'diff_pct': round(diff_pct, 2) if diff_pct is not None else None,
                 'po_total_compared': round(current_po_total, 2) if current_po_total else None,
@@ -1352,8 +1353,6 @@ def search_nfe():
                 'diff_source': diff_pct,
             }
 
-        # Split case — sum the totals of every PO sharing this NFe and compare
-        # the sum against the NFe's full value.
         total_sum = 0.0
         for cod_pedc, cod_emp1 in linked_po_keys:
             other_po = PurchaseOrder.query.filter_by(cod_pedc=cod_pedc, cod_emp1=cod_emp1).first()
@@ -1378,13 +1377,8 @@ def search_nfe():
 
     def compute_item_status(po_item, nfe_item_preco, nfe_item_qty, nfe_item_id=None,
                          nfe_uom=None, is_estimated=False,
-                         po=None, nfe=None, po_total=None):
-        """
-        Computes the 3-dot traffic light status:
-        1. unit_price  — PO unit price vs NFe item unit price
-        2. line_total  — PO item total (qty x price) vs NFe item total
-        3. order_total — full PO total vs full NFe total (order-level, not item-level)
-        """
+                         po=None, nfe=None, po_total=None, is_price_approved=False):
+        
         result = {
             'unit_price': {'status': 'gray', 'diff_pct': None, 'converted': False},
             'line_total': {'status': 'gray', 'diff_pct': None},
@@ -1427,29 +1421,52 @@ def search_nfe():
         if po is not None and nfe is not None and po_total is not None:
             comparison = _get_order_total_comparison(po, nfe, po_total)
             diff_pct = comparison['diff_source']
+            po_tot = comparison['po_total_compared']
+            nfe_tot = comparison['nfe_total']
 
+            warning_text = None
+            pending_change_id = None
+            
             if comparison['is_split'] and comparison['fully_claimed_across_pos']:
                 status = 'green'
             else:
                 status = _status_from_diff(diff_pct)
-                # Unconfirmed AI matches: don't show a hard red purely from an
-                # order-total mismatch, since a wrong match (not a real
-                # discrepancy) is a likely cause. Cap severity at yellow.
                 if is_estimated and status == 'red':
                     status = 'yellow'
+
+            # Check for unacknowledged PO updates 
+            from app.models import POPriceChange
+            pending_change = POPriceChange.query.filter_by(
+                cod_pedc=po.cod_pedc, 
+                cod_emp1=po.cod_emp1, 
+                is_acknowledged=False
+            ).order_by(POPriceChange.change_date.desc()).first()
+
+            if pending_change:
+                status = 'yellow' 
+                warning_text = f"⚠️ O valor do Pedido foi alterado no ERP (De R$ {pending_change.old_price:.2f} para R$ {pending_change.new_price:.2f})"
+                pending_change_id = pending_change.id
+            elif diff_pct is not None and diff_pct > 1.0:
+                warning_text = f"Preço NF difere do Pedido: Pedido R$ {po_tot:.2f} ➔ NF R$ {nfe_tot:.2f}"
+
+            # FORCE GREEN IF APPROVED
+            if is_price_approved:
+                status = 'green'
+                warning_text = f"Aprovado (Original: R$ {po_tot:.2f} ➔ NF: R$ {nfe_tot:.2f})"
 
             result['order_total'] = {
                 'status': status,
                 'diff_pct': round(diff_pct, 2) if diff_pct is not None else None,
                 'is_split': comparison['is_split'],
                 'fully_claimed_across_pos': comparison['fully_claimed_across_pos'],
-                'po_total': comparison['po_total_compared'],
-                'nfe_total': comparison['nfe_total'],
+                'po_total': po_tot,
+                'nfe_total': nfe_tot,
+                'price_warning': warning_text,
+                'pending_po_change_id': pending_change_id,
+                'is_approved': is_price_approved
             }
 
         return result
-        
-  
   
    
 
@@ -1755,7 +1772,8 @@ def search_nfe():
                             is_estimated=False,
                             po=po,
                             nfe=nfe,
-                            po_total=adjusted_total,   
+                            po_total=adjusted_total, 
+                            is_price_approved=False
                         )
 
                         purchase_info = {
@@ -1842,6 +1860,7 @@ def search_nfe():
                                         po=po,
                                         nfe=nfe,
                                         po_total=po_total,
+                                        is_price_approved=getattr(match, 'is_price_approved', False) # <-- ADDED
                                     )
                                     estimated_info = {
                                         'cod_pedc': po.cod_pedc,
@@ -1868,6 +1887,7 @@ def search_nfe():
                                         'nfe_item_unidade': nfe_item.unidade_comercial if nfe_item else None,
                                         'nfe_item_preco': match.nfe_item_preco,
                                         'status': item_status,
+                                        'is_price_approved': getattr(match, 'is_price_approved', False) # <-- ADDED TO JSON
                                     }
                                     estimated_purchases.append(estimated_info)
 
@@ -2172,3 +2192,30 @@ def download_nfe_xml():
     response.headers['Content-Disposition'] = f'attachment; filename="NFe_{chave}.xml"'
     
     return response
+
+
+
+@bp.route('/approve_price_divergence', methods=['POST'])
+@login_required
+def approve_price_divergence():
+    """Manually approve a price divergence between PO and NFE."""
+    try:
+        data = request.get_json()
+        match_id = data.get('match_id')
+        
+        if not match_id:
+            return jsonify({'error': 'Missing match_id'}), 400
+            
+        match = PurchaseItemNFEMatch.query.get(match_id)
+        if not match:
+            return jsonify({'error': 'Match not found'}), 404
+            
+        match.is_price_approved = True
+        match.approved_by_user_id = str(current_user.id)
+        db.session.commit()
+        
+        return jsonify({'status': 'success', 'message': 'Divergência aprovada.'}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500

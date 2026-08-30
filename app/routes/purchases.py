@@ -482,3 +482,27 @@ def get_user_purchases():
         result.append(order_data)
     
     return jsonify(result), 200
+
+
+@bp.route('/acknowledge_po_price', methods=['POST'])
+@login_required
+def acknowledge_po_price():
+    """Marks a PO price change as reviewed by a human."""
+    try:
+        change_id = request.json.get('change_id')
+        from app.models import POPriceChange
+        
+        change = POPriceChange.query.get(change_id)
+        if not change:
+            return jsonify({'error': 'Price change record not found'}), 404
+            
+        change.is_acknowledged = True
+        change.acknowledged_by = str(current_user.id)
+        change.acknowledged_at = datetime.utcnow()
+        db.session.commit()
+        
+        return jsonify({'status': 'success'}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500

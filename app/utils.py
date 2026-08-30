@@ -468,17 +468,27 @@ def import_ruah(file_content):
             }
 
             if existing_order:
+                # ---Detect PO Price Changes ---
+                old_price = existing_order.total_pedido_com_ipi or existing_order.total_liquido or 0
+                new_price = order_data.get('total_pedido_com_ipi') or order_data.get('total_liquido') or 0
+                
+                # If price changed by more than 1 cent, record it
+                if old_price and abs(float(old_price) - float(new_price)) > 0.01:
+                    from app.models import POPriceChange
+                    price_change = POPriceChange(
+                        cod_pedc=order_data['cod_pedc'],
+                        cod_emp1=order_data['cod_emp1'],
+                        old_price=old_price,
+                        new_price=new_price
+                    )
+                    db.session.add(price_change)
+                # ------------------------------------------
+
                 for field, value in order_details.items():
                     setattr(existing_order, field, value)
                 orders_to_update_ids.append(existing_order.id)
                 order = existing_order
                 updated += 1
-            else:
-                order = PurchaseOrder(**order_details)
-                db.session.add(order)
-            
-            processed_orders.append((order, order_data))
-            purchasecount += 1
 
         # Bulk delete items and adjustments for updated orders
         if orders_to_update_ids:
@@ -1336,6 +1346,7 @@ def relink_purchase_item_nfe_matches():
 
 
 
+
 """
 Purchase Order <-> NFe matching engine.
 
@@ -2078,7 +2089,7 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1, nfe_cache=None):
       
             if supplier_similarity >= 90:
                 cnpj_score, supplier_match_type = 30, 'exact_name'
-            elif supplier_similarity >= 80:
+            elif supplier_similarity >= 75:
                 cnpj_score, supplier_match_type = 20, 'high_similarity'
             elif supplier_similarity >= 65:
                 cnpj_score, supplier_match_type = 5, 'partial_name'
@@ -2233,7 +2244,7 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1, nfe_cache=None):
 
         strong_desc_matches = len([m for m in item_matches if m.get('desc_score', 0) >= 55 or m.get('match_method') == 'exact_code'])
         if strong_desc_matches == 0 and supplier_match_type not in ('exact_name', 'high_similarity') and exact_codes == 0:
-            score = score * 0.6
+            score = score * 0.8
             breakdown['no_strong_item_evidence_penalty'] = True
 
         if score >= 10:

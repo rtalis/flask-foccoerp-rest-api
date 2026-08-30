@@ -57,7 +57,6 @@ def create_app():
     allowed_regex = re.compile(
         r"^https?://(localhost|127\.0\.0\.1|.*\.lovableproject\.com|.*\.lovable\.app|.*\.lovable\.dev|.*\.roxel\.dev)(:\d+)?$"
     )
-    
     allowed_origins = [
         allowed_regex
     ]
