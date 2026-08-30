@@ -1881,14 +1881,15 @@ def search_nfe():
                                         'nfe_numero': nfe.numero,
                                         'is_estimated': True,
                                         'match_score': match.match_score,
+                                        'match_id': match.id,
                                         'nfe_item_numero': nfe_item.numero_item if nfe_item else None,
                                         'nfe_item_descricao': match.nfe_item_descricao or (nfe_item.descricao if nfe_item else None),
                                         'nfe_item_quantidade': match.nfe_item_quantidade,
                                         'nfe_item_unidade': nfe_item.unidade_comercial if nfe_item else None,
                                         'nfe_item_preco': match.nfe_item_preco,
                                         'status': item_status,
-                                        'is_price_approved': getattr(match, 'is_price_approved', False) # <-- ADDED TO JSON
-                                    }
+                                        'is_price_approved': getattr(match, 'is_price_approved', False) 
+                                        }
                                     estimated_purchases.append(estimated_info)
 
             nfe_results.append({
