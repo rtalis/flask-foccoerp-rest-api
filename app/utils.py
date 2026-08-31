@@ -2021,8 +2021,7 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1, nfe_cache=None):
         (NFEntry.cod_pedc == PurchaseOrder.cod_pedc) & 
         (NFEntry.cod_emp1 == PurchaseOrder.cod_emp1)
     ).filter(
-        PurchaseOrder.fornecedor_id == purchase_order.fornecedor_id,
-        PurchaseOrder.id != purchase_order.id  # Exclude matches belonging to the current PO
+        PurchaseOrder.fornecedor_id == purchase_order.fornecedor_id
     ).all()
     
     used_nfe_numbers_set = {str(row[0]).strip() for row in used_nfe_query if row[0]}
