@@ -496,6 +496,9 @@ class NFEItem(db.Model):
     
     # Additional product info
     inf_ad_prod = db.Column(db.Text)
+    
+    is_conferido = db.Column(db.Boolean, default=False)
+    conferido_by_user_id = db.Column(db.String(50), nullable=True)
 
 class NFETransportadora(db.Model):
     __tablename__ = 'nfe_transportadoras'

@@ -1940,6 +1940,7 @@ def search_nfe():
                     'cofins_aliquota': item.cofins_pcofins,
                     'cofins_valor': item.cofins_vcofins,
                     'valor_total_tributos': item.valor_total_tributos,
+                    'is_conferido': getattr(item, 'is_conferido', False),
                 } for item in nfe_items],
             })
             if nfe.numero:
@@ -2216,6 +2217,40 @@ def approve_price_divergence():
         db.session.commit()
         
         return jsonify({'status': 'success', 'message': 'Divergência aprovada.'}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+    
+@bp.route('/toggle_nfe_item_conferido', methods=['POST'])
+@login_required
+def toggle_nfe_item_conferido():
+    """Toggles the manual 'conferido' status of a standalone NFE Item."""
+    try:
+        data = request.get_json()
+        nfe_item_id = data.get('nfe_item_id')
+        
+        if not nfe_item_id:
+            return jsonify({'error': 'Missing nfe_item_id'}), 400
+            
+        nfe_item = NFEItem.query.get(nfe_item_id)
+        if not nfe_item:
+            return jsonify({'error': 'NFE Item not found'}), 404
+            
+        nfe_item.is_conferido = not nfe_item.is_conferido
+        
+        if nfe_item.is_conferido:
+            nfe_item.conferido_by_user_id = str(current_user.id)
+        else:
+            nfe_item.conferido_by_user_id = None
+            
+        db.session.commit()
+        
+        return jsonify({
+            'status': 'success', 
+            'is_conferido': nfe_item.is_conferido,
+            'message': 'Status atualizado com sucesso.'
+        }), 200
         
     except Exception as e:
         db.session.rollback()
