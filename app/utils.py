@@ -468,27 +468,38 @@ def import_ruah(file_content):
             }
 
             if existing_order:
-                # ---Detect PO Price Changes ---
+                # --- Detect PO price changes (best-effort, never blocks the import) ---
                 old_price = existing_order.total_pedido_com_ipi or existing_order.total_liquido or 0
                 new_price = order_data.get('total_pedido_com_ipi') or order_data.get('total_liquido') or 0
-                
-                # If price changed by more than 1 cent, record it
+
                 if old_price and abs(float(old_price) - float(new_price)) > 0.01:
-                    from app.models import POPriceChange
-                    price_change = POPriceChange(
-                        cod_pedc=order_data['cod_pedc'],
-                        cod_emp1=order_data['cod_emp1'],
-                        old_price=old_price,
-                        new_price=new_price
-                    )
-                    db.session.add(price_change)
-                # ------------------------------------------
+                    try:
+                        from app.models import POPriceChange
+                        price_change = POPriceChange(
+                            cod_pedc=order_data['cod_pedc'],
+                            cod_emp1=order_data['cod_emp1'],
+                            old_price=old_price,
+                            new_price=new_price
+                        )
+                        db.session.add(price_change)
+                    except ImportError:
+                  
+                        logging.warning(
+                            "POPriceChange model not found; skipping price-change "
+                            f"tracking for {order_data['cod_pedc']}/{order_data['cod_emp1']}"
+                        )
 
                 for field, value in order_details.items():
                     setattr(existing_order, field, value)
                 orders_to_update_ids.append(existing_order.id)
                 order = existing_order
                 updated += 1
+            else:
+                order = PurchaseOrder(**order_details)
+                db.session.add(order)
+
+            processed_orders.append((order, order_data))
+            purchasecount += 1
 
         # Bulk delete items and adjustments for updated orders
         if orders_to_update_ids:
@@ -496,7 +507,6 @@ def import_ruah(file_content):
             PurchaseAdjustment.query.filter(PurchaseAdjustment.purchase_order_id.in_(orders_to_update_ids)).delete(synchronize_session=False)
             from app.models import PurchasePaymentInstallment
             PurchasePaymentInstallment.query.filter(PurchasePaymentInstallment.purchase_order_id.in_(orders_to_update_ids)).delete(synchronize_session=False)
-        
         # Flush to ensure new orders get proper IDs
         db.session.flush()
 
