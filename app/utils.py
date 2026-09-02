@@ -2063,7 +2063,8 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1, nfe_cache=None):
         return {'error': 'Purchase order emission date is required for NFe matching'}
 
     date_start = po_date - timedelta(days=30)
-    date_end = po_date + timedelta(days=90)
+    #TODO calcular o tempo médio de envio do fornecedor para uma estimativa mais precisa do período de busca das NFe
+    date_end = po_date + timedelta(days=150)
     all_nfes = NFEData.query.filter(
         NFEData.data_emissao >= date_start,
         NFEData.data_emissao <= date_end,

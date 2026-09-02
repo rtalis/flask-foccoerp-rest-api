@@ -1,3 +1,4 @@
+import re
 import xml.etree.ElementTree as ET
 import base64
 import requests
@@ -1269,6 +1270,55 @@ def search_nfe():
             return 'yellow'
         return 'red'
 
+    def _normalize_cnpj_full(value):
+        """Full 14-digit CNPJ, digits only. Returns '' if not a valid CNPJ length."""
+        if not value:
+            return ""
+        digits = re.sub(r'\D', '', str(value))
+        return digits if len(digits) == 14 else ""
+
+    _destinatario_company_cnpj_cache = {}
+
+    def _get_company_cnpj(cod_emp1):
+        """Looks up the full CNPJ for the company that owns this PO (cod_emp1),
+        caching per request to avoid repeated queries across many PO items."""
+        if cod_emp1 in _destinatario_company_cnpj_cache:
+            return _destinatario_company_cnpj_cache[cod_emp1]
+        company = Company.query.filter_by(cod_emp1=str(cod_emp1)).first()
+        cnpj = _normalize_cnpj_full(company.cnpj) if company else ""
+        _destinatario_company_cnpj_cache[cod_emp1] = cnpj
+        return cnpj
+
+    def _check_destinatario_match(po, nfe):
+        """
+        Verifies the NFe was actually issued TO the company that owns this
+        purchase order — comparing full CNPJs (not just root), since the
+        destinatario should be the exact receiving branch/legal entity, not
+        just 'the same corporate group'. A mismatch here is a genuine red
+        flag: the invoice was addressed to a different company/branch than
+        the one that placed the order.
+
+        Returns dict: {status, po_company_cnpj, nfe_destinatario_cnpj}
+        """
+        po_cnpj = _get_company_cnpj(po.cod_emp1)
+
+        destinatario = NFEDestinatario.query.filter_by(nfe_id=nfe.id).first()
+        nfe_dest_cnpj = _normalize_cnpj_full(destinatario.cnpj) if destinatario else ""
+
+        if not po_cnpj or not nfe_dest_cnpj:
+            return {
+                'status': 'gray',
+                'po_company_cnpj': po_cnpj or None,
+                'nfe_destinatario_cnpj': nfe_dest_cnpj or None,
+            }
+
+        status = 'green' if po_cnpj == nfe_dest_cnpj else 'red'
+        return {
+            'status': status,
+            'po_company_cnpj': po_cnpj,
+            'nfe_destinatario_cnpj': nfe_dest_cnpj,
+        }
+
     def _get_split_info(nfe_item_id, po_qty_for_this_line):
         """
         Checks whether the NFE item's total quantity is spread across multiple
@@ -1465,6 +1515,10 @@ def search_nfe():
                 'pending_po_change_id': pending_change_id,
                 'is_approved': is_price_approved
             }
+            
+        # --- Dot 4: destinatario CNPJ match --------------------------------------
+        if po is not None and nfe is not None:
+            result['destinatario_match'] = _check_destinatario_match(po, nfe)
 
         return result
   
