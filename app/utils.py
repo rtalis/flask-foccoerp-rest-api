@@ -4,7 +4,8 @@ from datetime import datetime, date
 import os
 import re
 from flask import jsonify, current_app, has_app_context
-from app.models import NFEntry, PurchaseAdjustment, PurchaseItem, PurchaseOrder, Quotation, PurchaseItemNFEMatch, Company
+from sqlalchemy import func, or_
+from app.models import NFEntry, PurchaseAdjustment, PurchaseItem, PurchaseOrder, Quotation, PurchaseItemNFEMatch, Company, Supplier
 from app import db
 from fuzzywuzzy import fuzz
 from flask_mail import Mail, Message
@@ -1489,22 +1490,31 @@ def extract_po_numbers(text):
     return numbers
 
 def extract_codes(po_item):
-    """Extract identifier from PurchaseItem model."""
+    """Extract identifier from PurchaseItem model. Ignores generic 500-series codes."""
     codes = set()
     val = getattr(po_item, 'item_id', None) if hasattr(po_item, 'item_id') else po_item.get('codigo') if isinstance(po_item, dict) else None
+    
     if val:
-        codes.add(clean_digits(str(val)) or str(val).strip().lower())
+        raw_val = str(val).strip()
+        # Blacklist generic internal ERP codes
+        if not raw_val.startswith('500'):
+            codes.add(clean_digits(raw_val) or raw_val.lower())
+            
     return codes
 
 def extract_nfe_codes(nfe_item):
-    """Extract exact identifiers using actual NFEItem model fields."""
+    """Extract exact identifiers using actual NFEItem model fields. Ignores generic 500-series codes."""
     codes = set()
     for attr in ('codigo', 'codigo_ean', 'codigo_ean_tributario'):
         val = getattr(nfe_item, attr, None)
+        
         if val:
-            codes.add(clean_digits(str(val)) or str(val).strip().lower())
+            raw_val = str(val).strip()
+            # Ignore standard filler strings and generic 500-series codes
+            if raw_val.upper() not in ('SEM GTIN', 'SEMGTIN', 'N/A') and not raw_val.startswith('500'):
+                codes.add(clean_digits(raw_val) or raw_val.lower())
+                
     return codes
-
 def _is_numeric_exact_match(po_price, po_qty, nfe_price, nfe_qty):
     """
     True if price AND quantity independently match within tight tolerance,
@@ -1721,7 +1731,42 @@ def _build_status_obj(po_qty, po_price, nfe_qty, nfe_price, pack_used, price_sco
     }
 
 
+def normalize_cnpj_digits(value):
+    """Strip everything but digits from a CNPJ/CPF string."""
+    if not value:
+        return ""
+    return re.sub(r'\D', '', str(value))
 
+
+def cnpj_root(value):
+    """
+    Returns the 8-digit CNPJ root (company identifier, shared across
+    branches/filiais) or '' if the value isn't a valid 14-digit CNPJ.
+    A CPF (11 digits) or malformed value returns '' — root comparison
+    only applies to CNPJs.
+    """
+    digits = normalize_cnpj_digits(value)
+    if len(digits) == 14:
+        return digits[:8]
+    return ""
+
+
+def _get_supplier_cnpj(fornecedor_id):
+    """
+    Looks up the PO supplier's CNPJ/CPF from the Supplier table using the
+    same matching strategy as the CNPJ search elsewhere in the app
+    (id_for, exact cod_for, or cod_for with leading zeros stripped).
+    """
+    if not fornecedor_id:
+        return None
+    supplier = Supplier.query.filter(
+        or_(
+            Supplier.id_for == fornecedor_id,
+            Supplier.cod_for == str(fornecedor_id),
+            func.ltrim(Supplier.cod_for, '0') == str(fornecedor_id).lstrip('0'),
+        )
+    ).first()
+    return supplier.nvl_forn_cnpj_forn_cpf if supplier else None
 
 # --------------------------------------------------------------------------- #
 # Item matching core
@@ -1732,9 +1777,61 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
 
     matches = []
     matched_nfe_ids = set()
-    matched_po_ids = set()  # <--- Defined safely at the top!
+    matched_po_ids = set() 
 
-    # --- Pass 1: exact code matches -----------------------------------------
+   # --- Pass 1: Numeric fingerprint (exact price + qty) --------------------
+    for i, po_item in enumerate(po_items):
+        if po_item['id'] in matched_po_ids:
+            continue
+        po_qty = po_item['quantidade'] if use_original_qty else po_item['qtde_remaining']
+        if po_qty <= 0:
+            continue
+        po_price = po_item.get('preco_unitario', 0)
+
+        candidates = []
+        for j, nfe_item in enumerate(nfe_items_db):
+            if nfe_item.id in matched_nfe_ids:
+                continue
+            nfe_price = float(nfe_item.valor_unitario_comercial or 0)
+            nfe_qty = float(nfe_item.quantidade_comercial or 0)
+            if _is_numeric_exact_match(po_price, po_qty, nfe_price, nfe_qty):
+                candidates.append((j, nfe_item, nfe_price, nfe_qty))
+
+        resolved = None
+        if len(candidates) == 1:
+            resolved = candidates[0]
+        elif len(candidates) > 1:
+            resolved = _resolve_numeric_ambiguity(po_item['descricao'], candidates)
+
+        if resolved:
+            j, nfe_item, nfe_price, nfe_qty = resolved
+            desc_score = 0
+            if len(po_embeddings) > i and len(nfe_embeddings) > j:
+                desc_score = max(0, int(_cos_sim(po_embeddings[i], nfe_embeddings[j]) * 100))
+
+            combined = min(100.0, (desc_score * 0.2) + 80.0)
+
+            matches.append({
+                'po_item_id': po_item['id'],
+                'po_item_desc': po_item['descricao'],
+                'nfe_item_id': nfe_item.id,
+                'nfe_item_desc': nfe_item.descricao,
+                'desc_score': desc_score,
+                'qty_score': 100,
+                'price_score': 100,
+                'combined_score': round(combined, 2),
+                'po_qty': po_qty,
+                'nfe_qty': nfe_qty,
+                'po_price': po_price,
+                'nfe_price': nfe_price,
+                'pack_size_used': 1,
+                'match_method': 'numeric_exact' if len(candidates) == 1 else 'numeric_exact_disambiguated',
+                'status': _build_status_obj(po_qty, po_price, nfe_qty, nfe_price, 1, 100)
+            })
+            matched_nfe_ids.add(nfe_item.id)
+            matched_po_ids.add(po_item['id'])
+
+    # --- Pass 2: Exact code matches -----------------------------------------
     for i, po_item in enumerate(po_items):
         if po_item['id'] in matched_po_ids:
             continue
@@ -1802,60 +1899,9 @@ def match_items(po_items, nfe_items_db, po_embeddings, nfe_embeddings, nfe_codes
                 matched_nfe_ids.add(nfe_item.id)
                 matched_po_ids.add(po_item['id'])
                 break
-
-    # --- Pass 1.5: numeric fingerprint (exact price + qty) ------------------
-    for i, po_item in enumerate(po_items):
-        if po_item['id'] in matched_po_ids:
-            continue
-        po_qty = po_item['quantidade'] if use_original_qty else po_item['qtde_remaining']
-        if po_qty <= 0:
-            continue
-        po_price = po_item.get('preco_unitario', 0)
-
-        candidates = []
-        for j, nfe_item in enumerate(nfe_items_db):
-            if nfe_item.id in matched_nfe_ids:
-                continue
-            nfe_price = float(nfe_item.valor_unitario_comercial or 0)
-            nfe_qty = float(nfe_item.quantidade_comercial or 0)
-            if _is_numeric_exact_match(po_price, po_qty, nfe_price, nfe_qty):
-                candidates.append((j, nfe_item, nfe_price, nfe_qty))
-
-        resolved = None
-        if len(candidates) == 1:
-            resolved = candidates[0]
-        elif len(candidates) > 1:
-            resolved = _resolve_numeric_ambiguity(po_item['descricao'], candidates)
-
-        if resolved:
-            j, nfe_item, nfe_price, nfe_qty = resolved
-            desc_score = 0
-            if len(po_embeddings) > i and len(nfe_embeddings) > j:
-                desc_score = max(0, int(_cos_sim(po_embeddings[i], nfe_embeddings[j]) * 100))
-
-            combined = min(100.0, (desc_score * 0.2) + 80.0)
-
-            matches.append({
-                'po_item_id': po_item['id'],
-                'po_item_desc': po_item['descricao'],
-                'nfe_item_id': nfe_item.id,
-                'nfe_item_desc': nfe_item.descricao,
-                'desc_score': desc_score,
-                'qty_score': 100,
-                'price_score': 100,
-                'combined_score': round(combined, 2),
-                'po_qty': po_qty,
-                'nfe_qty': nfe_qty,
-                'po_price': po_price,
-                'nfe_price': nfe_price,
-                'pack_size_used': 1,
-                'match_method': 'numeric_exact' if len(candidates) == 1 else 'numeric_exact_disambiguated',
-                'status': _build_status_obj(po_qty, po_price, nfe_qty, nfe_price, 1, 100)
-            })
-            matched_nfe_ids.add(nfe_item.id)
-            matched_po_ids.add(po_item['id'])
-
-    # --- Pass 2: fuzzy / semantic matching (Matrix Scoring) ------------------
+            
+            
+    # --- Pass 3: fuzzy / semantic matching (Matrix Scoring) ------------------
     all_potential_matches = []
 
     for i, po_item in enumerate(po_items):
@@ -2047,6 +2093,8 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1, nfe_cache=None):
     )
 
     results = []
+    po_num_clean = clean_digits(str(cod_pedc))
+    po_supplier_cnpj_root = cnpj_root(_get_supplier_cnpj(purchase_order.fornecedor_id))
 
     for nfe in all_nfes:
         if str(nfe.numero).strip() in used_nfe_numbers_set:
@@ -2084,30 +2132,77 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1, nfe_cache=None):
         score = 0
         breakdown = {}
 
-       # --- 1. CNPJ / Supplier match (0-30) -----------------------------
+        # --- 1. CNPJ / Supplier match (0-30) -----------------------------
+        # Prefer CNPJ-root matching when both sides have a usable CNPJ — it's
+        # a hard identity signal, not fuzzy text. Fall back to (or top up
+        # with) name similarity when CNPJ data is missing on either side, or
+        # when the name signal happens to score higher (e.g. CNPJ root
+        # present but slightly stale in our Supplier table). We take the
+        # BEST of the two signals rather than blending them, since a strong
+        # match on either one is independently trustworthy.
         cnpj_score = 0
+        name_score = 0
         supplier_match_type = 'none'
         supplier_similarity = 0
 
         if purchase_order.fornecedor_id == 1160:
+            # Marketplace supplier (MercadoPago) — actual seller varies per
+            # purchase, so supplier-identity scoring doesn't apply here.
             supplier_match_type = 'mercadopago_marketplace'
             cnpj_score = 15
         else:
+            nfe_cnpj_root = cnpj_root(nfe_cnpj)
+
+            cnpj_root_match = bool(
+                po_supplier_cnpj_root and nfe_cnpj_root
+                and po_supplier_cnpj_root == nfe_cnpj_root
+            )
+            if cnpj_root_match:
+                cnpj_score = 30
+
             if nfe_supplier and supplier_name:
-                supplier_similarity = fuzz.token_set_ratio(nfe_supplier.lower(), supplier_name)            
-      
+                supplier_similarity = fuzz.token_set_ratio(nfe_supplier.lower(), supplier_name)
+
             if supplier_similarity >= 90:
-                cnpj_score, supplier_match_type = 30, 'exact_name'
+                name_score = 30
             elif supplier_similarity >= 75:
-                cnpj_score, supplier_match_type = 20, 'high_similarity'
+                name_score = 20
             elif supplier_similarity >= 65:
-                cnpj_score, supplier_match_type = 5, 'partial_name'
+                name_score = 5
             else:
-                cnpj_score, supplier_match_type = 0, 'possible_related'
+                name_score = 0
+
+            if cnpj_score >= name_score:
+                if cnpj_root_match:
+                    supplier_match_type = 'cnpj_root_match'
+                elif supplier_similarity >= 90:
+                    supplier_match_type = 'exact_name'
+                elif supplier_similarity >= 75:
+                    supplier_match_type = 'high_similarity'
+                elif supplier_similarity >= 65:
+                    supplier_match_type = 'partial_name'
+                else:
+                    supplier_match_type = 'possible_related'
+            else:
+                if supplier_similarity >= 90:
+                    supplier_match_type = 'exact_name'
+                elif supplier_similarity >= 75:
+                    supplier_match_type = 'high_similarity'
+                elif supplier_similarity >= 65:
+                    supplier_match_type = 'partial_name'
+                else:
+                    supplier_match_type = 'possible_related'
+
+            cnpj_score = max(cnpj_score, name_score)
 
         score += cnpj_score
-        breakdown.update(cnpj_score=cnpj_score, supplier_match_type=supplier_match_type,
-                          supplier_similarity=supplier_similarity)
+        breakdown.update(
+            cnpj_score=cnpj_score,
+            supplier_match_type=supplier_match_type,
+            supplier_similarity=supplier_similarity,
+            po_supplier_cnpj_root=po_supplier_cnpj_root or None,
+            nfe_cnpj_root=cnpj_root(nfe_cnpj) or None,
+        )
 
         # --- 2. PO reference in NFe text (0-15) --------------------------
         po_ref_score = 5
