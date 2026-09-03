@@ -36,17 +36,35 @@ def _format_datetime_br(date_obj):
 
 # PHASE 7 ENDPOINTS
 
+from datetime import datetime
+
 @bp.route('/purchasers', methods=['GET'])
 @login_required
 def get_purchasers():
-    """Get list of all purchasers (func_nome) from purchase orders."""
+    """Get list of all purchasers (func_nome) from purchase orders, optionally filtered by date."""
     try:
-        purchasers = db.session.query(PurchaseOrder.func_nome).distinct().all()
-        purchaser_names = [purchaser[0] for purchaser in purchasers]
+        date_from_str = request.args.get('date_from')
+        date_to_str = request.args.get('date_to')
+        
+        query = db.session.query(PurchaseOrder.func_nome).filter(PurchaseOrder.func_nome.isnot(None))
+
+        if date_from_str:
+            date_from = datetime.strptime(date_from_str, '%Y-%m-%d').date()
+            query = query.filter(PurchaseOrder.dt_emis >= date_from)
+            
+        if date_to_str:
+            date_to = datetime.strptime(date_to_str, '%Y-%m-%d').date()
+            query = query.filter(PurchaseOrder.dt_emis <= date_to)
+
+        purchasers = query.distinct().order_by(PurchaseOrder.func_nome).all()
+        purchaser_names = [purchaser[0] for purchaser in purchasers if purchaser[0].strip()]
+        
         return jsonify(purchaser_names), 200
+        
+    except ValueError as ve:
+        return jsonify({'error': 'Formato de data inválido. Use YYYY-MM-DD.'}), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
 
 @bp.route('/companies', methods=['GET'])
 @login_required

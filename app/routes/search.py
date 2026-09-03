@@ -627,10 +627,15 @@ def search_advanced():
         base_query = base_query.filter(PurchaseOrder.dt_emis <= date_to)
 
     if search_by_func_nome and search_by_func_nome.lower() != 'todos':
-        base_query = base_query.filter(PurchaseOrder.func_nome.ilike(f'%{search_by_func_nome}%'))
+        purchasers = [name.strip() for name in search_by_func_nome.split(',') if name.strip()]
+        if purchasers:
+            func_filters = [PurchaseOrder.func_nome.ilike(f'%{p}%') for p in purchasers]
+            base_query = base_query.filter(or_(*func_filters))
 
     if search_by_cod_emp1 and str(search_by_cod_emp1).lower() != 'todos':
-        base_query = base_query.filter(PurchaseOrder.cod_emp1 == str(search_by_cod_emp1))
+        emp_codes = [code.strip() for code in str(search_by_cod_emp1).split(',') if code.strip()]
+        if emp_codes:
+            base_query = base_query.filter(PurchaseOrder.cod_emp1.in_(emp_codes))
 
     if hide_cancelled:
         base_query = base_query.filter(PurchaseItem.quantidade > PurchaseItem.qtde_canc)
