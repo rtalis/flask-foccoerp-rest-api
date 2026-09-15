@@ -50,7 +50,13 @@ def _check_supplier_match(purchase_order, nfe_emitente):
     # Get supplier CNPJ from database using fornecedor_id
     fornecedor_cnpj = None
     if purchase_order.fornecedor_id:
-        supplier = db.session.query(Company).filter(Company.cod_emp1 == str(purchase_order.fornecedor_id)).first()
+        from app.models import Supplier
+        supplier = db.session.query(Supplier).filter(
+            or_(
+                Supplier.id_for == purchase_order.fornecedor_id,
+                Supplier.cod_for == str(purchase_order.fornecedor_id)
+            )
+        ).first()
         if supplier and supplier.nvl_forn_cnpj_forn_cpf:
             fornecedor_cnpj = ''.join(filter(str.isdigit, str(supplier.nvl_forn_cnpj_forn_cpf)))
     
@@ -628,10 +634,15 @@ def get_nfe_by_number():
         
         fornecedor_cnpj = None
         if fornecedor_id:
-            supplier = Company.query.filter(Company.cod_emp1 == str(fornecedor_id)).first()
+            from app.models import Supplier
+            supplier = Supplier.query.filter(
+                or_(
+                    Supplier.id_for == fornecedor_id,
+                    Supplier.cod_for == str(fornecedor_id)
+                )
+            ).first()
             if supplier and supplier.nvl_forn_cnpj_forn_cpf:
                 fornecedor_cnpj = ''.join(filter(str.isdigit, str(supplier.nvl_forn_cnpj_forn_cpf)))
-        
         matched_nfe = None
         
         for nfe in nfes:
