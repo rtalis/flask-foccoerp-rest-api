@@ -2387,3 +2387,87 @@ def score_purchase_nfe_match(cod_pedc, cod_emp1, nfe_cache=None):
         'matches': results,
         'matches_found': len(results),
     }
+    
+    
+    
+def parse_and_store_nfse_xml(xml_content, chave_acesso):
+    """
+    Parses Brazilian National Standard NFS-e XML and stores it
+    within nfe_data, nfe_emitentes, nfe_destinatarios, and nfe_itens.
+    """
+    import xml.etree.ElementTree as ET
+    from datetime import datetime
+    from app import db
+    from app.models import NFEData, NFEEmitente, NFEDestinatario, NFEItem
+
+    existing = NFEData.query.filter_by(chave=chave_acesso).first()
+    if existing:
+        return existing
+
+    ns = {'nfse': 'http://www.sped.fazenda.gov.br/nfse'}
+
+    try:
+        root = ET.fromstring(xml_content)
+        inf_nfse = root.find('.//nfse:infNFSe', ns)
+        if inf_nfse is None:
+            return None
+
+        numero = inf_nfse.findtext('.//nfse:nNFSe', default='', namespaces=ns)
+        data_str = inf_nfse.findtext('.//nfse:dhEmi', namespaces=ns) or inf_nfse.findtext('.//nfse:dhProc', namespaces=ns)
+        data_emissao = datetime.strptime(data_str[:19], "%Y-%m-%dT%H:%M:%S") if data_str else None
+
+        valor_total = float(inf_nfse.findtext('.//nfse:vServ', default='0', namespaces=ns))
+        if valor_total == 0.0:
+            valor_total = float(inf_nfse.findtext('.//nfse:vLiq', default='0', namespaces=ns))
+
+        # 1. Store NFE Header
+        nfe_data = NFEData(
+            chave=chave_acesso,
+            xml_content=xml_content,
+            tipo_documento='3',  # 3 = NFS-e
+            numero=numero,
+            data_emissao=data_emissao,
+            valor_total=valor_total,
+            valor_produtos=valor_total
+        )
+        db.session.add(nfe_data)
+
+        # 2. Store Prestador (Emitente)
+        emit = inf_nfse.find('.//nfse:emit', ns)
+        if emit is not None:
+            emitente = NFEEmitente(
+                nfe=nfe_data,
+                cnpj=emit.findtext('nfse:CNPJ', default='', namespaces=ns),
+                nome=emit.findtext('nfse:xNome', default='', namespaces=ns)
+            )
+            db.session.add(emitente)
+
+        # 3. Store Tomador (Destinatario)
+        toma = inf_nfse.find('.//nfse:toma', ns)
+        if toma is not None:
+            destinatario = NFEDestinatario(
+                nfe=nfe_data,
+                cnpj=toma.findtext('nfse:CNPJ', default='', namespaces=ns),
+                nome=toma.findtext('nfse:xNome', default='', namespaces=ns)
+            )
+            db.session.add(destinatario)
+
+        # 4. Store Service Description as Synthetic Item
+        desc_servico = inf_nfse.findtext('.//nfse:xDescServ', default='Serviço Prestado', namespaces=ns)
+        item = NFEItem(
+            nfe=nfe_data,
+            numero_item=1,
+            codigo='SERVICO',
+            descricao=desc_servico.strip(),
+            quantidade_comercial=1.0,
+            valor_unitario_comercial=valor_total,
+            valor_total_bruto=valor_total
+        )
+        db.session.add(item)
+
+        db.session.commit()
+        return nfe_data
+
+    except Exception as e:
+        db.session.rollback()
+        raise e

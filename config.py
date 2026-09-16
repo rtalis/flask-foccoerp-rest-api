@@ -27,6 +27,9 @@ class Config:
     MAIL_USE_TLS = os.getenv('MAIL_USE_TLS', 'true').lower() == 'true'
     MAIL_USERNAME = os.getenv('MAIL_USERNAME')
     MAIL_PASSWORD = os.getenv('MAIL_PASSWORD')
+    SIEG_CLIENT_ID = os.getenv('SIEG_CLIENT_ID')
+    SIEG_SECRET_KEY = os.getenv('SIEG_SECRET_KEY')
+    SIEG_API_KEY = os.getenv('SIEG_API_KEY')
 
     
     

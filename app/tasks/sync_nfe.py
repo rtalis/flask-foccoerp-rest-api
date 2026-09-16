@@ -1,212 +1,226 @@
 """
-Script to sync NFE data from SIEG API for the previous day
+Sync routine for SIEG API v1: NF-e, NFS-e, and Events.
 """
 import os
 import sys
+import io
+import zipfile
 import logging
-from datetime import datetime, timedelta
-import base64
-import xml.etree.ElementTree as ET
+import re
 import time
+import base64
+from datetime import datetime, timedelta
 import requests
-from flask import current_app
 
-s = sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from app import create_app, db
-from app.utils import parse_and_store_nfe_xml
-from app.models import NFEData, Company
+from app.models import NFEData, Company, NFEEvento
+from app.utils import parse_and_store_nfe_xml, parse_and_store_nfse_xml
+from app.sieg_auth import get_jwt_token
 from config import Config
 
-# ------------------------------
-# Configuration for rate limiting
-# ------------------------------
-REQUEST_DELAY_SECONDS = 2      # Wait between companies (to avoid 429)
-MAX_RETRIES = 3                # Number of retries on 429
-INITIAL_BACKOFF = 5            # Initial backoff seconds for 429
+REQUEST_DELAY_SECONDS = 2
+INITIAL_BACKOFF = 5
 
-# ------------------------------
-# Logging setup
-# ------------------------------
 logger = logging.getLogger('nfe_sync')
 logger.setLevel(logging.INFO)
-
-# Console handler
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
-
-# File handler (if writable)
-try:
-    log_dir = "/var/log/foccoerp"
-    if os.path.exists(log_dir) and os.access(log_dir, os.W_OK):
-        file_handler = logging.FileHandler(os.path.join(log_dir, "nfe_sync.log"))
-        file_handler.setLevel(logging.INFO)
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
-except Exception:
-    pass  
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+logger.addHandler(handler)
 
 
-def make_sieg_request_with_retry(company, start_date_str, end_date_str, max_retries=MAX_RETRIES):
-    """
-    Make a request to SIEG API with exponential backoff on 429 errors.
-    Returns the response JSON on success, or raises an exception on failure.
-    """
-    cnpj = ''.join(filter(str.isdigit, company.cnpj))
-    sieg_request_data = {
-        "XmlType": 1,
-        "DataEmissaoInicio": start_date_str,
-        "DataEmissaoFim": end_date_str,
-        "CnpjDest": cnpj,
+def fetch_sieg_zip_paginated(url, payload, company_name):
+    """Fetches paginated binary ZIP responses and returns uncompressed XML strings."""
+    jwt_token = get_jwt_token()
+    headers = {
+        'Authorization': f'Bearer {jwt_token}',
+        'x-api-key': Config.SIEG_API_KEY,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
     }
 
-    url = f'https://api.sieg.com/BaixarXmlsV2?api_key={Config.SIEG_API_KEY}'
-    headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
-
+    all_xmls = []
+    payload['Take'] = 50
+    payload['Skip'] = 0
     backoff = INITIAL_BACKOFF
-    for attempt in range(max_retries + 1):  # +1 for initial attempt
+
+    while True:
         try:
-            response = requests.post(url, json=sieg_request_data, headers=headers, timeout=30)
+            response = requests.post(url, json=payload, headers=headers, timeout=60)
 
             if response.status_code == 200:
-                return response.json()
-            if response.status_code == 404:
-                logger.info(f"No NFEs found for company {company.name}")
-                return {"xmls": []}
-            if response.status_code == 400:
-                logger.error(f"Bad Request for company {company.name}: {response.text}")
-                return {"xmls": []}
+                if not response.content:
+                    break
 
-            if response.status_code == 429:
-                retry_after = response.headers.get('Retry-After')
-                if retry_after:
-                    try:
-                        wait = int(retry_after)
-                    except ValueError:
-                        wait = backoff
-                else:
-                    wait = backoff
+                try:
+                    with zipfile.ZipFile(io.BytesIO(response.content)) as z:
+                        xml_names = [name for name in z.namelist() if name.lower().endswith('.xml')]
+                        if not xml_names:
+                            break
 
-                logger.warning(
-                    f"Rate limited (429) for company {company.name}. "
-                    f"Retry {attempt+1}/{max_retries} after {wait}s"
-                )
-                time.sleep(wait)
-                backoff *= 2  # exponential backoff
-                continue
+                        for name in xml_names:
+                            with z.open(name) as f:
+                                all_xmls.append(f.read().decode('utf-8'))
 
-            # Other non-200 statuses – raise exception
-            logger.error(f"API error for {company.name}: {response.status_code} - {response.text}")
-            response.raise_for_status()
+                        if len(xml_names) < 50:
+                            break
 
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Request exception for {company.name}: {e}")
-            if attempt < max_retries:
-                wait = backoff
-                logger.info(f"Retrying in {wait}s...")
+                except zipfile.BadZipFile:
+                    logger.error(f"Response was not a valid ZIP for {company_name}: {response.text[:200]}")
+                    break
+
+                payload['Skip'] += 50
+                time.sleep(REQUEST_DELAY_SECONDS)
+                backoff = INITIAL_BACKOFF
+
+            elif response.status_code == 429:
+                wait = int(response.headers.get('Retry-After', backoff))
+                logger.warning(f"Rate limited (429). Waiting {wait}s...")
                 time.sleep(wait)
                 backoff *= 2
+                continue
             else:
-                raise  # re-raise after all retries
+                logger.error(f"Error {response.status_code} fetching XMLs: {response.text}")
+                break
 
-    raise Exception(f"Failed to fetch NFEs for {company.name} after {max_retries} retries")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error: {e}")
+            time.sleep(backoff)
+            backoff *= 2
+
+    return all_xmls
+
+
+def fetch_sieg_events(payload):
+    """Fetches document events (Cancellations, CC-e) from /api/v1/baixar-eventos."""
+    jwt_token = get_jwt_token()
+    headers = {
+        'Authorization': f'Bearer {jwt_token}',
+        'x-api-key': Config.SIEG_API_KEY,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+    }
+
+    payload['Take'] = 50
+    payload['Skip'] = 0
+    all_events = []
+
+    while True:
+        try:
+            response = requests.post('https://api.sieg.com/api/v1/baixar-eventos', json=payload, headers=headers, timeout=60)
+            if response.status_code == 200:
+                data = response.json()
+                events = data.get('Eventos', [])
+                if not events:
+                    break
+
+                all_events.extend(events)
+                if len(events) < 50:
+                    break
+
+                payload['Skip'] += 50
+                time.sleep(REQUEST_DELAY_SECONDS)
+            else:
+                break
+        except requests.RequestException:
+            break
+
+    return all_events
+
+
+def extract_document_key(xml_content):
+    """Extracts 44-digit NF-e key or 50-digit national NFS-e key."""
+    match = re.search(r'Id="(?:NFe|CFe|CTe|NFS)(\d{44,50})"', xml_content, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    tag_match = re.search(r'<(?:chNFe|chCTe|chCFe)>(\d{44})</(?:chNFe|chCTe|chCFe)>', xml_content)
+    if tag_match:
+        return tag_match.group(1)
+    return None
 
 
 def sync_nfe_for_yesterday():
-    """
-    Sync NFE data from SIEG API for the previous day
-    """
+    """Main execution routine."""
     app = create_app()
     with app.app_context():
-        logger.info("Starting NFE sync for yesterday")
-
-        # Calculate date range for yesterday
+        logger.info("Starting synchronization process...")
         today = datetime.now().date()
-        yesterday = today - timedelta(days=5)
+        yesterday = today - timedelta(days=2)
         start_date_str = yesterday.strftime('%Y-%m-%d')
         end_date_str = today.strftime('%Y-%m-%d')
 
-        # Get all companies from the database
         companies = Company.query.all()
+        total_synced = 0
 
-        if not companies:
-            logger.warning("No companies found in the database")
-
-        total_nfes = 0
-        new_nfes = 0
-
-        # Process each company with a delay between requests
-        for idx, company in enumerate(companies):
-            # Skip companies without CNPJ
+        for company in companies:
             if not company.cnpj:
-                logger.warning(f"Company {company.name} (cod_emp1: {company.cod_emp1}) has no CNPJ")
                 continue
 
-            logger.info(f"Fetching NFEs for company {company.name} (CNPJ: {company.cnpj})")
+            clean_cnpj = ''.join(filter(str.isdigit, company.cnpj))
+            logger.info(f"Processing company: {company.name} ({clean_cnpj})")
 
-            try:
-                # Make request with retry logic
-                result = make_sieg_request_with_retry(company, start_date_str, end_date_str)
+            # Sync NF-e (1) and NFS-e (3)
+            for xml_type in [1, 3]:
+                payload = {
+                    "TipoXml": xml_type,
+                    "DataEmissaoInicio": start_date_str,
+                    "DataEmissaoFim": end_date_str,
+                    "CnpjDest": clean_cnpj
+                }
 
-                if 'xmls' not in result or not result['xmls']:
-                    logger.info(f"No NFEs found for company {company.name}")
-                else:
-                    logger.info(f"Found {len(result['xmls'])} NFEs for company {company.name}")
+                xml_list = fetch_sieg_zip_paginated('https://api.sieg.com/api/v1/baixar-xmls', payload, company.name)
 
-                    # Process each NFE
-                    for xml_base64 in result['xmls']:
-                        try:
-                            # Decode XML
-                            xml_content = base64.b64decode(xml_base64).decode('utf-8')
+                for xml_content in xml_list:
+                    chave = extract_document_key(xml_content)
+                    if not chave or NFEData.query.filter_by(chave=chave).first():
+                        continue
 
-                            # Parse XML to get access key
-                            root = ET.fromstring(xml_content)
-                            ns = {'nfe': 'http://www.portalfiscal.inf.br/nfe'}
+                    try:
+                        if xml_type == 1:
+                            parse_and_store_nfe_xml(xml_content)
+                        elif xml_type == 3:
+                            parse_and_store_nfse_xml(xml_content, chave)
+                        total_synced += 1
+                    except Exception as e:
+                        logger.error(f"Error parsing document {chave}: {e}")
 
-                            chave_acesso_elem = root.find('.//nfe:protNFe/nfe:infProt/nfe:chNFe', ns)
-                            if chave_acesso_elem is None or not chave_acesso_elem.text:
-                                logger.warning("Skipping NFE without access key")
-                                continue
+            # Sync Events
+            events_payload = {
+                "TipoXml": 1,
+                "DataInicioEvento": start_date_str,
+                "DataFimEvento": end_date_str,
+                "CnpjDest": clean_cnpj
+            }
+            events = fetch_sieg_events(events_payload)
 
-                            chave_acesso = chave_acesso_elem.text
+            for evt in events:
+                chave_doc = evt.get('ChaveXml')
+                nfe = NFEData.query.filter_by(chave=chave_doc).first()
+                if not nfe:
+                    continue
 
-                            # Check if NFE already exists
-                            existing_nfe = NFEData.query.filter_by(chave=chave_acesso).first()
-                            if existing_nfe:
-                                logger.info(f"NFE {chave_acesso} already exists in database")
-                                continue
+                protocolo = str(evt.get('Protocolo', ''))
+                if not NFEEvento.query.filter_by(protocolo=protocolo).first():
+                    data_str = evt.get('DataEvento', '')
+                    data_evento = datetime.strptime(data_str[:19], "%Y-%m-%dT%H:%M:%S") if data_str else datetime.now()
+                    xml_evt = base64.b64decode(evt.get('Xml')).decode('utf-8') if evt.get('Xml') else None
 
-                            # Store NFE in database
-                            nfe_data = parse_and_store_nfe_xml(xml_content)
-                            logger.info(f"Stored new NFE: {chave_acesso}")
-                            new_nfes += 1
+                    novo_evento = NFEEvento(
+                        nfe_id=nfe.id,
+                        tipo_evento=evt.get('TipoEvento'),
+                        descricao=evt.get('Descricao'),
+                        protocolo=protocolo,
+                        data_evento=data_evento,
+                        xml_content=xml_evt
+                    )
+                    db.session.add(novo_evento)
+                    db.session.commit()
 
-                        except Exception as e:
-                            logger.error(f"Error processing NFE: {str(e)}")
-                            continue
+            time.sleep(REQUEST_DELAY_SECONDS)
 
-                    total_nfes += len(result['xmls'])
-
-            except Exception as e:
-                logger.error(f"Error processing company {company.name}: {str(e)}")
-                # Continue with next company
-
-            # Cooldown between companies (except after the last one)
-            if idx < len(companies) - 1:
-                logger.info(f"Waiting {REQUEST_DELAY_SECONDS}s before next company...")
-                time.sleep(REQUEST_DELAY_SECONDS)
-
-        logger.info(f"NFE sync completed. Processed {total_nfes} NFEs, added {new_nfes} new NFEs")
-
-        return {
-            "status": "success",
-            "total_nfes": total_nfes,
-            "new_nfes": new_nfes
-        }
+        logger.info(f"Sync complete. New documents processed: {total_synced}")
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     sync_nfe_for_yesterday()

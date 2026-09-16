@@ -370,6 +370,9 @@ class NFEData(db.Model):
     # Transport
     modalidade_frete = db.Column(db.String(2))
     
+    tipo_documento = db.Column(db.String(10), default='1') # 1=NFe, 2=CTe, 3=NFSe, 4=NFCe, 5=CFe
+    eventos = db.relationship('NFEEvento', backref='nfe', cascade="all, delete-orphan")
+    
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.now)
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
@@ -641,3 +644,25 @@ class POPriceChange(db.Model):
     is_acknowledged = db.Column(db.Boolean, default=False)
     acknowledged_by = db.Column(db.String(50))
     acknowledged_at = db.Column(db.DateTime)
+    
+class NFEEvento(db.Model):
+    __tablename__ = 'nfe_eventos'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    nfe_id = db.Column(db.Integer, db.ForeignKey('nfe_data.id', ondelete='CASCADE'), nullable=False)
+    tipo_evento = db.Column(db.Integer, nullable=False, index=True)
+    descricao = db.Column(db.String(255))
+    protocolo = db.Column(db.String(50))
+    data_evento = db.Column(db.DateTime)
+    xml_content = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
+class SiegToken(db.Model):
+    __tablename__ = 'sieg_tokens'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    token_type = db.Column(db.String(20), unique=True, nullable=False) # 'JWT' or 'OAUTH'
+    access_token = db.Column(db.Text, nullable=False)
+    refresh_token = db.Column(db.Text, nullable=True)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
