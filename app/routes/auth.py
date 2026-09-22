@@ -116,7 +116,13 @@ def login():
         login_history = _record_login_event(user, request, method='password')
         send_login_notification_email(user, login_history.login_ip)
 
-        token, actual_minutes, record = _issue_token_for_user(user, expires_minutes=None, created_by=user)
+        token, actual_minutes, record = _issue_token_for_user(
+            user, 
+            expires_minutes=None, 
+            created_by=user,
+            token_type='login',
+            description='Web session login token'
+        )
 
         resp = make_response(jsonify({
             'message': 'Logged in successfully',
@@ -260,17 +266,19 @@ def _user_from_authorization(req):
     except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, Exception):
         return None
 
-    token_record = UserToken.query.filter_by(token=token).first()
-    if token_record:
-        if token_record.disabled_at is not None:
+    # If it is a manually generated API key, strictly verify it hasn't been disabled in the DB
+    if data.get('type') == 'api':
+        token_record = UserToken.query.filter_by(token=token).first()
+        if not token_record:
             return None
-        if token_record.expires_at and token_record.expires_at <= datetime.now(timezone.utc).replace(tzinfo=None):
+        if token_record.disabled_at is not None:
             return None
 
     return User.query.filter_by(email=data.get('sub')).first()
 
+import uuid
 
-def _build_jwt_for_user(user, expires_minutes=None):
+def _build_jwt_for_user(user, expires_minutes=None, token_type='api'):
     if not user:
         return None
 
@@ -281,33 +289,40 @@ def _build_jwt_for_user(user, expires_minutes=None):
         minutes = Config.JWT_EXPIRATION_MINUTES
 
     minutes = max(1, minutes)
-
     now = datetime.now(timezone.utc).replace(tzinfo=None)
+    
     payload = {
         'sub': user.email,
         'iat': now,
-        'exp': now + timedelta(minutes=minutes)
+        'exp': now + timedelta(minutes=minutes),
+        'jti': str(uuid.uuid4()),
+        'type': token_type  # Instructs the middleware how to handle this token
     }
 
     token = jwt.encode(payload, Config.SECRET_KEY, algorithm='HS256')
     return token, minutes
 
 
-def _issue_token_for_user(user, expires_minutes=None, created_by=None):
-    token, actual_minutes = _build_jwt_for_user(user, expires_minutes)
+def _issue_token_for_user(user, expires_minutes=None, created_by=None, token_type='api', description=None):
+    token, actual_minutes = _build_jwt_for_user(user, expires_minutes, token_type)
     if not token:
         return None, None, None
 
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    record = UserToken(
-        user_id=user.id,
-        token=token,
-        created_by_id=(created_by.id if created_by else user.id),
-        created_at=now,
-        expires_at=now + timedelta(minutes=actual_minutes)
-    )
-    db.session.add(record)
-    db.session.commit()
+    record = None
+    if token_type == 'api':
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        record = UserToken(
+            user_id=user.id,
+            token=token,
+            created_by_id=(created_by.id if created_by else user.id),
+            created_at=now,
+            expires_at=now + timedelta(minutes=actual_minutes),
+            token_type=token_type,
+            description=description
+        )
+        db.session.add(record)
+        db.session.commit()
+
     return token, actual_minutes, record
 
 
@@ -331,6 +346,8 @@ def _serialize_token_record(record):
     return {
         'id': record.id,
         'token': record.token,
+        'token_type': getattr(record, 'token_type', 'unknown'),
+        'description': getattr(record, 'description', None),
         'user': _user_payload(record.user),
         'created_at': record.created_at.isoformat() if record.created_at else None,
         'expires_at': record.expires_at.isoformat() if record.expires_at else None,
@@ -374,8 +391,17 @@ def login_by_token():
 @login_required
 @limiter.limit("5 per 5 seconds")
 def generate_jwt_token():
-    minutes = (request.get_json() or {}).get('expires_in')
-    token, actual_minutes, record = _issue_token_for_user(current_user, minutes, current_user)
+    data = request.get_json() or {}
+    minutes = data.get('expires_in')
+    description = data.get('description', 'User-generated API token')
+    
+    token, actual_minutes, record = _issue_token_for_user(
+        current_user, 
+        minutes, 
+        current_user,
+        token_type='api',
+        description=description
+    )
 
     return jsonify({
         'token': token,

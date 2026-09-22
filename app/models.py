@@ -236,6 +236,8 @@ class UserToken(db.Model):
     created_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     disabled_at = db.Column(db.DateTime(timezone=True), nullable=True)
     disabled_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    token_type = db.Column(db.String(50), nullable=False, default='api') # 'login' or 'api'
+    description = db.Column(db.String(255), nullable=True)
 
     user = db.relationship('User', foreign_keys=[user_id])
     created_by = db.relationship('User', foreign_keys=[created_by_id])
