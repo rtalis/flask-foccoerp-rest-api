@@ -404,7 +404,7 @@ class NFEEmitente(db.Model):
     
     # Address fields
     logradouro = db.Column(db.String(255))
-    numero = db.Column(db.String(20))
+    numero = db.Column(db.String(100))
     complemento = db.Column(db.String(255))
     bairro = db.Column(db.String(100))
     codigo_municipio = db.Column(db.String(10))
@@ -432,7 +432,7 @@ class NFEDestinatario(db.Model):
     
     # Address fields
     logradouro = db.Column(db.String(255))
-    numero = db.Column(db.String(20))
+    numero = db.Column(db.String(100))
     complemento = db.Column(db.String(255))
     bairro = db.Column(db.String(100))
     codigo_municipio = db.Column(db.String(10))
@@ -454,7 +454,7 @@ class NFEItem(db.Model):
     codigo = db.Column(db.String(60))
     codigo_ean = db.Column(db.String(20))  # cEAN
     codigo_ean_tributario = db.Column(db.String(20))  # cEANTrib
-    descricao = db.Column(db.String(255))
+    descricao = db.Column(db.Text)    
     ncm = db.Column(db.String(10))
     cest = db.Column(db.String(10))
     cfop = db.Column(db.String(5))
