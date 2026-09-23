@@ -9,6 +9,7 @@ import logging
 import re
 import time
 import base64
+import argparse
 from datetime import datetime, timedelta
 import requests
 
@@ -140,17 +141,25 @@ def extract_document_key(xml_content):
     return None
 
 
-def sync_nfe_for_yesterday():
-    """Main execution routine."""
+def run_sync(start_date_str=None, end_date_str=None, company_id=None):
+    """Main execution routine with optional filters."""
     app = create_app()
     with app.app_context():
         logger.info("Starting synchronization process...")
-        today = datetime.now().date()
-        yesterday = today - timedelta(days=2)
-        start_date_str = yesterday.strftime('%Y-%m-%d')
-        end_date_str = today.strftime('%Y-%m-%d')
+        
+        if not start_date_str or not end_date_str:
+            today = datetime.now().date()
+            yesterday = today - timedelta(days=2)
+            start_date_str = yesterday.strftime('%Y-%m-%d')
+            end_date_str = today.strftime('%Y-%m-%d')
 
-        companies = Company.query.all()
+        logger.info(f"Sync timeframe: {start_date_str} to {end_date_str}")
+
+        query = Company.query
+        if company_id:
+            query = query.filter_by(id=company_id)
+            
+        companies = query.all()
         total_synced = 0
 
         for company in companies:
@@ -164,8 +173,8 @@ def sync_nfe_for_yesterday():
             for xml_type in [1, 3]:
                 payload = {
                     "TipoXml": xml_type,
-                    "DataEmissaoInicio": start_date_str,
-                    "DataEmissaoFim": end_date_str,
+                    "DataEmissaoInicio": f"{start_date_str}T00:00:00.000Z",
+                    "DataEmissaoFim": f"{end_date_str}T23:59:59.999Z",
                     "CnpjDest": clean_cnpj
                 }
 
@@ -183,13 +192,14 @@ def sync_nfe_for_yesterday():
                             parse_and_store_nfse_xml(xml_content, chave)
                         total_synced += 1
                     except Exception as e:
+                        db.session.rollback()
                         logger.error(f"Error parsing document {chave}: {e}")
 
             # Sync Events
             events_payload = {
                 "TipoXml": 1,
-                "DataInicioEvento": start_date_str,
-                "DataFimEvento": end_date_str,
+                "DataInicioEvento": f"{start_date_str}T00:00:00.000Z",
+                "DataFimEvento": f"{end_date_str}T23:59:59.999Z",
                 "CnpjDest": clean_cnpj
             }
             events = fetch_sieg_events(events_payload)
@@ -205,17 +215,21 @@ def sync_nfe_for_yesterday():
                     data_str = evt.get('DataEvento', '')
                     data_evento = datetime.strptime(data_str[:19], "%Y-%m-%dT%H:%M:%S") if data_str else datetime.now()
                     xml_evt = base64.b64decode(evt.get('Xml')).decode('utf-8') if evt.get('Xml') else None
-
-                    novo_evento = NFEEvento(
-                        nfe_id=nfe.id,
-                        tipo_evento=evt.get('TipoEvento'),
-                        descricao=evt.get('Descricao'),
-                        protocolo=protocolo,
-                        data_evento=data_evento,
-                        xml_content=xml_evt
-                    )
-                    db.session.add(novo_evento)
-                    db.session.commit()
+                    
+                    try:
+                        novo_evento = NFEEvento(
+                            nfe_id=nfe.id,
+                            tipo_evento=evt.get('TipoEvento'),
+                            descricao=evt.get('Descricao'),
+                            protocolo=protocolo,
+                            data_evento=data_evento,
+                            xml_content=xml_evt
+                        )
+                        db.session.add(novo_evento)
+                        db.session.commit()
+                    except Exception as e:
+                        db.session.rollback()
+                        logger.error(f"Error saving event for document {chave_doc}: {e}")
 
             time.sleep(REQUEST_DELAY_SECONDS)
 
@@ -223,4 +237,10 @@ def sync_nfe_for_yesterday():
 
 
 if __name__ == '__main__':
-    sync_nfe_for_yesterday()
+    parser = argparse.ArgumentParser(description="Manual trigger for NFE sync via SIEG API.")
+    parser.add_argument('--start', type=str, help="Start date in YYYY-MM-DD format")
+    parser.add_argument('--end', type=str, help="End date in YYYY-MM-DD format")
+    parser.add_argument('--company', type=int, help="Specific Company ID to sync")
+    args = parser.parse_args()
+
+    run_sync(start_date_str=args.start, end_date_str=args.end, company_id=args.company)

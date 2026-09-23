@@ -231,25 +231,18 @@ def check_nfe_available():
 
 
 
-
 @bp.route('/tracked_companies/<int:company_id>/sync_nfes', methods=['POST'])
 @login_required
 def sync_company_nfes(company_id):
-    """Sync NFEs for a specific company within a date range (15-day chunks)."""
-    import requests
-    import base64
-    import xml.etree.ElementTree as ET
-    from config import Config
+    """Sync NFEs for a specific company within a date range using the shared V1 sync logic."""
     from datetime import datetime, timedelta
     from app.models import Company, NFEData
-    from app.utils import parse_and_store_nfe_xml
+    from app.utils import parse_and_store_nfe_xml, parse_and_store_nfse_xml
+    from app.tasks.sync_nfe import fetch_sieg_zip_paginated, extract_document_key
     
     company = db.session.get(Company, company_id)
-    if not company:
-        return jsonify({'error': 'Company not found'}), 404
-    
-    if not company.cnpj:
-        return jsonify({'error': 'Company has no CNPJ'}), 400
+    if not company or not company.cnpj:
+        return jsonify({'error': 'Company not found or missing CNPJ'}), 400
     
     data = request.get_json()
     start_date_str = data.get('start_date')
@@ -271,7 +264,6 @@ def sync_company_nfes(company_id):
     errors = []
     
     try:
-        # Process in 15-day chunks
         current_start = start_date
         chunk_size = timedelta(days=15)
         
@@ -281,57 +273,34 @@ def sync_company_nfes(company_id):
             chunk_start_str = current_start.strftime('%Y-%m-%d')
             chunk_end_str = current_end.strftime('%Y-%m-%d')
             
-            # Call SIEG API
-            sieg_request_data = {
-                "XmlType": 1,
-                "DataEmissaoInicio": chunk_start_str,
-                "DataEmissaoFim": chunk_end_str,
-                "CnpjDest": cnpj_clean,
-            }
-            
-            response = requests.post(
-                f'https://api.sieg.com/BaixarXmlsV2?api_key={Config.SIEG_API_KEY}',
-                json=sieg_request_data,
-                headers={'Content-Type': 'application/json', 'Accept': 'application/json'},
-                timeout=60
-            )
-            
-            if response.status_code != 200:
-                errors.append(f'Error fetching NFEs for {chunk_start_str} to {chunk_end_str}')
-                current_start = current_end
-                continue
-            
-            result = response.json()
-            xmls = result.get('xmls', [])
-            
-            for xml_base64 in xmls:
-                try:
-                    xml_content = base64.b64decode(xml_base64).decode('utf-8')
-                    
-                    # Parse XML to get access key
-                    root = ET.fromstring(xml_content)
-                    ns = {'nfe': 'http://www.portalfiscal.inf.br/nfe'}
-                    
-                    chave_elem = root.find('.//nfe:protNFe/nfe:infProt/nfe:chNFe', ns)
-                    if chave_elem is None or not chave_elem.text:
-                        continue
-                    
-                    chave = chave_elem.text
-                    
-                    # Check if already exists
-                    existing = NFEData.query.filter_by(chave=chave).first()
-                    if existing:
+            # Sync both Type 1 (NFe) and Type 3 (NFSe) just like the background script
+            for xml_type in [1, 3]:
+                payload = {
+                    "TipoXml": xml_type,
+                    "DataEmissaoInicio": f"{chunk_start_str}T00:00:00.000Z",
+                    "DataEmissaoFim": f"{chunk_end_str}T23:59:59.999Z",
+                    "CnpjDest": cnpj_clean,
+                }
+                
+                # Use the exact same engine from sync_nfe.py
+                xml_list = fetch_sieg_zip_paginated('https://api.sieg.com/api/v1/baixar-xmls', payload, company.name)
+                
+                for xml_content in xml_list:
+                    chave = extract_document_key(xml_content)
+                    if not chave or NFEData.query.filter_by(chave=chave).first():
                         total_nfes += 1
                         continue
-                    
-                    # Store NFE
-                    parse_and_store_nfe_xml(xml_content)
-                    new_nfes += 1
-                    total_nfes += 1
-                    
-                except Exception as e:
-                    errors.append(f'Error processing NFE: {str(e)}')
-                    continue
+                        
+                    try:
+                        if xml_type == 1:
+                            parse_and_store_nfe_xml(xml_content)
+                        elif xml_type == 3:
+                            parse_and_store_nfse_xml(xml_content, chave)
+                        new_nfes += 1
+                        total_nfes += 1
+                    except Exception as e:
+                        db.session.rollback()
+                        errors.append(f'Error processing NFE {chave}: {str(e)}')
             
             current_start = current_end
         
@@ -342,37 +311,24 @@ def sync_company_nfes(company_id):
             'total_processed': total_nfes,
             'new_nfes': new_nfes,
             'already_existed': total_nfes - new_nfes,
-            'errors': errors[:10] if errors else [],  # Limit errors returned
+            'errors': errors[:10] if errors else [],
         }), 200
         
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-
-
 @bp.route('/tracked_companies/<int:company_id>/sync_chunk', methods=['POST'])
 @login_required
 def sync_company_nfes_chunk(company_id):
-    """Sync a single 15-day chunk of NFEs for a company. Returns progress info."""
-    import requests
-    import base64
-    import time
-    import logging
-    import xml.etree.ElementTree as ET
-    from config import Config
-    from datetime import datetime
+    """Sync a single chunk using the shared V1 API logic."""
     from app.models import Company, NFEData
-    from app.utils import parse_and_store_nfe_xml
-    
-    logger = logging.getLogger(__name__)
+    from app.utils import parse_and_store_nfe_xml, parse_and_store_nfse_xml
+    from app.tasks.sync_nfe import fetch_sieg_zip_paginated, extract_document_key
     
     company = db.session.get(Company, company_id)
-    if not company:
-        return jsonify({'error': 'Company not found'}), 404
-    
-    if not company.cnpj:
-        return jsonify({'error': 'Company has no CNPJ'}), 400
+    if not company or not company.cnpj:
+        return jsonify({'error': 'Company not found or missing CNPJ'}), 400
     
     data = request.get_json()
     chunk_start = data.get('chunk_start')
@@ -387,110 +343,40 @@ def sync_company_nfes_chunk(company_id):
     already_existed = 0
     errors = []
     
-    sieg_request_data = {
-        "XmlType": 1,
-        "DataEmissaoInicio": chunk_start,
-        "DataEmissaoFim": chunk_end,
-        "CnpjDest": cnpj_clean,
-    }
-    
-    max_retries = 3
-    backoff = 5  # Initial backoff in seconds if Retry-After is missing
-    response = None
-    
-    # --- RETRY LOOP FOR EXTERNAL API ---
-    for attempt in range(max_retries):
-        try:
-            response = requests.post(
-                f'https://api.sieg.com/BaixarXmlsV2?api_key={Config.SIEG_API_KEY}',
-                json=sieg_request_data,
-                headers={'Content-Type': 'application/json', 'Accept': 'application/json'},
-                timeout=60
-            )
-            
-            if response.status_code == 200:
-                break  # Success, exit the retry loop
-                
-            if response.status_code == 429:
-                retry_after = response.headers.get('Retry-After')
-                if retry_after:
-                    try:
-                        wait = int(retry_after)
-                    except ValueError:
-                        wait = backoff
-                else:
-                    wait = backoff
-
-                logger.warning(
-                    f"Rate limited (429) for company {company.cnpj}. "
-                    f"Retry {attempt+1}/{max_retries} after {wait}s"
-                )
-                time.sleep(wait)
-                backoff *= 2  # Exponential backoff for the next iteration
-                continue
-            
-            # If it's another error (500, 401, etc.), break and handle it outside
-            break
-            
-        except requests.exceptions.RequestException as e:
-            logger.warning(f"Request exception for company {company.cnpj}: {str(e)}")
-            if attempt == max_retries - 1:
-                return jsonify({
-                    'status': 'error',
-                    'error': f'Request failed after {max_retries} attempts: {str(e)}',
-                    'chunk_start': chunk_start,
-                    'chunk_end': chunk_end,
-                }), 200
-            
-            time.sleep(backoff)
-            backoff *= 2
-            continue
-
-    # Evaluate final response after all retries are exhausted
-    if not response or response.status_code != 200:
-        status_code = response.status_code if response else 'Unknown'
-        return jsonify({
-            'status': 'error',
-            'error': f'SIEG API error: {status_code}',
-            'chunk_start': chunk_start,
-            'chunk_end': chunk_end,
-        }), 200
-
-    # --- DB TRANSACTION BLOCK ---
     try:
-        result = response.json()
-        xmls = result.get('xmls', [])
-        
-        for xml_base64 in xmls:
-            try:
-                xml_content = base64.b64decode(xml_base64).decode('utf-8')
-                
-                root = ET.fromstring(xml_content)
-                ns = {'nfe': 'http://www.portalfiscal.inf.br/nfe'}
-                
-                chave_elem = root.find('.//nfe:protNFe/nfe:infProt/nfe:chNFe', ns)
-                if chave_elem is None or not chave_elem.text:
-                    continue
-                
-                chave = chave_elem.text
-                
-                existing = NFEData.query.filter_by(chave=chave).first()
-                if existing:
+        # Loop over NFe (1) and NFSe (3)
+        for xml_type in [1, 3]:
+            payload = {
+                "TipoXml": xml_type,
+                "DataEmissaoInicio": f"{chunk_start}T00:00:00.000Z",
+                "DataEmissaoFim": f"{chunk_end}T23:59:59.999Z",
+                "CnpjDest": cnpj_clean,
+            }
+            
+            # Replaces the massive retry loop because fetch_sieg_zip_paginated handles 429 backoff natively
+            xml_list = fetch_sieg_zip_paginated('https://api.sieg.com/api/v1/baixar-xmls', payload, company.name)
+            
+            for xml_content in xml_list:
+                chave = extract_document_key(xml_content)
+                if not chave or NFEData.query.filter_by(chave=chave).first():
                     already_existed += 1
                     continue
-                
-                parse_and_store_nfe_xml(xml_content)
-                new_nfes += 1
-                
-            except Exception as e:
-                errors.append(str(e))
-                continue
-        
+                    
+                try:
+                    if xml_type == 1:
+                        parse_and_store_nfe_xml(xml_content)
+                    elif xml_type == 3:
+                        parse_and_store_nfse_xml(xml_content, chave)
+                    new_nfes += 1
+                except Exception as e:
+                    db.session.rollback()
+                    errors.append(f'Error processing NFE {chave}: {str(e)}')
+
         return jsonify({
             'status': 'success',
             'chunk_start': chunk_start,
             'chunk_end': chunk_end,
-            'found': len(xmls),
+            'found': new_nfes + already_existed,
             'new_nfes': new_nfes,
             'already_existed': already_existed,
             'errors': len(errors),
