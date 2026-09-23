@@ -45,6 +45,7 @@ def fetch_sieg_zip_paginated(url, payload, company_name):
     payload['Take'] = 50
     payload['Skip'] = 0
     backoff = INITIAL_BACKOFF
+    xml_type_name = "NFS-e" if payload.get("TipoXml") == 3 else "NF-e"
 
     while True:
         try:
@@ -81,6 +82,20 @@ def fetch_sieg_zip_paginated(url, payload, company_name):
                 time.sleep(wait)
                 backoff *= 2
                 continue
+                
+            elif response.status_code in (400, 404):
+                try:
+                    err_data = response.json()
+                    err_msg = err_data.get("ErrorMessage", "")
+                    
+                    if response.status_code == 404 or "Nenhum arquivo" in err_msg:
+                        pass # Silently ignore so we can print the final tally at the end instead
+                    else:
+                        logger.warning(f"SIEG rejected {xml_type_name} request for {company_name}: {err_msg}")
+                except ValueError:
+                    logger.warning(f"API returned {response.status_code} for {company_name}: {response.text}")
+                break
+                
             else:
                 logger.error(f"Error {response.status_code} fetching XMLs: {response.text}")
                 break
@@ -93,7 +108,7 @@ def fetch_sieg_zip_paginated(url, payload, company_name):
     return all_xmls
 
 
-def fetch_sieg_events(payload):
+def fetch_sieg_events(payload, company_name):
     """Fetches document events (Cancellations, CC-e) from /api/v1/baixar-eventos."""
     jwt_token = get_jwt_token()
     headers = {
@@ -122,6 +137,9 @@ def fetch_sieg_events(payload):
 
                 payload['Skip'] += 50
                 time.sleep(REQUEST_DELAY_SECONDS)
+                
+            elif response.status_code in (400, 404):
+                break
             else:
                 break
         except requests.RequestException:
@@ -160,7 +178,7 @@ def run_sync(start_date_str=None, end_date_str=None, company_id=None):
             query = query.filter_by(id=company_id)
             
         companies = query.all()
-        total_synced = 0
+        total_new_nfes = 0
 
         for company in companies:
             if not company.cnpj:
@@ -168,13 +186,18 @@ def run_sync(start_date_str=None, end_date_str=None, company_id=None):
 
             clean_cnpj = ''.join(filter(str.isdigit, company.cnpj))
             logger.info(f"Processing company: {company.name} ({clean_cnpj})")
+            
+            company_xmls_new = 0
+            company_xmls_skipped = 0
+            company_events_new = 0
+            company_events_skipped = 0
 
             # Sync NF-e (1) and NFS-e (3)
             for xml_type in [1, 3]:
                 payload = {
                     "TipoXml": xml_type,
-                    "DataEmissaoInicio": f"{start_date_str}T00:00:00.000Z",
-                    "DataEmissaoFim": f"{end_date_str}T23:59:59.999Z",
+                    "DataEmissaoInicio": start_date_str,
+                    "DataEmissaoFim": end_date_str,
                     "CnpjDest": clean_cnpj
                 }
 
@@ -182,7 +205,12 @@ def run_sync(start_date_str=None, end_date_str=None, company_id=None):
 
                 for xml_content in xml_list:
                     chave = extract_document_key(xml_content)
-                    if not chave or NFEData.query.filter_by(chave=chave).first():
+                    if not chave:
+                        continue
+                        
+                    # Check if already in DB
+                    if NFEData.query.filter_by(chave=chave).first():
+                        company_xmls_skipped += 1
                         continue
 
                     try:
@@ -190,7 +218,9 @@ def run_sync(start_date_str=None, end_date_str=None, company_id=None):
                             parse_and_store_nfe_xml(xml_content)
                         elif xml_type == 3:
                             parse_and_store_nfse_xml(xml_content, chave)
-                        total_synced += 1
+                            
+                        total_new_nfes += 1
+                        company_xmls_new += 1
                     except Exception as e:
                         db.session.rollback()
                         logger.error(f"Error parsing document {chave}: {e}")
@@ -202,38 +232,58 @@ def run_sync(start_date_str=None, end_date_str=None, company_id=None):
                 "DataFimEvento": f"{end_date_str}T23:59:59.999Z",
                 "CnpjDest": clean_cnpj
             }
-            events = fetch_sieg_events(events_payload)
+            events = fetch_sieg_events(events_payload, company.name)
 
             for evt in events:
+                xml_b64 = evt.get('Xml')
+                if not xml_b64:
+                    continue
+                    
+                xml_evt = base64.b64decode(xml_b64).decode('utf-8')
+                
                 chave_doc = evt.get('ChaveXml')
-                nfe = NFEData.query.filter_by(chave=chave_doc).first()
-                if not nfe:
+                if not chave_doc:
+                    match = re.search(r'<chNFe>(\d{44})</chNFe>', xml_evt)
+                    if match:
+                        chave_doc = match.group(1)
+                
+                if not chave_doc:
                     continue
 
-                protocolo = str(evt.get('Protocolo', ''))
-                if not NFEEvento.query.filter_by(protocolo=protocolo).first():
-                    data_str = evt.get('DataEvento', '')
-                    data_evento = datetime.strptime(data_str[:19], "%Y-%m-%dT%H:%M:%S") if data_str else datetime.now()
-                    xml_evt = base64.b64decode(evt.get('Xml')).decode('utf-8') if evt.get('Xml') else None
-                    
-                    try:
-                        novo_evento = NFEEvento(
-                            nfe_id=nfe.id,
-                            tipo_evento=evt.get('TipoEvento'),
-                            descricao=evt.get('Descricao'),
-                            protocolo=protocolo,
-                            data_evento=data_evento,
-                            xml_content=xml_evt
-                        )
-                        db.session.add(novo_evento)
-                        db.session.commit()
-                    except Exception as e:
-                        db.session.rollback()
-                        logger.error(f"Error saving event for document {chave_doc}: {e}")
+                nfe = NFEData.query.filter_by(chave=chave_doc).first()
+                if not nfe:
+                    continue 
 
+                protocolo = str(evt.get('Protocolo', ''))
+                
+                # Check if event already in DB
+                if NFEEvento.query.filter_by(protocolo=protocolo).first():
+                    company_events_skipped += 1
+                    continue
+                    
+                data_str = evt.get('DataEvento', '')
+                data_evento = datetime.strptime(data_str[:19], "%Y-%m-%dT%H:%M:%S") if data_str else datetime.now()
+                
+                try:
+                    novo_evento = NFEEvento(
+                        nfe_id=nfe.id,
+                        tipo_evento=evt.get('TipoEvento'),
+                        descricao=evt.get('Descricao'),
+                        protocolo=protocolo,
+                        data_evento=data_evento,
+                        xml_content=xml_evt
+                    )
+                    db.session.add(novo_evento)
+                    db.session.commit()
+                    company_events_new += 1
+                except Exception as e:
+                    db.session.rollback()
+                    logger.error(f"Error saving event for document {chave_doc}: {e}")
+
+            logger.info(f"Completed {company.name} | XMLs: {company_xmls_new} new, {company_xmls_skipped} skipped | Events: {company_events_new} new, {company_events_skipped} skipped.")
             time.sleep(REQUEST_DELAY_SECONDS)
 
-        logger.info(f"Sync complete. New documents processed: {total_synced}")
+        logger.info(f"Global Sync Complete. Total new XMLs saved across all companies: {total_new_nfes}")
 
 
 if __name__ == '__main__':
