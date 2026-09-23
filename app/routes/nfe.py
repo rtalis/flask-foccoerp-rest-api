@@ -176,10 +176,13 @@ def get_purchase_by_nf():
 
     return jsonify(order_data), 200
 
-
 @bp.route('/get_danfe_pdf', methods=['GET'])
 @login_required
 def get_danfe_pdf():
+    from app.sieg_auth import get_jwt_token
+    import base64
+    import requests
+    
     xml_key = request.args.get('xmlKey')
     retry = request.args.get('retry', 'false').lower() == 'true'
     details = request.args.get('details', 'false').lower() == 'true'
@@ -188,78 +191,108 @@ def get_danfe_pdf():
         return jsonify({'error': 'xmlKey is required'}), 400
 
     def _build_local_pdf_response(nfe_data, source):
-        from brazilfiscalreport.danfe import Danfe
+        """Generates DANFE or DANFSE locally using brazilfiscalreport."""
+        is_nfse = str(nfe_data.tipo_documento) == '3'
 
-        danfe = Danfe(xml=nfe_data.xml_content)
-        pdf_output = danfe.output(dest='S')
-        pdf_bytes = (
-            pdf_output.encode('latin1')
-            if isinstance(pdf_output, str)
-            else pdf_output
-        )
+        if is_nfse:
+            from brazilfiscalreport.danfse import Danfse
+            doc = Danfse(xml=nfe_data.xml_content)
+        else:
+            from brazilfiscalreport.danfe import Danfe
+            doc = Danfe(xml=nfe_data.xml_content)
+
+        try:
+            pdf_output = doc.output(dest='S')
+        except TypeError:
+            pdf_output = doc.output()
+
+        if isinstance(pdf_output, str):
+            pdf_bytes = pdf_output.encode('latin1')
+        else:
+            pdf_bytes = bytes(pdf_output)
+
         pdf_base64 = base64.b64encode(pdf_bytes).decode('ascii')
         return jsonify({'pdf': pdf_base64, 'source': source}), 200
-    
+
+    def _get_sieg_pdf_via_xml(xml_content):
+        """Helper to call modern SIEG V1 gerarDanfeViaXml with Base64 XML."""
+        jwt_token = get_jwt_token()
+        headers = {
+            'Authorization': f'Bearer {jwt_token}',
+            'x-api-key': Config.SIEG_API_KEY,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        }
+        xml_b64 = base64.b64encode(xml_content.encode('utf-8')).decode('utf-8')
+        
+        response = requests.post(
+            'https://api.sieg.com/api/v1/gerarDanfeViaXml',
+            json={"ArquivoXml": xml_b64},
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            try:
+                data = response.json()
+                if isinstance(data, dict):
+                    return data.get('Data') or data.get('pdf') or data.get('Arquivo')
+                return data
+            except ValueError:
+                return response.text.strip(' "')
+        return None
+
     try:
         existing_nfe = NFEData.query.filter_by(chave=xml_key).first()
         
-        if existing_nfe:
-            if details:
-                return jsonify({
-                    'source': 'database',
-                    'nfe': {
-                        'chave': existing_nfe.chave,
-                        'numero': existing_nfe.numero,
-                        'serie': existing_nfe.serie,
-                        'data_emissao': existing_nfe.data_emissao.isoformat() if existing_nfe.data_emissao else None,
-                        'natureza_operacao': existing_nfe.natureza_operacao,
-                        'emitente': {
-                            'nome': existing_nfe.emitente.nome if existing_nfe.emitente else '',
-                            'cnpj': existing_nfe.emitente.cnpj if existing_nfe.emitente else '',
-                            'inscricao_estadual': existing_nfe.emitente.inscricao_estadual if existing_nfe.emitente else '',
-                        },
-                        'destinatario': {
-                            'nome': existing_nfe.destinatario.nome if existing_nfe.destinatario else '',
-                            'cnpj': existing_nfe.destinatario.cnpj if existing_nfe.destinatario else '',
-                            'inscricao_estadual': existing_nfe.destinatario.inscricao_estadual if existing_nfe.destinatario else '',
-                        },
-                        'valor_total': existing_nfe.valor_total,
-                        'status': existing_nfe.status_motivo
-                    }
-                }), 200
+        if not existing_nfe:
+             return jsonify({'error': 'NFE document not found in database. Cannot generate PDF.'}), 404
+             
+        if details:
+            return jsonify({
+                'source': 'database',
+                'nfe': {
+                    'chave': existing_nfe.chave,
+                    'numero': existing_nfe.numero,
+                    'serie': existing_nfe.serie,
+                    'tipo_documento': existing_nfe.tipo_documento,
+                    'data_emissao': existing_nfe.data_emissao.isoformat() if existing_nfe.data_emissao else None,
+                    'natureza_operacao': existing_nfe.natureza_operacao,
+                    'emitente': {
+                        'nome': existing_nfe.emitente.nome if existing_nfe.emitente else '',
+                        'cnpj': existing_nfe.emitente.cnpj if existing_nfe.emitente else '',
+                        'inscricao_estadual': existing_nfe.emitente.inscricao_estadual if existing_nfe.emitente else '',
+                    },
+                    'destinatario': {
+                        'nome': existing_nfe.destinatario.nome if existing_nfe.destinatario else '',
+                        'cnpj': existing_nfe.destinatario.cnpj if existing_nfe.destinatario else '',
+                        'inscricao_estadual': existing_nfe.destinatario.inscricao_estadual if existing_nfe.destinatario else '',
+                    },
+                    'valor_total': existing_nfe.valor_total,
+                    'status': existing_nfe.status_motivo
+                }
+            }), 200
 
-            if retry:
-                return _build_local_pdf_response(existing_nfe, 'retry')
+        # If user explicitly clicked 'retry', bypass SIEG API and generate directly from local DB
+        if retry:
+            return _build_local_pdf_response(existing_nfe, 'retry_local')
 
+        # Primary Path: Use modern SIEG V1 API for ALL document types
         try:
-            pdf_response = requests.get(
-                f'https://api.sieg.com/api/Arquivos/GerarDanfeViaChave?xmlKey={xml_key}&api_key={Config.SIEG_API_KEY}',
-                headers={'Accept': 'application/json'},
-                timeout=5,
-            )
-            if pdf_response.status_code != 200:
-                raise Exception(f'SIEG API error: {pdf_response.status_code} - {pdf_response.text}')
-        except requests.Timeout as e:
-            if not existing_nfe:
-                existing_nfe = NFEData.query.filter_by(chave=xml_key).first()
+            pdf_b64 = _get_sieg_pdf_via_xml(existing_nfe.xml_content)
+            if pdf_b64:
+                return jsonify({'pdf': pdf_b64, 'source': 'sieg_v1_xml'}), 200
+        except Exception:
+            pass
 
-            if existing_nfe:
-                return _build_local_pdf_response(existing_nfe, 'fallback_timeout')
-
-            return jsonify({'error': f'SIEG timeout and no local NFE available: {str(e)}'}), 504
-        except Exception as e:
-            if not existing_nfe:
-                existing_nfe = NFEData.query.filter_by(chave=xml_key).first()
-
-            if existing_nfe:
-                return _build_local_pdf_response(existing_nfe, 'fallback_error')
-
-            return jsonify({'error': f'NFE not found: {str(e)}'}), 404
-
-        return jsonify(pdf_response.json()), 200
+        # Fallback: Local brazilfiscalreport (Danfe / Danfse)
+        try:
+            return _build_local_pdf_response(existing_nfe, 'fallback_local_report')
+        except Exception as local_err:
+            return jsonify({'error': f'Failed to generate PDF locally: {str(local_err)}'}), 500
     
     except Exception as e:
-        return jsonify({'error': f'Error: {str(e)}'}), 500
+        return jsonify({'error': f'Error generating PDF: {str(e)}'}), 500
 
 
 @bp.route('/get_danfe_data', methods=['GET'])
@@ -1212,7 +1245,13 @@ def extract_xml_value(root, xpath):
     except:
         return ''
 
-
+tipo_map = {
+        '1': 'NF-e',
+        '2': 'CT-e',
+        '3': 'NFS-e',
+        '4': 'NFC-e',
+        '5': 'CF-e'
+    }
 
 @bp.route('/search_nfe', methods=['GET'])
 @login_required
@@ -1961,6 +2000,9 @@ def search_nfe():
                 'id': nfe.id,
                 'numero': nfe.numero,
                 'chave': nfe.chave,
+                'tipo_documento': nfe.tipo_documento,
+                'tipo_documento_nome': tipo_map.get(str(nfe.tipo_documento), 'Desconhecido'),
+                'modelo': nfe.modelo,
                 'data_emissao': nfe.data_emissao.isoformat() if nfe.data_emissao else None,
                 'valor_total': nfe.valor_total,
                 'fornecedor': emitente.nome if emitente else None,
@@ -2038,6 +2080,9 @@ def search_nfe():
                             'id': nfe_data.id,
                             'numero': nfe_data.numero,
                             'chave': nfe_data.chave,
+                            'tipo_documento': nfe_data.tipo_documento,
+                            'tipo_documento_nome': tipo_map.get(str(nfe_data.tipo_documento), 'Desconhecido'),
+                            'modelo': nfe_data.modelo,
                             'data_emissao': nfe_data.data_emissao.isoformat() if nfe_data.data_emissao else None,
                             'valor_total': nfe_data.valor_total,
                             'fornecedor': emitente.nome if emitente else None,
@@ -2091,6 +2136,9 @@ def search_nfe():
                                         'id': nfe_data.id,
                                         'numero': nfe_data.numero,
                                         'chave': nfe_data.chave,
+                                        'tipo_documento': nfe_data.tipo_documento,
+                                        'tipo_documento_nome': tipo_map.get(str(nfe_data.tipo_documento), 'Desconhecido'),
+                                        'modelo': nfe_data.modelo,
                                         'data_emissao': nfe_data.data_emissao.isoformat() if nfe_data.data_emissao else None,
                                         'valor_total': nfe_data.valor_total,
                                         'fornecedor': emitente.nome if emitente else None,
@@ -2143,6 +2191,9 @@ def search_nfe():
                             'id': nfe_data.id,
                             'numero': nfe_data.numero,
                             'chave': nfe_data.chave,
+                            'tipo_documento': nfe_data.tipo_documento,
+                            'tipo_documento_nome': tipo_map.get(str(nfe_data.tipo_documento), 'Desconhecido'),
+                            'modelo': nfe_data.modelo,
                             'data_emissao': nfe_data.data_emissao.isoformat() if nfe_data.data_emissao else None,
                             'valor_total': nfe_data.valor_total,
                             'fornecedor': emitente.nome if emitente else None,
@@ -2160,6 +2211,9 @@ def search_nfe():
                                 'id': nfe_data.id,
                                 'numero': nfe_data.numero,
                                 'chave': nfe_data.chave,
+                                'tipo_documento': nfe_data.tipo_documento,
+                                'tipo_documento_nome': tipo_map.get(str(nfe_data.tipo_documento), 'Desconhecido'),
+                                'modelo': nfe_data.modelo,
                                 'data_emissao': nfe_data.data_emissao.isoformat() if nfe_data.data_emissao else None,
                                 'valor_total': nfe_data.valor_total,
                                 'fornecedor': emitente.nome if emitente else None,
