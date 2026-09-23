@@ -1245,13 +1245,6 @@ def extract_xml_value(root, xpath):
     except:
         return ''
 
-tipo_map = {
-        '1': 'NF-e',
-        '2': 'CT-e',
-        '3': 'NFS-e',
-        '4': 'NFC-e',
-        '5': 'CF-e'
-    }
 
 @bp.route('/search_nfe', methods=['GET'])
 @login_required
@@ -1275,6 +1268,12 @@ def search_nfe():
     include_estimated = request.args.get('include_estimated', 'true').lower() == 'true'
     exact_term_search = request.args.get('exact_term_search', 'true').lower() == 'true'
     hide_group_companies = request.args.get('hide_group_companies', 'false').lower() == 'true'
+    
+    # Extract the new filter for document types
+    tipos_nfe_param = request.args.get('tipos_nfe', '')
+    tipos_nfe_list = []
+    if tipos_nfe_param:
+        tipos_nfe_list = [t.strip() for t in tipos_nfe_param.split(',') if t.strip()]
 
     own_cnpjs = []
     if hide_group_companies:
@@ -1299,6 +1298,14 @@ def search_nfe():
     # ------------------------------------------------------------------ #
     # Status computation helpers
     # ------------------------------------------------------------------ #
+
+    tipo_map = {
+        '1': 'NF-e',
+        '2': 'CT-e',
+        '3': 'NFS-e',
+        '4': 'NFC-e',
+        '5': 'CF-e'
+    }
 
     def _pct_diff(a, b):
         """Returns percentage difference of b relative to a, or None if not computable."""
@@ -1344,11 +1351,7 @@ def search_nfe():
         Verifies the NFe was actually issued TO the company that owns this
         purchase order — comparing full CNPJs (not just root), since the
         destinatario should be the exact receiving branch/legal entity, not
-        just 'the same corporate group'. A mismatch here is a genuine red
-        flag: the invoice was addressed to a different company/branch than
-        the one that placed the order.
-
-        Returns dict: {status, po_company_cnpj, nfe_destinatario_cnpj}
+        just 'the same corporate group'.
         """
         po_cnpj = _get_company_cnpj(po.cod_emp1)
 
@@ -1370,13 +1373,6 @@ def search_nfe():
         }
 
     def _get_split_info(nfe_item_id, po_qty_for_this_line):
-        """
-        Checks whether the NFE item's total quantity is spread across multiple
-        purchase orders. If the sum of quantities claimed across all matches
-        for this nfe_item accounts for the NFE item's full quantity (within
-        tolerance), the order-balance dimension should not be flagged red/yellow
-        just because this single PO only grabbed a portion of it.
-        """
         if not nfe_item_id:
             return {'is_split': False, 'total_claimed_qty': None, 'nfe_item_full_qty': None}
 
@@ -1390,8 +1386,6 @@ def search_nfe():
             PurchaseItemNFEMatch.nfe_item_id == nfe_item_id
         ).scalar() or 0
 
-        # Also count "hard-linked" (NFEntry-based) quantities that might not be
-        # in PurchaseItemNFEMatch (manual/legacy XML-imported links)
         distinct_po_count = db.session.query(
             func.count(func.distinct(
                 func.concat(PurchaseItemNFEMatch.cod_pedc, '|', PurchaseItemNFEMatch.cod_emp1)
@@ -1411,13 +1405,7 @@ def search_nfe():
             'fully_claimed_across_pos': fully_claimed,
         }
         
-        
     def _get_order_total_comparison(po, nfe, current_po_total):
-        """
-        Compares the full purchase order total against the full NFe total value.
-        Restricts linked PO search strictly to the same supplier to prevent 
-        collisions on common short invoice numbers like '7'.
-        """
         nfe_total = float(nfe.valor_total) if nfe.valor_total else None
         linked_po_keys = set()
 
@@ -1460,6 +1448,7 @@ def search_nfe():
                 continue
             adjustments = getattr(other_po, 'adjustments', [])
             base_total = other_po.total_pedido_com_ipi or 0
+            from app.utils import apply_adjustments
             total_sum += apply_adjustments(base_total, adjustments) + (other_po.vlr_frete_tra or 0)
 
         diff_pct = _pct_diff(total_sum, nfe_total)
@@ -1473,7 +1462,6 @@ def search_nfe():
             'nfe_total': round(nfe_total, 2) if nfe_total else None,
             'diff_source': diff_pct,
         }
-
 
     def compute_item_status(po_item, nfe_item_preco, nfe_item_qty, nfe_item_id=None,
                          nfe_uom=None, is_estimated=False,
@@ -1534,7 +1522,6 @@ def search_nfe():
                 if is_estimated and status == 'red':
                     status = 'yellow'
 
-            # Check for unacknowledged PO updates 
             from app.models import POPriceChange
             pending_change = POPriceChange.query.filter_by(
                 cod_pedc=po.cod_pedc, 
@@ -1549,7 +1536,6 @@ def search_nfe():
             elif diff_pct is not None and diff_pct > 1.0:
                 warning_text = f"Preço NF difere do Pedido: Pedido R$ {po_tot:.2f} ➔ NF R$ {nfe_tot:.2f}"
 
-            # FORCE GREEN IF APPROVED
             if is_price_approved:
                 status = 'green'
                 warning_text = f"Aprovado (Original: R$ {po_tot:.2f} ➔ NF: R$ {nfe_tot:.2f})"
@@ -1571,8 +1557,6 @@ def search_nfe():
             result['destinatario_match'] = _check_destinatario_match(po, nfe)
 
         return result
-  
-   
 
     try:
         # Parse dates
@@ -1602,6 +1586,9 @@ def search_nfe():
         # Query NFEs
         nfe_query = NFEData.query
 
+        if tipos_nfe_list:
+            nfe_query = nfe_query.filter(NFEData.tipo_documento.in_(tipos_nfe_list))
+
         if hide_group_companies and own_cnpjs:
             nfe_query = nfe_query.join(NFEEmitente).filter(~NFEEmitente.cnpj.in_(own_cnpjs))
 
@@ -1623,6 +1610,9 @@ def search_nfe():
         # If searching by supplier
         if search_by_fornecedor and query:
             supplier_query = NFEData.query.join(NFEEmitente)
+
+            if tipos_nfe_list:
+                supplier_query = supplier_query.filter(NFEData.tipo_documento.in_(tipos_nfe_list))
 
             if hide_group_companies and own_cnpjs:
                 supplier_query = supplier_query.filter(~NFEEmitente.cnpj.in_(own_cnpjs))
@@ -1650,6 +1640,9 @@ def search_nfe():
         # If searching by item description
         if search_by_item and query:
             item_query = NFEData.query.join(NFEItem)
+
+            if tipos_nfe_list:
+                item_query = item_query.filter(NFEData.tipo_documento.in_(tipos_nfe_list))
 
             if hide_group_companies and own_cnpjs:
                 item_query = item_query.join(NFEEmitente).filter(~NFEEmitente.cnpj.in_(own_cnpjs))
@@ -1683,6 +1676,8 @@ def search_nfe():
         nfe_numbers = set()
         linked_purchase_keys = set()
         all_potential_purchases = {}
+
+        from app.utils import apply_adjustments
 
         for nfe in nfes:
             emitente = NFEEmitente.query.filter_by(nfe_id=nfe.id).first()
@@ -1852,8 +1847,6 @@ def search_nfe():
             linked_purchases = []
             estimated_purchases = []
 
-            purchase_info = None
-
             if nfe.numero:
                 nf_entries = NFEntry.query.filter(NFEntry.num_nf == nfe.numero).all()
                 for entry in nf_entries:
@@ -1866,7 +1859,6 @@ def search_nfe():
                         base_total = po.total_pedido_com_ipi or 0
                         adjusted_total = apply_adjustments(base_total, adjustments) + (po.vlr_frete_tra or 0)
 
-                        # linked_purchases
                         item_status = compute_item_status(
                             po_item=item,
                             nfe_item_preco=nfe_item.valor_unitario_comercial if nfe_item else None,
@@ -1945,7 +1937,6 @@ def search_nfe():
                                 if not already_linked:
                                     nfe_item = _resolve_nfe_item_for_purchase(None, item, match)
 
-                                    # estimated_purchases
                                     adjustments = getattr(po, 'adjustments', [])
                                     base_total = po.total_pedido_com_ipi or 0
                                     po_total = apply_adjustments(base_total, adjustments) + (po.vlr_frete_tra or 0)
@@ -1964,7 +1955,7 @@ def search_nfe():
                                         po=po,
                                         nfe=nfe,
                                         po_total=po_total,
-                                        is_price_approved=getattr(match, 'is_price_approved', False) # <-- ADDED
+                                        is_price_approved=getattr(match, 'is_price_approved', False)
                                     )
                                     estimated_info = {
                                         'cod_pedc': po.cod_pedc,
@@ -2053,242 +2044,15 @@ def search_nfe():
             if nfe.numero:
                 nfe_numbers.add(nfe.numero)
 
-        purchase_orders = []
-
-        # 1. Search in NFEntry
-        if exact_term_search:
-            nf_entries = NFEntry.query.filter(NFEntry.num_nf == query).all()
-        else:
-            nf_entries = NFEntry.query.filter(
-                or_(NFEntry.num_nf == query, NFEntry.num_nf.ilike(f'%{query}%'))
-            ).order_by(NFEntry.cod_pedc.desc()).limit(100).all()
-
-        for entry in nf_entries:
-            po = PurchaseOrder.query.filter_by(cod_pedc=entry.cod_pedc, cod_emp1=entry.cod_emp1).first()
-            if po:
-                item = PurchaseItem.query.filter_by(cod_pedc=entry.cod_pedc, cod_emp1=entry.cod_emp1, linha=str(entry.linha) if entry.linha else None).first()
-                purchase_key = (po.cod_pedc, po.cod_emp1, entry.linha)
-                is_linked = purchase_key in linked_purchase_keys
-
-                linked_nfe_data = None
-                if entry.num_nf:
-                    nfe_data = NFEData.query.filter_by(numero=entry.num_nf).first()
-                    if nfe_data:
-                        emitente = NFEEmitente.query.filter_by(nfe_id=nfe_data.id).first()
-                        destinatario = NFEDestinatario.query.filter_by(nfe_id=nfe_data.id).first()
-                        linked_nfe_data = {
-                            'id': nfe_data.id,
-                            'numero': nfe_data.numero,
-                            'chave': nfe_data.chave,
-                            'tipo_documento': nfe_data.tipo_documento,
-                            'tipo_documento_nome': tipo_map.get(str(nfe_data.tipo_documento), 'Desconhecido'),
-                            'modelo': nfe_data.modelo,
-                            'data_emissao': nfe_data.data_emissao.isoformat() if nfe_data.data_emissao else None,
-                            'valor_total': nfe_data.valor_total,
-                            'fornecedor': emitente.nome if emitente else None,
-                            'cnpj': emitente.cnpj if emitente else None,
-                            'destinatario': {
-                                'nome': destinatario.nome if destinatario else None,
-                                'cnpj': destinatario.cnpj if destinatario else None,
-                                'cpf': destinatario.cpf if destinatario else None,
-                            } if destinatario else None,
-                            'informacoes_adicionais': nfe_data.informacoes_adicionais,
-                        }
-
-                purchase_orders.append({
-                    'cod_pedc': po.cod_pedc,
-                    'cod_emp1': po.cod_emp1,
-                    'dt_emis': po.dt_emis.isoformat() if po.dt_emis else None,
-                    'fornecedor': po.fornecedor_descricao,
-                    'item_descricao': item.descricao if item else None,
-                    'valor': item.total if item else po.total_liquido,
-                    'match_type': 'linked' if is_linked else 'unlinked',
-                    'nfe_numero': entry.num_nf,
-                    'nfe_data': linked_nfe_data,
-                })
-
-        # 2. Search in PurchaseItemNFEMatch
-        if include_estimated:
-            if exact_term_search:
-                estimated_matches = PurchaseItemNFEMatch.query.filter(PurchaseItemNFEMatch.nfe_numero == query).all()
-            else:
-                estimated_matches = PurchaseItemNFEMatch.query.filter(
-                    or_(PurchaseItemNFEMatch.nfe_numero == query, PurchaseItemNFEMatch.nfe_numero.ilike(f'%{query}%'))
-                ).all()
-
-            for match in estimated_matches:
-                item = db.session.get(PurchaseItem, match.purchase_item_id)
-                if item:
-                    po = db.session.get(PurchaseOrder, item.purchase_order_id)
-                    if po:
-                        existing = next((p for p in purchase_orders if p['cod_pedc'] == po.cod_pedc and p.get('item_descricao') == item.descricao), None)
-                        if not existing:
-                            purchase_key = (po.cod_pedc, po.cod_emp1, str(item.linha) if item.linha else None)
-                            is_linked = purchase_key in linked_purchase_keys
-
-                            linked_nfe_data = None
-                            if match.nfe_numero:
-                                nfe_data = NFEData.query.filter_by(numero=match.nfe_numero).first()
-                                if nfe_data:
-                                    emitente = NFEEmitente.query.filter_by(nfe_id=nfe_data.id).first()
-                                    destinatario = NFEDestinatario.query.filter_by(nfe_id=nfe_data.id).first()
-                                    linked_nfe_data = {
-                                        'id': nfe_data.id,
-                                        'numero': nfe_data.numero,
-                                        'chave': nfe_data.chave,
-                                        'tipo_documento': nfe_data.tipo_documento,
-                                        'tipo_documento_nome': tipo_map.get(str(nfe_data.tipo_documento), 'Desconhecido'),
-                                        'modelo': nfe_data.modelo,
-                                        'data_emissao': nfe_data.data_emissao.isoformat() if nfe_data.data_emissao else None,
-                                        'valor_total': nfe_data.valor_total,
-                                        'fornecedor': emitente.nome if emitente else None,
-                                        'cnpj': emitente.cnpj if emitente else None,
-                                        'destinatario': {
-                                            'nome': destinatario.nome if destinatario else None,
-                                            'cnpj': destinatario.cnpj if destinatario else None,
-                                            'cpf': destinatario.cpf if destinatario else None,
-                                        } if destinatario else None,
-                                        'informacoes_adicionais': nfe_data.informacoes_adicionais,
-                                    }
-
-                            purchase_orders.append({
-                                'cod_pedc': po.cod_pedc,
-                                'cod_emp1': po.cod_emp1,
-                                'dt_emis': po.dt_emis.isoformat() if po.dt_emis else None,
-                                'fornecedor': po.fornecedor_descricao,
-                                'item_descricao': item.descricao,
-                                'valor': item.total,
-                                'match_type': 'estimated' if is_linked else 'estimated_unlinked',
-                                'match_score': match.match_score,
-                                'nfe_numero': match.nfe_numero,
-                                'nfe_data': linked_nfe_data,
-                            })
-
-        # 3. Search by purchase order number
-        if exact_term_search:
-            purchase_entries = NFEntry.query.filter(NFEntry.cod_pedc == query).order_by(NFEntry.cod_pedc.desc()).limit(100).all()
-        else:
-            purchase_entries = NFEntry.query.filter(NFEntry.cod_pedc.ilike(f'%{query}%')).order_by(NFEntry.cod_pedc.desc()).limit(100).all()
-
-        for entry in purchase_entries:
-            already_added = any(p['cod_pedc'] == entry.cod_pedc and p.get('nfe_numero') == entry.num_nf for p in purchase_orders)
-            if already_added:
-                continue
-
-            po = PurchaseOrder.query.filter_by(cod_pedc=entry.cod_pedc, cod_emp1=entry.cod_emp1).first()
-            if po:
-                item = PurchaseItem.query.filter_by(cod_pedc=entry.cod_pedc, cod_emp1=entry.cod_emp1, linha=str(entry.linha) if entry.linha else None).first()
-                purchase_key = (po.cod_pedc, po.cod_emp1, entry.linha)
-                is_linked = purchase_key in linked_purchase_keys
-
-                linked_nfe_data = None
-                if entry.num_nf:
-                    nfe_data = NFEData.query.filter_by(numero=entry.num_nf).first()
-                    if nfe_data:
-                        emitente = NFEEmitente.query.filter_by(nfe_id=nfe_data.id).first()
-                        destinatario = NFEDestinatario.query.filter_by(nfe_id=nfe_data.id).first()
-                        linked_nfe_data = {
-                            'id': nfe_data.id,
-                            'numero': nfe_data.numero,
-                            'chave': nfe_data.chave,
-                            'tipo_documento': nfe_data.tipo_documento,
-                            'tipo_documento_nome': tipo_map.get(str(nfe_data.tipo_documento), 'Desconhecido'),
-                            'modelo': nfe_data.modelo,
-                            'data_emissao': nfe_data.data_emissao.isoformat() if nfe_data.data_emissao else None,
-                            'valor_total': nfe_data.valor_total,
-                            'fornecedor': emitente.nome if emitente else None,
-                            'cnpj': emitente.cnpj if emitente else None,
-                            'destinatario': {
-                                'nome': destinatario.nome if destinatario else None,
-                                'cnpj': destinatario.cnpj if destinatario else None,
-                                'cpf': destinatario.cpf if destinatario else None,
-                            } if destinatario else None,
-                            'informacoes_adicionais': nfe_data.informacoes_adicionais,
-                        }
-                        if is_linked and not any(n['id'] == nfe_data.id for n in nfe_results):
-                            nfe_data_items = NFEItem.query.filter_by(nfe_id=nfe_data.id).all()
-                            nfe_results.append({
-                                'id': nfe_data.id,
-                                'numero': nfe_data.numero,
-                                'chave': nfe_data.chave,
-                                'tipo_documento': nfe_data.tipo_documento,
-                                'tipo_documento_nome': tipo_map.get(str(nfe_data.tipo_documento), 'Desconhecido'),
-                                'modelo': nfe_data.modelo,
-                                'data_emissao': nfe_data.data_emissao.isoformat() if nfe_data.data_emissao else None,
-                                'valor_total': nfe_data.valor_total,
-                                'fornecedor': emitente.nome if emitente else None,
-                                'cnpj': emitente.cnpj if emitente else None,
-                                'destinatario': {
-                                    'nome': destinatario.nome if destinatario else None,
-                                    'cnpj': destinatario.cnpj if destinatario else None,
-                                    'cpf': destinatario.cpf if destinatario else None,
-                                } if destinatario else None,
-                                'informacoes_adicionais': nfe_data.informacoes_adicionais,
-
-                                'impostos_totais': {
-                                    'valor_icms': nfe_data.valor_icms,
-                                    'valor_icms_st': nfe_data.valor_icms_st,
-                                    'valor_ipi': nfe_data.valor_ipi,
-                                    'valor_pis': nfe_data.valor_pis,
-                                    'valor_cofins': nfe_data.valor_cofins,
-                                    'valor_imposto_total': nfe_data.valor_imposto,
-                                },
-
-                                'matched_items': [],
-                                'linked_purchases': [{
-                                    'cod_pedc': po.cod_pedc,
-                                    'cod_emp1': po.cod_emp1,
-                                    'fornecedor': po.fornecedor_descricao,
-                                    'item_descricao': item.descricao if item else None,
-                                    'linha': entry.linha,
-                                }],
-                                'estimated_purchases': [],
-
-                                'nfe_items': [{
-                                    'id': nfe_item.id,
-                                    'numero_item': nfe_item.numero_item,
-                                    'descricao': nfe_item.descricao,
-                                    'unidade': nfe_item.unidade_comercial,
-                                    'quantidade': nfe_item.quantidade_comercial,
-                                    'preco_unitario': nfe_item.valor_unitario_comercial,
-                                    'valor_total_bruto': nfe_item.valor_total_bruto,
-
-                                    'ncm': nfe_item.ncm,
-                                    'cfop': nfe_item.cfop,
-                                    'icms_cst': nfe_item.icms_cst,
-                                    'icms_aliquota': nfe_item.icms_picms,
-                                    'icms_valor': nfe_item.icms_vicms,
-                                    'ipi_cst': nfe_item.ipi_cst,
-                                    'pis_aliquota': nfe_item.pis_ppis,
-                                    'pis_valor': nfe_item.pis_vpis,
-                                    'cofins_aliquota': nfe_item.cofins_pcofins,
-                                    'cofins_valor': nfe_item.cofins_vcofins,
-                                    'valor_total_tributos': nfe_item.valor_total_tributos,
-                                } for nfe_item in nfe_data_items],
-                            })
-
-                purchase_orders.append({
-                    'cod_pedc': po.cod_pedc,
-                    'cod_emp1': po.cod_emp1,
-                    'dt_emis': po.dt_emis.isoformat() if po.dt_emis else None,
-                    'fornecedor': po.fornecedor_descricao,
-                    'item_descricao': item.descricao if item else None,
-                    'valor': item.total if item else po.total_liquido,
-                    'match_type': 'linked' if is_linked else 'unlinked',
-                    'nfe_numero': entry.num_nf,
-                    'nfe_data': linked_nfe_data,
-                })
-
         return jsonify({
             'nfes': nfe_results,
-            'purchase_orders': purchase_orders,
             'query': query,
         }), 200
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500    
+        return jsonify({'error': str(e)}), 500
     
 
 @bp.route('/download_nfe_xml', methods=['GET'])
