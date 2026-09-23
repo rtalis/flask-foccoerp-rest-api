@@ -8,7 +8,6 @@ import zipfile
 import logging
 import re
 import time
-import base64
 import argparse
 from datetime import datetime, timedelta
 import requests
@@ -108,46 +107,6 @@ def fetch_sieg_zip_paginated(url, payload, company_name):
     return all_xmls
 
 
-def fetch_sieg_events(payload, company_name):
-    """Fetches document events (Cancellations, CC-e) from /api/v1/baixar-eventos."""
-    jwt_token = get_jwt_token()
-    headers = {
-        'Authorization': f'Bearer {jwt_token}',
-        'x-api-key': Config.SIEG_API_KEY,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-    }
-
-    payload['Take'] = 50
-    payload['Skip'] = 0
-    all_events = []
-
-    while True:
-        try:
-            response = requests.post('https://api.sieg.com/api/v1/baixar-eventos', json=payload, headers=headers, timeout=60)
-            if response.status_code == 200:
-                data = response.json()
-                events = data.get('Eventos', [])
-                if not events:
-                    break
-
-                all_events.extend(events)
-                if len(events) < 50:
-                    break
-
-                payload['Skip'] += 50
-                time.sleep(REQUEST_DELAY_SECONDS)
-                
-            elif response.status_code in (400, 404):
-                break
-            else:
-                break
-        except requests.RequestException:
-            break
-
-    return all_events
-
-
 def extract_document_key(xml_content):
     """Extracts 44-digit NF-e key or 50-digit national NFS-e key."""
     match = re.search(r'Id="(?:NFe|CFe|CTe|NFS)(\d{44,50})"', xml_content, re.IGNORECASE)
@@ -178,7 +137,12 @@ def run_sync(start_date_str=None, end_date_str=None, company_id=None):
             query = query.filter_by(id=company_id)
             
         companies = query.all()
-        total_new_nfes = 0
+        
+        # Global Counters
+        global_xmls_new = 0
+        global_xmls_skipped = 0
+        global_events_new = 0
+        global_events_skipped = 0
 
         for company in companies:
             if not company.cnpj:
@@ -198,17 +162,28 @@ def run_sync(start_date_str=None, end_date_str=None, company_id=None):
                     "TipoXml": xml_type,
                     "DataEmissaoInicio": start_date_str,
                     "DataEmissaoFim": end_date_str,
-                    "CnpjDest": clean_cnpj
+                    "CnpjDest": clean_cnpj,
+                    "BaixarEventos": True  # Force SIEG to include events in the ZIP
                 }
 
                 xml_list = fetch_sieg_zip_paginated('https://api.sieg.com/api/v1/baixar-xmls', payload, company.name)
 
+                invoices_xmls = []
+                events_xmls = []
+
+                # Separate Invoices from Events
                 for xml_content in xml_list:
+                    if 'procEventoNFe' in xml_content or 'resEvento' in xml_content or '<evento' in xml_content:
+                        events_xmls.append(xml_content)
+                    else:
+                        invoices_xmls.append(xml_content)
+
+                # 1. Process Invoices FIRST so they exist in the DB
+                for xml_content in invoices_xmls:
                     chave = extract_document_key(xml_content)
                     if not chave:
                         continue
                         
-                    # Check if already in DB
                     if NFEData.query.filter_by(chave=chave).first():
                         company_xmls_skipped += 1
                         continue
@@ -219,71 +194,78 @@ def run_sync(start_date_str=None, end_date_str=None, company_id=None):
                         elif xml_type == 3:
                             parse_and_store_nfse_xml(xml_content, chave)
                             
-                        total_new_nfes += 1
                         company_xmls_new += 1
                     except Exception as e:
                         db.session.rollback()
                         logger.error(f"Error parsing document {chave}: {e}")
 
-            # Sync Events
-            events_payload = {
-                "TipoXml": 1,
-                "DataInicioEvento": f"{start_date_str}T00:00:00.000Z",
-                "DataFimEvento": f"{end_date_str}T23:59:59.999Z",
-                "CnpjDest": clean_cnpj
-            }
-            events = fetch_sieg_events(events_payload, company.name)
-
-            for evt in events:
-                xml_b64 = evt.get('Xml')
-                if not xml_b64:
-                    continue
+                # 2. Process Events SECOND and link them to the newly saved Invoices
+                for xml_content in events_xmls:
+                    chave_match = re.search(r'<chNFe[^>]*>(\d+)</chNFe>', xml_content)
+                    if not chave_match:
+                        continue
+                        
+                    chave_doc = chave_match.group(1)
                     
-                xml_evt = base64.b64decode(xml_b64).decode('utf-8')
-                
-                chave_doc = evt.get('ChaveXml')
-                if not chave_doc:
-                    match = re.search(r'<chNFe>(\d{44})</chNFe>', xml_evt)
-                    if match:
-                        chave_doc = match.group(1)
-                
-                if not chave_doc:
-                    continue
+                    nfe = NFEData.query.filter_by(chave=chave_doc).first()
+                    if not nfe:
+                        # NFE not in DB (might have been issued outside our date range filter)
+                        company_events_skipped += 1
+                        continue 
 
-                nfe = NFEData.query.filter_by(chave=chave_doc).first()
-                if not nfe:
-                    continue 
-
-                protocolo = str(evt.get('Protocolo', ''))
-                
-                # Check if event already in DB
-                if NFEEvento.query.filter_by(protocolo=protocolo).first():
-                    company_events_skipped += 1
-                    continue
+                    prot_match = re.search(r'<nProt[^>]*>(\d+)</nProt>', xml_content)
+                    protocolo = prot_match.group(1) if prot_match else "SEM_PROTOCOLO"
                     
-                data_str = evt.get('DataEvento', '')
-                data_evento = datetime.strptime(data_str[:19], "%Y-%m-%dT%H:%M:%S") if data_str else datetime.now()
-                
-                try:
-                    novo_evento = NFEEvento(
-                        nfe_id=nfe.id,
-                        tipo_evento=evt.get('TipoEvento'),
-                        descricao=evt.get('Descricao'),
-                        protocolo=protocolo,
-                        data_evento=data_evento,
-                        xml_content=xml_evt
-                    )
-                    db.session.add(novo_evento)
-                    db.session.commit()
-                    company_events_new += 1
-                except Exception as e:
-                    db.session.rollback()
-                    logger.error(f"Error saving event for document {chave_doc}: {e}")
+                    if NFEEvento.query.filter_by(protocolo=protocolo).first():
+                        company_events_skipped += 1
+                        continue
+                        
+                    tp_match = re.search(r'<tpEvento[^>]*>(\d+)</tpEvento>', xml_content)
+                    tipo_evento = tp_match.group(1) if tp_match else ""
+                    
+                    desc_match = re.search(r'<(?:xEvento|descEvento)[^>]*>([^<]+)</(?:xEvento|descEvento)>', xml_content)
+                    descricao = desc_match.group(1) if desc_match else "Evento"
+                    
+                    data_match = re.search(r'<(?:dhRegEvento|dhEvento)[^>]*>([^<]+)</(?:dhRegEvento|dhEvento)>', xml_content)
+                    data_str = data_match.group(1) if data_match else ""
+                    
+                    if data_str:
+                        # Parse standard SEFAZ timestamp format (e.g. 2026-09-09T09:24:17-03:00)
+                        data_evento = datetime.strptime(data_str[:19], "%Y-%m-%dT%H:%M:%S")
+                    else:
+                        data_evento = datetime.now()
+                    
+                    try:
+                        novo_evento = NFEEvento(
+                            nfe_id=nfe.id,
+                            tipo_evento=tipo_evento,
+                            descricao=descricao,
+                            protocolo=protocolo,
+                            data_evento=data_evento,
+                            xml_content=xml_content # Saves the raw XML string, no base64 needed here
+                        )
+                        db.session.add(novo_evento)
+                        db.session.commit()
+                        company_events_new += 1
+                    except Exception as e:
+                        db.session.rollback()
+                        logger.error(f"Error saving event for document {chave_doc}: {e}")
 
             logger.info(f"Completed {company.name} | XMLs: {company_xmls_new} new, {company_xmls_skipped} skipped | Events: {company_events_new} new, {company_events_skipped} skipped.")
+            
+            # Add to global counters
+            global_xmls_new += company_xmls_new
+            global_xmls_skipped += company_xmls_skipped
+            global_events_new += company_events_new
+            global_events_skipped += company_events_skipped
+            
             time.sleep(REQUEST_DELAY_SECONDS)
 
-        logger.info(f"Global Sync Complete. Total new XMLs saved across all companies: {total_new_nfes}")
+        logger.info(
+            f"Global Sync Complete | "
+            f"Total XMLs: {global_xmls_new} new, {global_xmls_skipped} skipped | "
+            f"Total Events: {global_events_new} new, {global_events_skipped} skipped."
+        )
 
 
 if __name__ == '__main__':

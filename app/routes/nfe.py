@@ -1246,13 +1246,14 @@ def extract_xml_value(root, xpath):
         return ''
 
 
+
 @bp.route('/search_nfe', methods=['GET'])
 @login_required
 def search_nfe():
     """
     Search for NFEs and find linked purchase orders.
     """
-    from app.models import NFEData, NFEEmitente, NFEDestinatario, NFEItem, NFEntry, PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch, Company
+    from app.models import NFEData, NFEEmitente, NFEDestinatario, NFEItem, NFEntry, PurchaseOrder, PurchaseItem, PurchaseItemNFEMatch, Company, NFEEvento
     from datetime import datetime
     from fuzzywuzzy import fuzz
     from sqlalchemy import and_, or_, func
@@ -1269,7 +1270,7 @@ def search_nfe():
     exact_term_search = request.args.get('exact_term_search', 'true').lower() == 'true'
     hide_group_companies = request.args.get('hide_group_companies', 'false').lower() == 'true'
     
-    # Extract the new filter for document types
+    # Extract the filter for document types
     tipos_nfe_param = request.args.get('tipos_nfe', '')
     tipos_nfe_list = []
     if tipos_nfe_param:
@@ -1320,7 +1321,7 @@ def search_nfe():
 
     def _status_from_diff(diff_pct, green_max=5, yellow_max=20):
         if diff_pct is None:
-            return 'gray'  # not enough data to compare
+            return 'gray'
         if diff_pct < green_max:
             return 'green'
         if diff_pct < yellow_max:
@@ -1328,7 +1329,6 @@ def search_nfe():
         return 'red'
 
     def _normalize_cnpj_full(value):
-        """Full 14-digit CNPJ, digits only. Returns '' if not a valid CNPJ length."""
         if not value:
             return ""
         digits = re.sub(r'\D', '', str(value))
@@ -1337,8 +1337,6 @@ def search_nfe():
     _destinatario_company_cnpj_cache = {}
 
     def _get_company_cnpj(cod_emp1):
-        """Looks up the full CNPJ for the company that owns this PO (cod_emp1),
-        caching per request to avoid repeated queries across many PO items."""
         if cod_emp1 in _destinatario_company_cnpj_cache:
             return _destinatario_company_cnpj_cache[cod_emp1]
         company = Company.query.filter_by(cod_emp1=str(cod_emp1)).first()
@@ -1347,14 +1345,7 @@ def search_nfe():
         return cnpj
 
     def _check_destinatario_match(po, nfe):
-        """
-        Verifies the NFe was actually issued TO the company that owns this
-        purchase order — comparing full CNPJs (not just root), since the
-        destinatario should be the exact receiving branch/legal entity, not
-        just 'the same corporate group'.
-        """
         po_cnpj = _get_company_cnpj(po.cod_emp1)
-
         destinatario = NFEDestinatario.query.filter_by(nfe_id=nfe.id).first()
         nfe_dest_cnpj = _normalize_cnpj_full(destinatario.cnpj) if destinatario else ""
 
@@ -1372,39 +1363,6 @@ def search_nfe():
             'nfe_destinatario_cnpj': nfe_dest_cnpj,
         }
 
-    def _get_split_info(nfe_item_id, po_qty_for_this_line):
-        if not nfe_item_id:
-            return {'is_split': False, 'total_claimed_qty': None, 'nfe_item_full_qty': None}
-
-        nfe_item = db.session.get(NFEItem, nfe_item_id)
-        if not nfe_item or not nfe_item.quantidade_comercial:
-            return {'is_split': False, 'total_claimed_qty': None, 'nfe_item_full_qty': None}
-
-        total_claimed = db.session.query(
-            func.sum(PurchaseItemNFEMatch.po_item_quantidade)
-        ).filter(
-            PurchaseItemNFEMatch.nfe_item_id == nfe_item_id
-        ).scalar() or 0
-
-        distinct_po_count = db.session.query(
-            func.count(func.distinct(
-                func.concat(PurchaseItemNFEMatch.cod_pedc, '|', PurchaseItemNFEMatch.cod_emp1)
-            ))
-        ).filter(
-            PurchaseItemNFEMatch.nfe_item_id == nfe_item_id
-        ).scalar() or 0
-
-        nfe_full_qty = float(nfe_item.quantidade_comercial)
-        is_split = distinct_po_count > 1
-        fully_claimed = total_claimed > 0 and abs(total_claimed - nfe_full_qty) / nfe_full_qty < 0.05
-
-        return {
-            'is_split': is_split,
-            'total_claimed_qty': round(total_claimed, 4) if total_claimed else None,
-            'nfe_item_full_qty': round(nfe_full_qty, 4),
-            'fully_claimed_across_pos': fully_claimed,
-        }
-        
     def _get_order_total_comparison(po, nfe, current_po_total):
         nfe_total = float(nfe.valor_total) if nfe.valor_total else None
         linked_po_keys = set()
@@ -1442,13 +1400,13 @@ def search_nfe():
             }
 
         total_sum = 0.0
+        from app.utils import apply_adjustments
         for cod_pedc, cod_emp1 in linked_po_keys:
             other_po = PurchaseOrder.query.filter_by(cod_pedc=cod_pedc, cod_emp1=cod_emp1).first()
             if not other_po:
                 continue
             adjustments = getattr(other_po, 'adjustments', [])
             base_total = other_po.total_pedido_com_ipi or 0
-            from app.utils import apply_adjustments
             total_sum += apply_adjustments(base_total, adjustments) + (other_po.vlr_frete_tra or 0)
 
         diff_pct = _pct_diff(total_sum, nfe_total)
@@ -1482,7 +1440,6 @@ def search_nfe():
         po_uom_clean = normalize_uom(po_item.unidade_medida) if po_item.unidade_medida else ''
         nfe_uom_clean = normalize_uom(nfe_uom) if nfe_uom else ''
 
-        # --- Dot 1: unit price -------------------------------------------------
         converted = bool(po_uom_clean and nfe_uom_clean and po_uom_clean != nfe_uom_clean)
         unit_diff = _pct_diff(po_price, nfe_item_preco)
 
@@ -1493,7 +1450,6 @@ def search_nfe():
         result['unit_price']['diff_pct'] = round(unit_diff, 2) if unit_diff is not None else None
         result['unit_price']['converted'] = converted
 
-        # --- Dot 2: line total (qty x price) -----------------------------------
         po_line_total = po_price * po_qty if po_price is not None and po_qty is not None else None
         nfe_line_total = (
             float(nfe_item_preco) * float(nfe_item_qty)
@@ -1505,7 +1461,6 @@ def search_nfe():
         result['line_total']['status'] = _status_from_diff(line_diff)
         result['line_total']['diff_pct'] = round(line_diff, 2) if line_diff is not None else None
 
-        # --- Dot 3: order total (full PO vs full NFe) ---------------------------
         if po is not None and nfe is not None and po_total is not None:
             comparison = _get_order_total_comparison(po, nfe, po_total)
             diff_pct = comparison['diff_source']
@@ -1552,14 +1507,12 @@ def search_nfe():
                 'is_approved': is_price_approved
             }
             
-        # --- Dot 4: destinatario CNPJ match --------------------------------------
         if po is not None and nfe is not None:
             result['destinatario_match'] = _check_destinatario_match(po, nfe)
 
         return result
 
     try:
-        # Parse dates
         start_date = None
         end_date = None
         if start_date_str:
@@ -1568,7 +1521,6 @@ def search_nfe():
             end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
             end_date = end_date.replace(hour=23, minute=59, second=59)
 
-        # Build NFE query
         nfe_filters = []
 
         if query:
@@ -1583,7 +1535,6 @@ def search_nfe():
                 else:
                     nfe_filters.append(NFEData.chave.ilike(f'%{query}%'))
 
-        # Query NFEs
         nfe_query = NFEData.query
 
         if tipos_nfe_list:
@@ -1598,7 +1549,6 @@ def search_nfe():
         if nfe_filters:
             nfe_query = nfe_query.filter(or_(*nfe_filters))
 
-        # Apply date filters
         if start_date:
             nfe_query = nfe_query.filter(NFEData.data_emissao >= start_date)
         if end_date:
@@ -1607,7 +1557,6 @@ def search_nfe():
         nfe_query = nfe_query.order_by(NFEData.data_emissao.desc())
         nfes = nfe_query.limit(50).all()
 
-        # If searching by supplier
         if search_by_fornecedor and query:
             supplier_query = NFEData.query.join(NFEEmitente)
 
@@ -1637,7 +1586,6 @@ def search_nfe():
                 if nfe.id not in existing_ids:
                     nfes.append(nfe)
 
-        # If searching by item description
         if search_by_item and query:
             item_query = NFEData.query.join(NFEItem)
 
@@ -1673,9 +1621,8 @@ def search_nfe():
         nfes = nfes[:50]
 
         nfe_results = []
-        nfe_numbers = set()
-        linked_purchase_keys = set()
         all_potential_purchases = {}
+        linked_purchase_keys = set()
 
         from app.utils import apply_adjustments
 
@@ -1879,25 +1826,6 @@ def search_nfe():
                             'dt_emis': po.dt_emis.isoformat() if po.dt_emis else None,
                             'total_pedido': adjusted_total,
                             'func_nome': po.func_nome,
-                            'vlr_icms_st': po.vlr_icms_st,
-                            'moeped': po.moeped,
-                            'for_uf': po.for_uf,
-                            'tra_cod': po.tra_cod,
-                            'tra_descricao': po.tra_descricao,
-                            'tra_uf': po.tra_uf,
-                            'red_cod': po.red_cod,
-                            'red_descricao2': po.red_descricao2,
-                            'red_uf': po.red_uf,
-                            'tp_frete_tra': po.tp_frete_tra,
-                            'tp_vlr_frete_tra': po.tp_vlr_frete_tra,
-                            'moetra': po.moetra,
-                            'vlr_frete_tra': po.vlr_frete_tra,
-                            'tp_frete_red': po.tp_frete_red,
-                            'tp_vlr_frete_red': po.tp_vlr_frete_red,
-                            'moered': po.moered,
-                            'vlr_frete_red': po.vlr_frete_red,
-                            'num_talao': po.num_talao,
-                            'tipo': po.tipo,
                             'item_descricao': item.descricao if item else None,
                             'linha': entry.linha,
                             'quantidade': item.quantidade if item else None,
@@ -2040,9 +1968,15 @@ def search_nfe():
                     'valor_total_tributos': item.valor_total_tributos,
                     'is_conferido': getattr(item, 'is_conferido', False),
                 } for item in nfe_items],
+                
+                'eventos': [{
+                    'id': evt.id,
+                    'tipo_evento': evt.tipo_evento,
+                    'descricao': evt.descricao,
+                    'protocolo': evt.protocolo,
+                    'data_evento': evt.data_evento.isoformat() if evt.data_evento else None,
+                } for evt in nfe.eventos] if hasattr(nfe, 'eventos') and nfe.eventos else []
             })
-            if nfe.numero:
-                nfe_numbers.add(nfe.numero)
 
         return jsonify({
             'nfes': nfe_results,
