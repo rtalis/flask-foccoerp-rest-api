@@ -1,13 +1,17 @@
+import json
 import re
 import xml.etree.ElementTree as ET
 import base64
 import requests
 from datetime import datetime, timedelta
 from fuzzywuzzy import fuzz
-from flask import request, jsonify
+from flask import current_app, request, jsonify
 from flask_login import login_required, current_user
 from sqlalchemy import and_, or_
 from flask import make_response
+import os
+import tempfile
+import threading
 
 
 from app import db
@@ -2052,4 +2056,96 @@ def toggle_nfe_item_conferido():
         
     except Exception as e:
         db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+    
+SYNC_LOCK_FILE = os.path.join(tempfile.gettempdir(), 'sieg_sync.lock')
+STATUS_FILE = os.path.join(tempfile.gettempdir(), 'sieg_sync_status.json')
+
+@bp.route('/manual_sync_nfe', methods=['POST'])
+@login_required
+def manual_sync_nfe():
+    """Starts the NFE sync in a background thread."""
+    if os.path.exists(SYNC_LOCK_FILE):
+        return jsonify({'error': 'Uma sincronização já está em andamento.'}), 409
+        
+    data = request.get_json() or {}
+    start_date = data.get('start_date')
+    end_date = data.get('end_date')
+    
+    # Wipe old status file if it exists so we start fresh
+    if os.path.exists(STATUS_FILE):
+        try:
+            os.remove(STATUS_FILE)
+        except OSError:
+            pass
+
+    # Create the lock file
+    with open(SYNC_LOCK_FILE, 'w') as f:
+        f.write(datetime.now().isoformat())
+        
+    app = current_app._get_current_object()
+    
+    def background_sync(flask_app, start, end):
+        """Runs the sync process inside an application context."""
+        with flask_app.app_context():
+            try:
+                from app.tasks.sync_nfe import run_sync
+                run_sync(start_date_str=start, end_date_str=end)
+            except Exception as e:
+                import logging
+                logging.error(f"Background NFE sync failed: {str(e)}")
+            finally:
+                # Always remove the lock file when finished or crashed
+                if os.path.exists(SYNC_LOCK_FILE):
+                    os.remove(SYNC_LOCK_FILE)
+
+    # Start the thread and return immediately
+    thread = threading.Thread(target=background_sync, args=(app, start_date, end_date))
+    thread.daemon = True
+    thread.start()
+    
+    return jsonify({'message': 'Sincronização iniciada em segundo plano.'}), 202
+
+
+@bp.route('/nfe_sync_status', methods=['GET'])
+@login_required
+def nfe_sync_status():
+    """Returns the current status of the sync and the last update timestamp."""
+    from app.models import NFEData
+    
+    is_syncing = os.path.exists(SYNC_LOCK_FILE)
+    
+    progress_data = {
+        "status": "idle" if not is_syncing else "running",
+        "is_syncing": is_syncing,
+        "current_company": None,
+        "current_step": None,
+        "companies_total": 0,
+        "companies_completed": 0,
+        "xmls_new": 0,
+        "xmls_skipped": 0,
+        "events_new": 0,
+        "events_skipped": 0,
+        "error": None
+    }
+
+    # Read from the real-time JSON tracker file if it exists
+    if os.path.exists(STATUS_FILE):
+        try:
+            with open(STATUS_FILE, 'r', encoding='utf-8') as f:
+                saved_progress = json.load(f)
+                progress_data.update(saved_progress)
+        except Exception:
+            pass
+            
+    # Force the is_syncing status to match the thread lock file
+    progress_data["is_syncing"] = is_syncing
+    
+    try:
+        # Check the most recently inserted NFE record to serve as the global 'last updated' time
+        last_nfe = NFEData.query.order_by(NFEData.created_at.desc()).first()
+        progress_data["last_sync"] = last_nfe.created_at.isoformat() if last_nfe and last_nfe.created_at else None
+        
+        return jsonify(progress_data), 200
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
