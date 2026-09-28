@@ -2112,8 +2112,22 @@ def manual_sync_nfe():
 def nfe_sync_status():
     """Returns the current status of the sync and the last update timestamp."""
     from app.models import NFEData
+    import time
+    import os
     
     is_syncing = os.path.exists(SYNC_LOCK_FILE)
+    
+
+    if is_syncing:
+        file_age = time.time() - os.path.getmtime(SYNC_LOCK_FILE)
+        if file_age > 1800:
+            try:
+                os.remove(SYNC_LOCK_FILE)
+                if os.path.exists(STATUS_FILE):
+                    os.remove(STATUS_FILE)
+            except OSError:
+                pass
+            is_syncing = False
     
     progress_data = {
         "status": "idle" if not is_syncing else "running",
@@ -2130,7 +2144,7 @@ def nfe_sync_status():
     }
 
     # Read from the real-time JSON tracker file if it exists
-    if os.path.exists(STATUS_FILE):
+    if is_syncing and os.path.exists(STATUS_FILE):
         try:
             with open(STATUS_FILE, 'r', encoding='utf-8') as f:
                 saved_progress = json.load(f)
