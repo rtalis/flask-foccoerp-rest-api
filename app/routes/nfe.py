@@ -600,6 +600,7 @@ def get_nfe_data():
         return jsonify({'error': f'Error: {str(e)}'}), 500
 
 
+
 @bp.route('/get_nfe_by_number', methods=['GET'])
 @login_required
 def get_nfe_by_number():
@@ -610,10 +611,23 @@ def get_nfe_by_number():
     dt_ent_str = request.args.get('dt_ent')
     chave = request.args.get('chave')
     
-    if not num_nf:
-        return jsonify({'error': 'num_nf is required'}), 400
+    if not num_nf and not chave:
+        return jsonify({'error': 'num_nf or chave is required'}), 400
     
     try:
+        # 1. Fast-path: If 'chave' is provided, match it directly
+        if chave:
+            exact_nfe = NFEData.query.filter_by(chave=chave).first()
+            if exact_nfe:
+                return jsonify({
+                    'found': True,
+                    'chave': exact_nfe.chave,
+                    'numero': exact_nfe.numero,
+                    'data_emissao': exact_nfe.data_emissao.isoformat() if exact_nfe.data_emissao else None,
+                    'valor': exact_nfe.valor_total,
+                    'fornecedor': exact_nfe.emitente.nome if exact_nfe.emitente else None
+                }), 200
+
         num_nf_clean = str(num_nf).lstrip('0')
         
         dt_ent = None
@@ -661,7 +675,7 @@ def get_nfe_by_number():
                 }), 200
         
         # Normal flow for other suppliers
-        nfes = NFEData.query.filter_by(numero=num_nf).all()
+        nfes = NFEData.query.filter_by(numero=num_nf).order_by(NFEData.data_emissao.desc()).all()
         
         if not nfes:
             nfes = NFEData.query.filter(NFEData.numero == num_nf_clean).order_by(NFEData.data_emissao.desc()).all()
@@ -680,50 +694,58 @@ def get_nfe_by_number():
             ).first()
             if supplier and supplier.nvl_forn_cnpj_forn_cpf:
                 fornecedor_cnpj = ''.join(filter(str.isdigit, str(supplier.nvl_forn_cnpj_forn_cpf)))
+        
         matched_nfe = None
+        supplier_matched_candidates = []
         
         for nfe in nfes:
+            is_supplier_match = False
+            
+            # Check CNPJ root match
             if fornecedor_cnpj and nfe.emitente and nfe.emitente.cnpj:
                 emit_cnpj_clean = ''.join(filter(str.isdigit, str(nfe.emitente.cnpj)))
                 if emit_cnpj_clean[:8] == fornecedor_cnpj[:8]:
-                    if dt_ent and nfe.data_emissao:
-                        nfe_date = nfe.data_emissao
-                        if hasattr(nfe_date, 'date'):
-                            nfe_date = nfe_date.date()
-                        days_diff = abs((nfe_date - dt_ent).days)
-                        if days_diff <= 30:
-                            matched_nfe = nfe
-                            break
-                    else:
-                        matched_nfe = nfe
-                        break
+                    is_supplier_match = True
             
-            elif not fornecedor_cnpj and fornecedor_nome and nfe.emitente and nfe.emitente.nome:
+            # Fallback to fuzzy name match (also runs if supplier record lacked a CNPJ)
+            if not is_supplier_match and fornecedor_nome and nfe.emitente and nfe.emitente.nome:
                 name_ratio = fuzz.token_set_ratio(
                     fornecedor_nome.lower(),
                     nfe.emitente.nome.lower()
                 )
                 if name_ratio >= 80:
-                    if dt_ent and nfe.data_emissao:
-                        nfe_date = nfe.data_emissao
-                        if hasattr(nfe_date, 'date'):
-                            nfe_date = nfe_date.date()
-                        days_diff = abs((nfe_date - dt_ent).days)
-                        if days_diff <= 30:
-                            matched_nfe = nfe
-                            break
-                    else:
+                    is_supplier_match = True
+            
+            if is_supplier_match:
+                supplier_matched_candidates.append(nfe)
+                if dt_ent and nfe.data_emissao:
+                    nfe_date = nfe.data_emissao.date() if hasattr(nfe.data_emissao, 'date') else nfe.data_emissao
+                    days_diff = abs((nfe_date - dt_ent).days)
+                    # Expanded window to 180 days for same supplier + same NF number
+                    if days_diff <= 180:
                         matched_nfe = nfe
                         break
+                else:
+                    matched_nfe = nfe
+                    break
         
+        # If supplier + NF number matched, but date was > 180 days off, still use the closest/latest supplier match
+        # (A supplier cannot legally issue two different NF-es with the same number in the same series)
+        if not matched_nfe and supplier_matched_candidates:
+            if dt_ent:
+                supplier_matched_candidates.sort(
+                    key=lambda x: abs(((x.data_emissao.date() if hasattr(x.data_emissao, 'date') else x.data_emissao) - dt_ent).days)
+                    if x.data_emissao else 999999
+                )
+            matched_nfe = supplier_matched_candidates[0]
+
+        # Last resort fallback if supplier didn't match at all, check tight date window
         if not matched_nfe and dt_ent:
             for nfe in nfes:
                 if nfe.data_emissao:
-                    nfe_date = nfe.data_emissao
-                    if hasattr(nfe_date, 'date'):
-                        nfe_date = nfe_date.date()
+                    nfe_date = nfe.data_emissao.date() if hasattr(nfe.data_emissao, 'date') else nfe.data_emissao
                     days_diff = abs((nfe_date - dt_ent).days)
-                    if days_diff <= 15:
+                    if days_diff <= 30:
                         matched_nfe = nfe
                         break
         
