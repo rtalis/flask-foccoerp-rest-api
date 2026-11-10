@@ -68,3 +68,10 @@ def get_jwt_token():
     db.session.commit()
 
     return new_token
+
+def invalidate_jwt_token():
+    """Expires the cached SIEG JWT so the next get_jwt_token() call fetches a new one."""
+    token_record = SiegToken.query.filter_by(token_type='JWT').first()
+    if token_record:
+        token_record.expires_at = datetime.now()
+        db.session.commit()

@@ -183,10 +183,10 @@ def get_purchase_by_nf():
 @bp.route('/get_danfe_pdf', methods=['GET'])
 @login_required
 def get_danfe_pdf():
-    from app.sieg_auth import get_jwt_token
+    from app.sieg_auth import get_jwt_token, invalidate_jwt_token
     import base64
     import requests
-    
+
     xml_key = request.args.get('xmlKey')
     retry = request.args.get('retry', 'false').lower() == 'true'
     details = request.args.get('details', 'false').lower() == 'true'
@@ -194,21 +194,26 @@ def get_danfe_pdf():
     if not xml_key:
         return jsonify({'error': 'xmlKey is required'}), 400
 
+    def _clean_xml(xml_content):
+        """Strips BOM and surrounding whitespace before sending the XML to SIEG / local generator."""
+        return (xml_content or '').replace('\ufeff', '').strip()
+
     def _build_local_pdf_response(nfe_data, source):
         """Generates DANFE or DANFSE locally using brazilfiscalreport."""
         is_nfse = str(nfe_data.tipo_documento) == '3'
+        xml_text = _clean_xml(nfe_data.xml_content)
 
         if is_nfse:
             from brazilfiscalreport.danfse import Danfse
-            doc = Danfse(xml=nfe_data.xml_content)
+            doc = Danfse(xml=xml_text)
         else:
             from brazilfiscalreport.danfe import Danfe
-            doc = Danfe(xml=nfe_data.xml_content)
+            doc = Danfe(xml=xml_text)
 
         try:
-            pdf_output = doc.output(dest='S')
-        except TypeError:
             pdf_output = doc.output()
+        except TypeError:
+            pdf_output = doc.output(dest='S')
 
         if isinstance(pdf_output, str):
             pdf_bytes = pdf_output.encode('latin1')
@@ -227,15 +232,15 @@ def get_danfe_pdf():
             'Content-Type': 'application/json',
             'Accept': 'application/json'
         }
-        xml_b64 = base64.b64encode(xml_content.encode('utf-8')).decode('utf-8')
-        
+        xml_b64 = base64.b64encode(_clean_xml(xml_content).encode('utf-8')).decode('utf-8')
+
         response = requests.post(
             'https://api.sieg.com/api/v1/gerarDanfeViaXml',
             json={"ArquivoXml": xml_b64},
             headers=headers,
             timeout=10
         )
-        
+
         if response.status_code == 200:
             try:
                 data = response.json()
@@ -244,6 +249,14 @@ def get_danfe_pdf():
                 return data
             except ValueError:
                 return response.text.strip(' "')
+
+        if response.status_code == 401:
+            current_app.logger.warning(
+                'SIEG v1 retornou 401 para chave %s. Invalidando token SIEG em cache.', xml_key)
+            invalidate_jwt_token()
+        current_app.logger.warning(
+            'Erro HTTP ao obter DANFE via SIEG v1 para chave %s: %s - %s',
+            xml_key, response.status_code, response.text[:300])
         return None
 
     try:
@@ -277,6 +290,9 @@ def get_danfe_pdf():
                 }
             }), 200
 
+        if not _clean_xml(existing_nfe.xml_content):
+            return jsonify({'error': 'XML content not available for this NFE. Cannot generate PDF.'}), 422
+
         # If user explicitly clicked 'retry', bypass SIEG API and generate directly from local DB
         if retry:
             return _build_local_pdf_response(existing_nfe, 'retry_local')
@@ -286,13 +302,14 @@ def get_danfe_pdf():
             pdf_b64 = _get_sieg_pdf_via_xml(existing_nfe.xml_content)
             if pdf_b64:
                 return jsonify({'pdf': pdf_b64, 'source': 'sieg_v1_xml'}), 200
-        except Exception:
-            pass
+        except Exception as sieg_err:
+            current_app.logger.warning('Erro ao obter DANFE via SIEG v1 para chave %s: %s', xml_key, sieg_err)
 
         # Fallback: Local brazilfiscalreport (Danfe / Danfse)
         try:
             return _build_local_pdf_response(existing_nfe, 'fallback_local_report')
         except Exception as local_err:
+            current_app.logger.warning('Fallback local de DANFE falhou para chave %s: %s', xml_key, local_err)
             return jsonify({'error': f'Failed to generate PDF locally: {str(local_err)}'}), 500
     
     except Exception as e:
@@ -1522,11 +1539,14 @@ def search_nfe():
     try:
         start_date = None
         end_date = None
-        if start_date_str:
-            start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
-        if end_date_str:
-            end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
-            end_date = end_date.replace(hour=23, minute=59, second=59)
+        try:
+            if start_date_str:
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+            if end_date_str:
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+                end_date = end_date.replace(hour=23, minute=59, second=59)
+        except ValueError:
+            return jsonify({'error': 'Data inválida. Use o formato AAAA-MM-DD.'}), 400
 
         nfe_filters = []
 
