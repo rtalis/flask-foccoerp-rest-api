@@ -31,6 +31,7 @@ const Login = ({ onLogin }) => {
   const [version, setVersion] = useState("");
   const [showSessionWarning, setShowSessionWarning] = useState(false);
   const [warningMessage, setWarningMessage] = useState("");
+  const [pendingLogin, setPendingLogin] = useState(null);
 
   useEffect(() => {
     fetch("/release-notes.json")
@@ -85,9 +86,8 @@ const Login = ({ onLogin }) => {
         const allowedScreens = response.data?.user?.allowed_screens || [];
         const capabilities = response.data?.user?.capabilities || [];
         const dataFilters = response.data?.user?.data_filters || {};
-        setTimeout(() => {
-          onLogin(initialScreen, allowedScreens, capabilities, dataFilters, rememberMe);
-        }, 1);
+        // Show the J-One migration notice on every login before entering the app
+        setPendingLogin({ initialScreen, allowedScreens, capabilities, dataFilters, rememberMe });
       }
     } catch (error) {
       setError("Login failed: Invalid email or password");
@@ -105,6 +105,13 @@ const Login = ({ onLogin }) => {
   const handleConfirmLogin = () => {
     setShowSessionWarning(false);
     performLogin(true);
+  };
+
+  const handleContinueToApp = () => {
+    if (!pendingLogin) return;
+    const { initialScreen, allowedScreens, capabilities, dataFilters, rememberMe: remember } = pendingLogin;
+    setPendingLogin(null);
+    onLogin(initialScreen, allowedScreens, capabilities, dataFilters, remember);
   };
 
   const handleCancelLogin = () => {
@@ -150,6 +157,39 @@ const Login = ({ onLogin }) => {
               <button className="btn-confirm" onClick={handleConfirmLogin}>
                 Continuar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* J-One Migration Notice (shown on every login) */}
+      {pendingLogin && (
+        <div className="session-warning-overlay">
+          <div className="session-warning-dialog jone-notice-dialog" role="dialog" aria-modal="true" aria-labelledby="jone-notice-title">
+            <h3 id="jone-notice-title">Nova versão 3.0.0 disponível</h3>
+            <p>
+              A versão 3.0.0 do aplicativo já está disponível em{" "}
+              <a href="https://j-one.ia.br" target="_blank" rel="noopener noreferrer">j-one.ia.br</a>,
+              com <strong>atualização em tempo real com o Focco</strong>.
+            </p>
+            <p>
+              Se você ainda não tem acesso, solicite ao administrador.
+            </p>
+            <p className="jone-notice-deprecation">
+              Esta ferramenta será descontinuada no futuro.
+            </p>
+            <div className="warning-buttons">
+              <button className="btn-cancel" onClick={handleContinueToApp}>
+                Continuar no JHub
+              </button>
+              <a
+                className="btn-confirm"
+                href="https://j-one.ia.br"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Acessar J-One
+              </a>
             </div>
           </div>
         </div>
